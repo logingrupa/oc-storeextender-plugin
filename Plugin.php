@@ -26,8 +26,9 @@ use Logingrupa\StoreExtender\Classes\Event\ExtendOfferHandler;
 //Offer events
 use Logingrupa\StoreExtender\Classes\Event\Offer\ExtendOfferImport;
 
-//User groups events
+//User group events
 use Logingrupa\StoreExtender\Classes\Event\UserGroup\ExtendUserGroupModel;
+use Logingrupa\StoreExtender\Classes\Event\UserGroup\ExtendUserGroupController;
 
 //User events
 use Logingrupa\StoreExtender\Classes\Event\User\UserModelHandler;
@@ -95,6 +96,7 @@ class Plugin extends PluginBase
         Event::subscribe(ExtendOfferImport::class);
         //User group events
         Event::subscribe(ExtendUserGroupModel::class);
+        Event::subscribe(ExtendUserGroupController::class);
         Event::subscribe(UserModelHandler::class);
         //User events
         Event::subscribe(ExtendUserController::class);

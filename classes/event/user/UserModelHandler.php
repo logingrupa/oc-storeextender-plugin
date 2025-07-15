@@ -1,17 +1,24 @@
 <?php namespace logingrupa\Storeextender\Classes\Event\User;
 
 use Lang;
-use Lovata\Buddies\Models\User;
-use Lovata\Buddies\Models\Group;
 use Illuminate\Support\Facades\Log;
 
 class UserModelHandler
 {
     public function subscribe()
     {
-        User::extend(function ($obElement) {
-            $this->extendUserModel($obElement);
-        });
+        $pluginManager = \System\Classes\PluginManager::instance();
+        
+        // Check which user plugin is available and extend accordingly
+        if ($pluginManager->hasPlugin('Lovata.Buddies')) {
+            \Lovata\Buddies\Models\User::extend(function ($obElement) {
+                $this->extendUserModel($obElement);
+            });
+        } elseif ($pluginManager->hasPlugin('RainLab.User')) {
+            \RainLab\User\Models\User::extend(function ($obElement) {
+                $this->extendUserModel($obElement);
+            });
+        }
     }
 
     protected function extendUserModel($obElement)
@@ -30,8 +37,12 @@ class UserModelHandler
     protected function addValidationRules($obElement)
     {
         $obElement->rules['property[security]'] = 'required:create|in:5';
-        $obElement->customMessages['property.security.required'] = Lang::get('logingrupa.storeextender::lang.message.e_security_required');
-        $obElement->customMessages['property.security.in'] = Lang::get('logingrupa.storeextender::lang.message.e_security_in');
+        
+        // Get current customMessages, modify it, then reassign to avoid "indirect modification" error
+        $customMessages = $obElement->customMessages;
+        $customMessages['property.security.required'] = Lang::get('logingrupa.storeextender::lang.message.e_security_required');
+        $customMessages['property.security.in'] = Lang::get('logingrupa.storeextender::lang.message.e_security_in');
+        $obElement->customMessages = $customMessages;
     }
 
     protected function attachUserToGroup($obElement)
@@ -42,8 +53,15 @@ class UserModelHandler
             return;
         }
 
-        // Find the group by code
-        $group = Group::where('code', $sPropertyCode)->first();
+        $pluginManager = \System\Classes\PluginManager::instance();
+        $group = null;
+
+        // Find the group by code using the appropriate model
+        if ($pluginManager->hasPlugin('Lovata.Buddies')) {
+            $group = \Lovata\Buddies\Models\Group::where('code', $sPropertyCode)->first();
+        } elseif ($pluginManager->hasPlugin('RainLab.User')) {
+            $group = \RainLab\User\Models\UserGroup::where('code', $sPropertyCode)->first();
+        }
 
         if (!$group) {
             Log::warning("Group with code '{$sPropertyCode}' not found.");

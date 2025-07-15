@@ -17,3 +17,5 @@
 1.0.7:
   - 'Update lovata_shopaholic_offers, table, by adding preview_video field'
   - update_table_lovata_shopaholic_offers_add_preview_video_id.php
+2.0.1:
+  - 'Added also support for RainLab.User plugin, and OctoberCMS v4.0.x'

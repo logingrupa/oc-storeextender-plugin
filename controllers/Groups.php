@@ -26,6 +26,6 @@ class Groups extends Controller
     public function __construct()
     {
         parent::__construct();
-        BackendMenu::setContext('Lovata.Buddies', 'main-menu-buddies', 'side-menu-buddies-group');
+        BackendMenu::setContext('RainLab.Users', 'main-menu-users', 'side-menu-users-group');
     }
 }
