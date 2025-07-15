@@ -69,6 +69,7 @@ class Plugin extends PluginBase
      */
     public function register()
     {
+        $this->registerConsoleCommand('storeextender.sqlimport', 'Logingrupa\StoreExtender\Console\SqlImportCommand');
     }
 
     /**
@@ -290,4 +291,6 @@ class Plugin extends PluginBase
             'Logingrupa\Storeextender\FormWidgets\VideoFormWidget' => 'VideoFormWidget',
         ];
     }
+
+
 }

@@ -20,9 +20,9 @@ class UpdateTableUserGroup extends Migration
         $pluginManager = PluginManager::instance();
         
         if ($pluginManager->hasPlugin('Lovata.Buddies')) {
-            return 'lovata_buddies_users';
+            return 'lovata_buddies_groups';
         } elseif ($pluginManager->hasPlugin('RainLab.User')) {
-            return 'users';
+            return 'users_groups';
         }
         
         return null;
