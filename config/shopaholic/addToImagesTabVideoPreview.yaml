@@ -1,0 +1,27 @@
+preview_image:
+  label: 'lovata.toolbox::lang.field.preview_image'
+  mode: image
+  useCaption: true
+  thumbOptions:
+    mode: crop
+    extension: auto
+  span: left
+  type: fileupload
+  tab: 'lovata.toolbox::lang.tab.images'
+preview_video:
+  label: 'Preview Video'
+  placeholder: 'Google Drive video file ID'
+  span: right
+  type: Logingrupa\Storeextender\formwidgets\VideoFormWidget
+  modelClass: \Lovata\Shopaholic\Models\Offer
+  tab: 'lovata.toolbox::lang.tab.images'
+images:
+  label: 'lovata.toolbox::lang.field.images'
+  mode: image
+  useCaption: true
+  thumbOptions:
+    mode: crop
+    extension: auto
+  span: full
+  type: fileupload
+  tab: 'lovata.toolbox::lang.tab.images'

@@ -1,0 +1,17 @@
+Color card - 2021
+
+{% for obOffer in data %}
+<div class="row">
+    <style>
+
+    </style>
+    <div class="" style="--gradient{{ loop.index }}:{% for key, color in obOffer.colors %}
+    {{ key }} {{ color }}{{ loop.last ? ';' : ',' }}
+    {% endfor %}; background: radial-gradient(circle, var(--gradient{{ loop.index }}));">
+        {{ obOffer.name }} | {{ obOffer.rgb }}
+        <img style="mix-blend-mode: normal;" src="{{ obOffer.path }}">
+    </div>
+
+</div>
+
+{% endfor %}                                  

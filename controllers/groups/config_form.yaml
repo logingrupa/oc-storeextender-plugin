@@ -1,0 +1,16 @@
+name: 'logingrupa.storeextender::lang.group.name'
+modelClass: Lovata\Buddies\Models\Group
+form: $/logingrupa/storeextender/models/group/fields.yaml
+defaultRedirect: logingrupa/storeextender/groups
+create:
+  title: 'backend::lang.form.create_title'
+  redirect: 'logingrupa/storeextender/groups/update/:id'
+  redirectClose: logingrupa/storeextender/groups
+  flashSave: 'lovata.toolbox::lang.message.create_success'
+update:
+  title: 'backend::lang.form.update_title'
+  redirect: logingrupa/storeextender/groups
+  redirectClose: logingrupa/storeextender/groups
+  flashSave: 'lovata.toolbox::lang.message.update_success'
+  flashDelete: 'lovata.toolbox::lang.message.delete_success'
+preview: { }

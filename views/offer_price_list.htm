@@ -1,0 +1,50 @@
+<table class="table">
+    <tr>
+        <th></th>
+        <th><?= trans('lovata.shopaholic::lang.field.price'); ?></th>
+        <th><?= trans('lovata.shopaholic::lang.field.old_price'); ?></th>
+        <th><?= "Discount"; ?></th>
+    </tr>
+    <tr>
+        <td><?= trans('lovata.shopaholic::lang.field.main_price_type'); ?></td>
+        <td><input class="form-control" type="number" name="Offer[price_list][0][price]" value="<?= $formModel->setActiveCurrency(null)->setActivePriceType(null)->price_value ?>" step=""></td> 
+        <td><input class="form-control" type="number" name="Offer[price_list][0][old_price]" value="<?= $formModel->setActiveCurrency(null)->setActivePriceType(null)->old_price_value ?>" step="any"></td>
+        <?php $price = $formModel->setActiveCurrency(null)->setActivePriceType(null)->price_value;
+            $oldPrice = $formModel->setActiveCurrency(null)->setActivePriceType(null)->old_price_value;
+            ?>
+        <td>
+            <?php 
+                if($oldPrice > 0){
+                    echo  "-".round(100 - $price / $oldPrice * 100, 2) ."%";
+                } else {
+                    echo "-0%";
+                }
+            ?>
+         </td>
+    </tr>
+    <?php
+        $obPriceTypeList = \Lovata\Shopaholic\Models\PriceType::active()->get();
+        if ($obPriceTypeList->isNotEmpty()) {
+            foreach ($obPriceTypeList as $obPriceType) {
+    ?>
+    <tr>
+        <td><?= $obPriceType->name ?></td>
+        <td><input class="form-control" type="number" name="Offer[price_list][<?= $obPriceType->id ?>][price]" value="<?= $formModel->setActivePriceType($obPriceType->id)->price_value ?>" step="any"></td>
+        <td><input class="form-control" type="number" name="Offer[price_list][<?= $obPriceType->id ?>][old_price]" value="<?= $formModel->setActivePriceType($obPriceType->id)->old_price_value ?>" step="any"></td>
+        <?php
+            $price = $formModel->setActivePriceType($obPriceType->id)->price_value;
+            $oldPrice =$formModel->setActivePriceType($obPriceType->id)->old_price_value;
+        ?>
+        <td>
+            <?php 
+                if($oldPrice > 0){
+                    echo  "-".round(100 - $price / $oldPrice * 100, 2) ."%";
+                } else {
+                    echo "-0%";
+                }
+            ?>
+         </td>
+    </tr>
+            <?php } ?>
+        <?php } ?>
+</table>

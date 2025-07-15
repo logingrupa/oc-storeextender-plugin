@@ -1,0 +1,15 @@
+users:
+  label: 'lovata.buddies::lang.user.name'
+  manage:
+    list: $/lovata/buddies/models/user/columns.yaml
+    form: $/lovata/buddies/models/user/fields.yaml
+    showSearch: true
+    showSorting: true
+    recordsPerPage: 10
+  view:
+    list: $/lovata/buddies/models/user/columns.yaml
+    recordUrl: lovata/buddies/users/update/:id
+    toolbarButtons: 'add|remove'
+    showSearch: true
+    showSorting: true
+    recordsPerPage: 10

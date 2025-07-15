@@ -1,0 +1,23 @@
+fields:
+  name:
+    label: 'lovata.toolbox::lang.field.name'
+    span: left
+    required: 1
+    type: text
+  code:
+    label: 'lovata.toolbox::lang.field.code'
+    span: right
+    type: text
+  price_type:
+    label: 'lovata.shopaholic::lang.field.main_price_type'
+    span: left
+    type: relation
+    emptyOption: 'lovata.toolbox::lang.field.empty'
+  users:
+    label: 'lovata.buddies::lang.user.list_title'
+    span: full
+    type: partial
+    path: $/logingrupa/storeextender/controllers/groups/_user.htm
+    context:
+      - update
+      - preview

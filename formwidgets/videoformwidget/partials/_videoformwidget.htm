@@ -1,0 +1,27 @@
+<?php if ($this->previewMode): ?>
+
+    <div class="form-control">
+        <?= $value ?>
+    </div>
+
+<?php else: ?>
+    <div class="single-image" style="width: 100%; min-height: 100%; display: inline-block;">
+        <video
+                class="video-player"
+                src="https://fv9-5.failiem.lv/thumb_video/<?= $value ?>.mp4"
+                style="width: 100%; min-height: 530px; display: inline-block;"
+                loop=""
+                autoplay=""
+                muted=""
+                playsinline="">
+        </video>
+    </div>
+    <input
+            type="text"
+            id="<?= $this->getId('input') ?>"
+            name="<?= $name ?>"
+            value="<?= $value ?>"
+            class="form-control"
+            autocomplete="off"
+            placeholder="Google Drive video file ID"/>
+<?php endif ?>

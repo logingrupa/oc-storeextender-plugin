@@ -1,0 +1,19 @@
+1.0.1: First version of StoreExtender for Shopaholic
+1.0.2:
+  - 'Update lovata_shopaholic_products, table, by adding video_link and how_to fields'
+  - update_table_lovata_shopaholic_products.php
+1.0.3:
+  - 'Added payment_type_id field to user group table'
+  - update_table_user_group_1.php
+1.0.4:
+  - 'Create discounts and price type'
+  - seeder_create_default_discounts.php
+1.0.5:
+  - 'Update lovata_shopaholic_offers, table, by adding variations field'
+  - update_table_lovata_shopaholic_offers.php
+1.0.6:
+  - 'Update lovata_shopaholic_products, table, by adding show_dropdown to check if display dropdown or images for products'
+  - update_table_lovata_shopaholic_products_added_aditional_field.php
+1.0.7:
+  - 'Update lovata_shopaholic_offers, table, by adding preview_video field'
+  - update_table_lovata_shopaholic_offers_add_preview_video_id.php

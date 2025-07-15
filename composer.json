@@ -1,0 +1,9 @@
+{
+    "name": "logingrupa/storeextender-plugin",
+    "type": "october-plugin",
+    "description": "Plugin for October CMS extending the Lovata.Shopaholic store functionality, adding custom discounts, Extends offer import, adds user group based pricing, adds videos to offers, extends xml import fields form 1C, etc.",
+    "license": "GPL-3.0-only",
+    "require": {
+        "composer/installers": "~1.0"
+    }
+}

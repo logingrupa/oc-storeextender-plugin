@@ -1,0 +1,16 @@
+how_to:
+  label: "Product how to"
+  type: richeditor
+  span: full
+  tab: 1C Data
+video_link:
+  label: "Video link or YouTube video ID"
+  type: text
+  span: left
+  tab: 1C Data
+hide_dropdown:
+  label: "Hide dropdown and show variations as images"
+  type: text
+  span: left
+  tab: 1C Data
+
