@@ -5,27 +5,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Exception;
 
-/**
- * SQL Import Console Command
- * 
- * This command reads raw SQL INSERT statements and executes them against the database
- * with proper table existence and duplicate record checks.
- */
 class SqlImportCommand extends Command
 {
-    /**
-     * @var string The console command name.
-     */
     protected $name = 'storeextender:sql-import';
-
-    /**
-     * @var string The console command description.
-     */
     protected $description = 'Import raw SQL INSERT statements to database with duplicate checks';
-
-    /**
-     * @var string The console command signature.
-     */
     protected $signature = 'storeextender:sql-import 
                             {file? : Path to SQL file containing INSERT statements}
                             {--sql= : Direct SQL INSERT statement}
@@ -33,10 +16,6 @@ class SqlImportCommand extends Command
                             {--mysql-compat : Convert MySQL syntax to PostgreSQL compatible syntax}
                             {--debug : Show detailed debug information}';
 
-    /**
-     * Execute the console command.
-     * @return void
-     */
     public function handle()
     {
         $this->info('Starting SQL Import Process...');
@@ -48,48 +27,63 @@ class SqlImportCommand extends Command
         
         if (!$sqlFile && !$directSql) {
             $this->error('Please provide either a file path or direct SQL statement.');
-            $this->info('Usage examples:');
-            $this->info('  php artisan storeextender:sql-import /path/to/file.sql');
-            $this->info('  php artisan storeextender:sql-import --sql="INSERT INTO table..."');
             return 1;
         }
         
         try {
             $sqlStatements = [];
-            
+    
             if ($sqlFile) {
                 $sqlStatements = $this->readSqlFile($sqlFile);
             } else {
                 $sqlStatements = [$directSql];
             }
-            
+    
             $this->info(sprintf('Found %d SQL statement(s) to process.', count($sqlStatements)));
-            
+    
             $processed = 0;
             $skipped = 0;
             $errors = 0;
-            
+            $validationErrors = 0;
+    
             foreach ($sqlStatements as $index => $sql) {
                 $sql = trim($sql);
                 if (empty($sql) || !$this->isInsertStatement($sql)) {
                     continue;
                 }
+    
+                $this->info(sprintf('Processing statement %d...', $index + 1));
                 
-                // Convert MySQL syntax to PostgreSQL if needed
+                // Validate SQL statement first
+                $validationIssues = $this->validateSqlStatement($sql);
+                if (!empty($validationIssues)) {
+                    $validationErrors++;
+                    $this->error(sprintf('✗ Statement %d validation failed:', $index + 1));
+                    foreach ($validationIssues as $issue) {
+                        $this->error("  - $issue");
+                    }
+                    
+                    if ($this->option('debug')) {
+                        $this->warn("DEBUG Invalid statement preview: " . substr($sql, 0, 200) . "...");
+                        $this->warn("DEBUG Invalid statement ending: ..." . substr($sql, -200));
+                    }
+                    
+                    $errors++;
+                    continue;
+                }
+    
                 if ($mysqlCompat) {
                     $sql = $this->convertMySqlToPostgreSQL($sql);
                 }
-                
-                $this->info(sprintf('Processing statement %d...', $index + 1));
-                
+    
                 if ($dryRun) {
                     $this->line('DRY RUN: ' . substr($sql, 0, 100) . '...');
                     $processed++;
                     continue;
                 }
-                
+    
                 $result = $this->processSqlStatement($sql);
-                
+    
                 switch ($result['status']) {
                     case 'processed':
                         $processed++;
@@ -105,511 +99,654 @@ class SqlImportCommand extends Command
                         break;
                 }
             }
-            
-            $this->info('\nImport Summary:');
+    
+            $this->info("\nImport Summary:");
             $this->info(sprintf('Processed: %d', $processed));
             $this->info(sprintf('Skipped: %d', $skipped));
             $this->info(sprintf('Errors: %d', $errors));
-            
-            return 0;
-            
+            if ($validationErrors > 0) {
+                $this->warn(sprintf('Validation Errors: %d', $validationErrors));
+                $this->warn('Tip: Check if your SQL file is complete and properly formatted');
+            }
+    
+            return $errors > 0 ? 1 : 0;
+    
         } catch (Exception $e) {
             $this->error('Import failed: ' . $e->getMessage());
+            if ($this->option('debug')) {
+                $this->error('Exception trace: ' . $e->getTraceAsString());
+            }
             return 1;
         }
     }
-    
-    /**
-     * Read SQL statements from file
-     * @param string $filePath
-     * @return array
-     */
+
     protected function readSqlFile($filePath)
     {
         if (!file_exists($filePath)) {
             throw new Exception("SQL file not found: {$filePath}");
         }
-        
+
         $content = file_get_contents($filePath);
         
-        // Split by semicolon and filter empty statements
-        $statements = array_filter(
-            array_map('trim', explode(';', $content)),
-            function($stmt) {
-                return !empty($stmt) && $this->isInsertStatement($stmt);
+        if ($this->option('debug')) {
+            $this->warn("DEBUG File reading - Original content length: " . strlen($content));
+            $this->warn("DEBUG File reading - First 200 chars: " . substr($content, 0, 200));
+            $this->warn("DEBUG File reading - Last 200 chars: " . substr($content, -200));
+        }
+
+        // Enhanced SQL statement splitting that better handles multiline and complex statements
+        $statements = $this->splitSqlStatements($content);
+        
+        if ($this->option('debug')) {
+            $this->warn("DEBUG Found " . count($statements) . " SQL statements after splitting");
+            foreach ($statements as $index => $stmt) {
+                $this->warn("DEBUG Statement $index length: " . strlen($stmt));
+                $this->warn("DEBUG Statement $index preview: " . substr($stmt, 0, 100) . "...");
+                
+                // Check if statement appears complete
+                $openParens = substr_count($stmt, '(');
+                $closeParens = substr_count($stmt, ')');
+                if ($openParens !== $closeParens) {
+                    $this->warn("DEBUG *** Statement $index has unbalanced parentheses! Open: $openParens, Close: $closeParens ***");
+                }
             }
-        );
+        }
+
+        // Filter valid INSERTs
+        $validStatements = array_filter($statements, fn($stmt) => !empty($stmt) && $this->isInsertStatement($stmt));
+        
+        if ($this->option('debug')) {
+            $this->warn("DEBUG Valid INSERT statements: " . count($validStatements));
+        }
+
+        return $validStatements;
+    }
+
+    /**
+     * Enhanced SQL statement splitting that better handles complex multiline statements
+     */
+    protected function splitSqlStatements($content)
+    {
+        $statements = [];
+        $currentStatement = '';
+        $inQuotes = false;
+        $quoteChar = '';
+        $parenthesesLevel = 0;
+        $length = strlen($content);
+        
+        if ($this->option('debug')) {
+            $this->warn("DEBUG Starting enhanced SQL splitting for content of length: $length");
+        }
+        
+        for ($i = 0; $i < $length; $i++) {
+            $char = $content[$i];
+            $nextChar = ($i + 1 < $length) ? $content[$i + 1] : '';
+            $prevChar = ($i > 0) ? $content[$i - 1] : '';
+            
+            // Handle string literals
+            if (!$inQuotes && ($char === '"' || $char === "'")) {
+                $inQuotes = true;
+                $quoteChar = $char;
+                $currentStatement .= $char;
+            } elseif ($inQuotes && $char === $quoteChar) {
+                // Check if it's escaped
+                if ($prevChar !== '\\') {
+                    $inQuotes = false;
+                    $quoteChar = '';
+                }
+                $currentStatement .= $char;
+            } elseif ($inQuotes) {
+                // Inside quotes, just add the character
+                $currentStatement .= $char;
+            } else {
+                // Outside quotes - track parentheses and semicolons
+                if ($char === '(') {
+                    $parenthesesLevel++;
+                    $currentStatement .= $char;
+                } elseif ($char === ')') {
+                    $parenthesesLevel--;
+                    $currentStatement .= $char;
+                } elseif ($char === ';') {
+                    // Only split on semicolon if we're not inside parentheses and not in quotes
+                    if ($parenthesesLevel === 0) {
+                        $currentStatement .= $char;
+                        $trimmed = trim($currentStatement);
+                        if (!empty($trimmed)) {
+                            $statements[] = $trimmed;
+                            if ($this->option('debug')) {
+                                $this->warn("DEBUG Split statement at position $i, length: " . strlen($trimmed));
+                            }
+                        }
+                        $currentStatement = '';
+                    } else {
+                        $currentStatement .= $char;
+                    }
+                } else {
+                    $currentStatement .= $char;
+                }
+            }
+        }
+        
+        // Add any remaining statement
+        $trimmed = trim($currentStatement);
+        if (!empty($trimmed)) {
+            $statements[] = $trimmed;
+            if ($this->option('debug')) {
+                $this->warn("DEBUG Added final statement, length: " . strlen($trimmed));
+                
+                // Check if final statement appears incomplete
+                $openParens = substr_count($trimmed, '(');
+                $closeParens = substr_count($trimmed, ')');
+                if ($openParens > $closeParens) {
+                    $this->warn("DEBUG *** FINAL STATEMENT APPEARS INCOMPLETE! ***");
+                    $this->warn("DEBUG Final statement ends with: '" . substr($trimmed, -100) . "'");
+                }
+            }
+        }
+        
+        if ($this->option('debug')) {
+            $this->warn("DEBUG Enhanced splitting completed. Total statements: " . count($statements));
+            if ($inQuotes) {
+                $this->warn("DEBUG *** WARNING: Ended while still inside quotes! ***");
+            }
+            if ($parenthesesLevel !== 0) {
+                $this->warn("DEBUG *** WARNING: Unbalanced parentheses at end! Level: $parenthesesLevel ***");
+            }
+        }
         
         return $statements;
     }
-    
+
     /**
-     * Check if statement is an INSERT statement
-     * @param string $sql
-     * @return bool
+     * Validate that a SQL statement appears complete
      */
+    protected function validateSqlStatement($sql)
+    {
+        $issues = [];
+        
+        // Check parentheses balance
+        $openParens = substr_count($sql, '(');
+        $closeParens = substr_count($sql, ')');
+        if ($openParens !== $closeParens) {
+            $issues[] = "Unbalanced parentheses (open: $openParens, close: $closeParens)";
+        }
+        
+        // Check quotes balance
+        $singleQuotes = substr_count($sql, "'");
+        if ($singleQuotes % 2 !== 0) {
+            $issues[] = "Unbalanced single quotes (count: $singleQuotes)";
+        }
+        
+        // Check if INSERT statement ends properly
+        if ($this->isInsertStatement($sql)) {
+            $trimmed = rtrim($sql);
+            if (!preg_match('/\)\s*;?\s*$/', $trimmed)) {
+                $issues[] = "INSERT statement doesn't end with closing parenthesis";
+            }
+        }
+        
+        return $issues;
+    }
+
     protected function isInsertStatement($sql)
     {
         return preg_match('/^\s*INSERT\s+INTO/i', $sql);
     }
-    
-    /**
-     * Process a single SQL INSERT statement
-     * @param string $sql
-     * @return array
-     */
+
+    protected function cleanEscapedJson($value)
+    {
+        // Step 1: Unwrap quotes if present
+        if (str_starts_with($value, "'") && str_ends_with($value, "'")) {
+            $value = substr($value, 1, -1);
+        }
+
+        // Step 2: Fix SQL-style escaping
+        $value = str_replace(['\\\\\\/', '\\\\', '\\"'], ['/', '\\', '"'], $value);
+
+        return $value;
+    }
+
+    protected function parseInsertValues($sql)
+    {
+        // Remove newline mess
+        $sql = preg_replace('/\s+/', ' ', $sql);
+
+        $columnsStart = strpos($sql, '(');
+        $columnsEnd = strpos($sql, ')', $columnsStart);
+        $valuesStart = strpos($sql, '(', $columnsEnd);
+        $valuesEnd = strrpos($sql, ')');
+
+        $columnsStr = substr($sql, $columnsStart + 1, $columnsEnd - $columnsStart - 1);
+        $valuesStr = substr($sql, $valuesStart + 1, $valuesEnd - $valuesStart - 1);
+
+        $columns = array_map('trim', explode(',', str_replace('`', '', $columnsStr)));
+        $values = $this->splitValues($valuesStr);
+
+        return [$columns, $values];
+    }
+
+    protected function splitValues($valueString)
+    {
+        $values = [];
+        $length = strlen($valueString);
+        $buffer = '';
+        $inQuotes = false;
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $valueString[$i];
+
+            if ($char === "'" && ($i === 0 || $valueString[$i - 1] !== '\\')) {
+                $inQuotes = !$inQuotes;
+            }
+
+            if ($char === ',' && !$inQuotes) {
+                $values[] = trim($buffer);
+                $buffer = '';
+                continue;
+            }
+
+            $buffer .= $char;
+        }
+
+        if (strlen($buffer)) {
+            $values[] = trim($buffer);
+        }
+
+        return $values;
+    }
+
+
     protected function processSqlStatement($sql)
     {
         try {
-            // Extract table name from INSERT statement
+            $jsonHeavyTables = ['cms_theme_data', 'settings', 'renatio_formbuilder_field_types', 'renatio_formbuilder_forms', 'renatio_formbuilder_fields'];
             $tableName = $this->extractTableName($sql);
-            
+    
             if (!$tableName) {
-                return [
-                    'status' => 'error',
-                    'message' => 'Could not extract table name from SQL statement'
-                ];
+                return ['status' => 'error', 'message' => 'Could not extract table name'];
             }
-            
-            // Check if table exists
+    
             if (!Schema::hasTable($tableName)) {
-                return [
-                    'status' => 'skipped',
-                    'message' => "Table '{$tableName}' does not exist"
-                ];
+                return ['status' => 'skipped', 'message' => "Table '{$tableName}' does not exist"];
             }
-            
-            // Parse the INSERT statement to extract data
-            $parsed = $this->parseInsertStatement($sql);
-            
-            if (!$parsed) {
-                return [
-                    'status' => 'error',
-                    'message' => 'Could not parse INSERT statement'
-                ];
-            }
-            
-            // Check for duplicates
-            $duplicateCheck = $this->checkForDuplicatesAdvanced($parsed, $tableName);
-            
-            if ($duplicateCheck['has_duplicates']) {
-                return [
-                    'status' => 'skipped',
-                    'message' => "Record already exists in table '{$tableName}': " . $duplicateCheck['message']
-                ];
-            }
-            
-            // Use prepared statement for safer execution
-            $this->executeInsertStatement($parsed, $tableName);
-            
-            return [
-                'status' => 'processed',
-                'message' => "Successfully inserted record into '{$tableName}'"
-            ];
-            
-        } catch (Exception $e) {
-            return [
-                'status' => 'error',
-                'message' => 'SQL execution failed: ' . $e->getMessage()
-            ];
-        }
-    }
     
-    /**
-     * Extract table name from INSERT statement
-     * @param string $sql
-     * @return string|null
-     */
-    protected function extractTableName($sql)
-    {
-        if (preg_match('/INSERT\s+INTO\s+`?([a-zA-Z0-9_]+)`?/i', $sql, $matches)) {
-            return $matches[1];
-        }
-        
-        return null;
-    }
-    
-    /**
-     * Check for duplicate records using parsed data
-     * @param array $parsed
-     * @param string $tableName
-     * @return array
-     */
-    protected function checkForDuplicatesAdvanced($parsed, $tableName)
-    {
-        try {
-            // Check if record with same ID exists (assuming 'id' column)
-            if (in_array('id', $parsed['columns'])) {
-                $idIndex = array_search('id', $parsed['columns']);
-                $idValue = $parsed['values'][$idIndex];
-                
-                $exists = DB::table($tableName)->where('id', $idValue)->exists();
-                
-                if ($exists) {
-                    return [
-                        'has_duplicates' => true,
-                        'message' => "ID {$idValue} already exists"
-                    ];
-                }
-            }
-            
-            return ['has_duplicates' => false, 'message' => ''];
-            
-        } catch (Exception $e) {
-            return ['has_duplicates' => false, 'message' => 'Duplicate check failed: ' . $e->getMessage()];
-        }
-    }
-    
-    /**
-     * Parse INSERT statement to extract columns and values
-     * Enhanced to handle JSON data and complex strings
-     * @param string $sql
-     * @return array|null
-     */
-    protected function parseInsertStatement($sql)
-    {
-        // First, normalize the SQL by removing extra whitespace and newlines but preserve structure
-        $normalizedSql = preg_replace('/\r\n|\r|\n/', ' ', trim($sql));
-        $normalizedSql = preg_replace('/\s+/', ' ', $normalizedSql);
-        
-        // Match INSERT INTO table (columns) VALUES with multi-line support
-        $pattern = '/INSERT\s+INTO\s+`?([a-zA-Z0-9_]+)`?\s*\(([^)]+)\)\s*VALUES\s*(.+)/is';
-        
-        if (preg_match($pattern, $normalizedSql, $matches)) {
-            $tableName = $matches[1];
-            $columnsStr = $matches[2];
-            $valuesSection = $matches[3];
-            
-            // Parse columns
-            $columns = $this->parseColumns($columnsStr);
-            
-            // Parse all value rows from the VALUES section
-            $allValues = $this->parseMultipleValueRows($valuesSection);
-            
-            if (empty($allValues)) {
-                $this->warn("Could not parse any values from INSERT statement");
-                $this->warn("Table: $tableName");
-                $this->warn("Values section length: " . strlen($valuesSection));
-                $this->warn("Values section preview: " . substr($valuesSection, 0, 200) . "...");
-                return null;
-            }
-            
-            // For now, just take the first row of values
-            $values = $allValues[0];
-            
-            if (count($columns) !== count($values)) {
-                $this->warn("Column count (" . count($columns) . ") doesn't match value count (" . count($values) . ")");
-                if ($tableName === 'cms_theme_data') {
-                    $this->warn("Columns: " . implode(', ', $columns));
-                    $this->warn("Values found: " . count($values));
-                    foreach ($values as $idx => $value) {
-                        $this->warn("Value $idx: " . substr($value, 0, 100) . (strlen($value) > 100 ? '...' : ''));
-                    }
+            if (in_array($tableName, $jsonHeavyTables)) {
+                if ($this->option('debug')) {
+                    $this->warn("=== DEBUG: Processing JSON-heavy table '{$tableName}' ===");
+                    $this->warn("DEBUG raw SQL length: " . strlen($sql));
+                    $this->warn("DEBUG raw SQL (first 200 chars): " . substr($sql, 0, 200));
+                    $this->warn("DEBUG raw SQL (last 200 chars): " . substr($sql, -200));
                     
-                    // Debug the raw values section
-                    $this->warn("Raw values section length: " . strlen($valuesSection));
-                    $this->warn("Raw values preview: " . substr($valuesSection, 0, 200) . '...');
+                    // Show line count and structure
+                    $lines = explode("\n", $sql);
+                    $this->warn("DEBUG SQL has " . count($lines) . " lines");
+                    
+                    // Show the structure more clearly
+                    $normalizedSql = preg_replace('/\s+/', ' ', trim($sql));
+                    $this->warn("DEBUG normalized SQL (first 300 chars): " . substr($normalizedSql, 0, 300));
                 }
-                return null;
-            }
             
-            return [
-                'table' => $tableName,
-                'columns' => $columns,
-                'values' => $values,
-                'all_rows' => $allValues
-            ];
-        }
-        
-        return null;
-    }
-    
-    /**
-     * Parse column names from INSERT statement
-     * @param string $columnsStr
-     * @return array
-     */
-    protected function parseColumns($columnsStr)
-    {
-        $columns = [];
-        $parts = explode(',', $columnsStr);
-        
-        foreach ($parts as $part) {
-            $column = trim($part, ' `\'"');
-            $columns[] = $column;
-        }
-        
-        return $columns;
-    }
-    
-    /**
-     * Parse multiple value rows from VALUES section
-     * @param string $valuesSection
-     * @return array
-     */
-    protected function parseMultipleValueRows($valuesSection)
-    {
-        $allRows = [];
-        $current = '';
-        $inString = false;
-        $stringChar = null;
-        $parenLevel = 0;
-        $i = 0;
-        $len = strlen($valuesSection);
-        
-        while ($i < $len) {
-            $char = $valuesSection[$i];
-            
-            // Handle escape sequences properly
-            if ($char === '\\' && $i + 1 < $len && $inString) {
-                // Always include the backslash and next character when in string
-                $current .= $char;
-                $i++;
-                if ($i < $len) {
-                    $current .= $valuesSection[$i];
-                }
-            } else {
-                if (!$inString) {
-                    if ($char === '\'' || $char === '"') {
-                        $inString = true;
-                        $stringChar = $char;
-                        $current .= $char;
-                    } elseif ($char === '(') {
-                        $parenLevel++;
-                        if ($parenLevel === 1) {
-                            // Start of a new value row, don't include the opening paren
-                            $current = '';
-                        } else {
-                            $current .= $char;
-                        }
-                    } elseif ($char === ')') {
-                        $parenLevel--;
-                        if ($parenLevel === 0) {
-                            // End of a value row
-                            $values = $this->parseValues($current);
-                            if (!empty($values)) {
-                                $allRows[] = $values;
-                            }
-                            $current = '';
-                        } else {
-                            $current .= $char;
-                        }
-                    } else {
-                        $current .= $char;
-                    }
-                } else {
-                    $current .= $char;
-                    if ($char === $stringChar) {
-                        // Check if this quote is escaped by counting preceding backslashes
-                        $backslashCount = 0;
-                        $j = $i - 1;
-                        while ($j >= 0 && $valuesSection[$j] === '\\') {
-                            $backslashCount++;
-                            $j--;
-                        }
-                        
-                        // If even number of backslashes (including 0), the quote is not escaped
-                        if ($backslashCount % 2 === 0) {
-                            $inString = false;
-                            $stringChar = null;
-                        }
-                    }
-                }
-            }
-            
-            $i++;
-        }
-        
-        // If we still have content and paren level is 1, we might have missed the closing paren
-        if ($parenLevel === 1 && !empty(trim($current))) {
-            $values = $this->parseValues($current);
-            if (!empty($values)) {
-                $allRows[] = $values;
-            }
-        }
-        
-        return $allRows;
-    }
-    
-    /**
-     * Parse values from INSERT statement with proper JSON handling
-     * @param string $valuesStr
-     * @return array
-     */
-    protected function parseValues($valuesStr)
-    {
-        $values = [];
-        $current = '';
-        $inQuote = false;
-        $quoteChar = null;
-        $parenLevel = 0;
-        $len = strlen($valuesStr);
-        
-        // Debug information
-        if ($this->option('debug')) {
-            $this->info("Parsing values string of length: {$len}");
-            $this->info("First 200 chars: " . substr($valuesStr, 0, 200));
-        }
-        
-        $i = 0;
-        while ($i < $len) {
-            $char = $valuesStr[$i];
-            
-            if (!$inQuote) {
-                // Not in a quoted string
-                if ($char === '\'' || $char === '"') {
-                    // Starting a quoted string
-                    $inQuote = true;
-                    $quoteChar = $char;
-                    $current .= $char;
+                // Try multiple regex patterns for better matching
+                $patterns = [
+                    // Original pattern
+                    '/\((.*?)\)\s+VALUES\s*\((.*)\)/is',
+                    // More flexible pattern that handles multiline better
+                    '/INSERT\s+INTO\s+[`\w]+\s*\((.*?)\)\s+VALUES\s*\((.*)\)$/is',
+                    // Even more flexible pattern
+                    '/\((.*?)\)\s+VALUES\s*\((.*)\)(?:\s*;?\s*)$/is',
+                    // Pattern that handles the specific case with potential line breaks
+                    '/\(([^)]+)\)\s+VALUES\s*\((.*)\)(?:\s*;?\s*)$/is'
+                ];
+                
+                $matched = false;
+                $patternUsed = '';
+                $matches = [];
+                
+                foreach ($patterns as $index => $pattern) {
                     if ($this->option('debug')) {
-                        $this->info("Started quote at position {$i} with char '{$char}'");
+                        $this->warn("DEBUG trying pattern $index: $pattern");
                     }
-                } elseif ($char === '(') {
-                    $parenLevel++;
-                    $current .= $char;
-                } elseif ($char === ')') {
-                    $parenLevel--;
-                    $current .= $char;
-                } elseif ($char === ',' && $parenLevel === 0) {
-                    // Found a value separator
-                    $trimmed = trim($current);
-                    if ($trimmed !== '') {
-                        $values[] = $this->cleanValue($trimmed);
+                    
+                    if (preg_match($pattern, $sql, $tempMatches)) {
+                        $matches = $tempMatches;
+                        $matched = true;
+                        $patternUsed = "Pattern $index";
                         if ($this->option('debug')) {
-                            $valuePreview = strlen($trimmed) > 50 ? substr($trimmed, 0, 50) . '...' : $trimmed;
-                            $this->info("Found value " . count($values) . ": {$valuePreview}");
+                            $this->warn("DEBUG pattern $index MATCHED!");
+                        }
+                        break;
+                    } else {
+                        if ($this->option('debug')) {
+                            $this->warn("DEBUG pattern $index failed");
                         }
                     }
-                    $current = '';
-                } else {
-                    $current .= $char;
                 }
-            } else {
-                // Inside a quoted string
-                if ($char === '\\') {
-                    // Handle escape sequence - add the backslash and next character
-                    $current .= $char;
-                    if ($i + 1 < $len) {
-                        $i++;
-                        $current .= $valuesStr[$i];
+            
+                if ($matched) {
+                    $rawCols = $matches[1];
+                    $rawVals = $matches[2];
+            
+                    if ($this->option('debug')) {
+                        $this->warn("DEBUG SUCCESS: Used $patternUsed");
+                        $this->warn("DEBUG rawCols length: " . strlen($rawCols));
+                        $this->warn("DEBUG rawCols: " . $rawCols);
+                        $this->warn("DEBUG rawVals length: " . strlen($rawVals));
+                        $this->warn("DEBUG rawVals (first 500 chars): " . substr($rawVals, 0, 500));
+                        $this->warn("DEBUG rawVals (last 500 chars): " . substr($rawVals, -500));
                     }
-                } elseif ($char === $quoteChar) {
-                    // Check if this quote is escaped by looking at the previous characters
-                    $isEscaped = false;
-                    if ($i > 0) {
-                        // Count consecutive backslashes before this quote
-                        $backslashCount = 0;
-                        $j = $i - 1;
-                        while ($j >= 0 && $valuesStr[$j] === '\\') {
-                            $backslashCount++;
-                            $j--;
+            
+                    // Parse columns with better error handling
+                    $columns = array_map('trim', explode(',', str_replace('`', '', $rawCols)));
+                    $columns = array_filter($columns); // Remove empty elements
+            
+                    if ($this->option('debug')) {
+                        $this->warn("DEBUG parsed columns count: " . count($columns));
+                        $this->warn("DEBUG parsed columns: " . json_encode($columns));
+                    }
+            
+                    // Enhanced value parsing with multiple strategies
+                    $values = $this->parseValuesWithMultipleStrategies($rawVals);
+            
+                    if ($this->option('debug')) {
+                        $this->warn("DEBUG parsed values count: " . count($values));
+                        $this->warn("DEBUG first few values: " . json_encode(array_slice($values, 0, 3)));
+                        if (count($values) > 3) {
+                            $this->warn("DEBUG last few values: " . json_encode(array_slice($values, -2)));
                         }
-                        // If odd number of backslashes, the quote is escaped
-                        $isEscaped = ($backslashCount % 2 === 1);
+                    }
+            
+                    if (count($columns) !== count($values)) {
+                        if ($this->option('debug')) {
+                            $this->warn("DEBUG Column count: " . count($columns));
+                            $this->warn("DEBUG Value count: " . count($values));
+                            $this->warn("DEBUG MISMATCH! Columns: " . json_encode($columns));
+                            $this->warn("DEBUG MISMATCH! Values preview: " . json_encode(array_map(function($v) {
+                                return is_string($v) ? substr($v, 0, 100) . (strlen($v) > 100 ? '...' : '') : $v;
+                            }, $values)));
+                            
+                            // Try to identify the issue
+                            $this->analyzeColumnValueMismatch($rawCols, $rawVals, $columns, $values);
+                        }
+                        return ['status' => 'error', 'message' => "Column/value count mismatch (columns: " . count($columns) . ", values: " . count($values) . ")"];
+                    }
+            
+                    // Combine and insert
+                    $cleaned = array_combine($columns, $values);
+            
+                    if ($this->option('debug')) {
+                        $this->warn("DEBUG final cleaned row keys: " . json_encode(array_keys($cleaned)));
+                        $this->warn("DEBUG final cleaned row (data preview): " . json_encode(array_map(function($v) {
+                            return is_string($v) ? substr($v, 0, 200) . (strlen($v) > 200 ? '...' : '') : $v;
+                        }, $cleaned)));
+                    }
+            
+                    DB::table($tableName)->insert($cleaned);
+            
+                    return ['status' => 'processed', 'message' => "Safe insert for '{$tableName}' using bound values"];
+                }
+            
+                if ($this->option('debug')) {
+                    $this->warn("DEBUG ALL PATTERNS FAILED!");
+                    $this->warn("DEBUG Let's examine the SQL structure more carefully:");
+                    
+                    // Look for key parts of the SQL
+                    $insertPos = stripos($sql, 'INSERT');
+                    $intoPos = stripos($sql, 'INTO');
+                    $valuesPos = stripos($sql, 'VALUES');
+                    
+                    $this->warn("DEBUG INSERT position: $insertPos");
+                    $this->warn("DEBUG INTO position: $intoPos");
+                    $this->warn("DEBUG VALUES position: $valuesPos");
+                    
+                    if ($valuesPos !== false) {
+                        $beforeValues = substr($sql, 0, $valuesPos);
+                        $afterValues = substr($sql, $valuesPos);
+                        $this->warn("DEBUG Before VALUES: " . substr($beforeValues, -100));
+                        $this->warn("DEBUG After VALUES (first 200): " . substr($afterValues, 0, 200));
                         
-                        if ($this->option('debug') && $i > 8900) {
-                            $this->info("Quote at position {$i}, backslash count: {$backslashCount}, escaped: " . ($isEscaped ? 'yes' : 'no'));
-                            $this->info("Context: " . substr($valuesStr, max(0, $i-10), 21));
+                        // Count parentheses
+                        $openParens = substr_count($afterValues, '(');
+                        $closeParens = substr_count($afterValues, ')');
+                        $this->warn("DEBUG Parentheses in VALUES section - Open: $openParens, Close: $closeParens");
+                        
+                        // Check if SQL appears incomplete
+                        if ($openParens > $closeParens) {
+                            $this->warn("DEBUG *** SQL APPEARS INCOMPLETE! ***");
+                            $this->warn("DEBUG Missing " . ($openParens - $closeParens) . " closing parentheses");
+                            $this->warn("DEBUG SQL ends with: '" . substr($sql, -50) . "'");
+                            
+                            // Check if SQL ends properly
+                            $trimmedSql = rtrim($sql);
+                            if (!preg_match('/\)\s*;?\s*$/', $trimmedSql)) {
+                                $this->warn("DEBUG SQL does not end with closing parenthesis (expected for complete INSERT)");
+                            }
+                            
+                            return ['status' => 'error', 'message' => "Incomplete SQL statement detected - missing closing parentheses. Check file reading logic."];
                         }
                     }
-                    
-                    $current .= $char;
-                    
-                    if (!$isEscaped) {
-                        $inQuote = false;
-                        $quoteChar = null;
-                        if ($this->option('debug')) {
-                            $this->info("Ended quote at position {$i}");
-                        }
-                    }
-                } else {
-                    $current .= $char;
                 }
+            
+                return ['status' => 'error', 'message' => "Failed to parse values for table '{$tableName}' - no regex pattern matched"];
             }
             
-            $i++;
+    
+            // Try to detect duplicate on ID if present
+            if (preg_match('/\bVALUES\s*\((\d+),/i', $sql, $idMatch)) {
+                $id = $idMatch[1];
+                if (Schema::hasColumn($tableName, 'id') && DB::table($tableName)->where('id', $id)->exists()) {
+                    return ['status' => 'skipped', 'message' => "Row with ID {$id} already exists in '{$tableName}'"];
+                }
+            }
+    
+            // Run insert
+            DB::statement($sql);
+            return ['status' => 'processed', 'message' => "Executed SQL for '{$tableName}'"];
+    
+        } catch (Exception $e) {
+            if ($this->option('debug')) {
+                $this->error("DEBUG Exception details: " . $e->getMessage());
+                $this->error("DEBUG Exception trace: " . $e->getTraceAsString());
+            }
+            return ['status' => 'error', 'message' => 'SQL execution failed: ' . $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Enhanced value parsing with multiple strategies
+     */
+    protected function parseValuesWithMultipleStrategies($rawVals)
+    {
+        if ($this->option('debug')) {
+            $this->warn("DEBUG parseValuesWithMultipleStrategies called with length: " . strlen($rawVals));
         }
         
-        // Add the last value
-        $trimmed = trim($current);
-        if ($trimmed !== '') {
-            $values[] = $this->cleanValue($trimmed);
-            if ($this->option('debug')) {
-                $valuePreview = strlen($trimmed) > 50 ? substr($trimmed, 0, 50) . '...' : $trimmed;
-                $this->info("Found final value " . count($values) . ": {$valuePreview}");
+        // Strategy 1: Enhanced regex that handles unquoted values too
+        $pattern = "/'((?:[^'\\\\]|\\\\.)*)'|NULL|(-?\d+(?:\.\d+)?)|([a-zA-Z_][a-zA-Z0-9_]*)/i";
+        preg_match_all($pattern, $rawVals, $matches, PREG_SET_ORDER);
+        
+        $values = [];
+        foreach ($matches as $match) {
+            if (isset($match[1]) && $match[1] !== '') {
+                // Quoted string
+                $value = stripslashes($match[1]);
+                $values[] = $value;
+            } elseif (isset($match[2]) && $match[2] !== '') {
+                // Number (int or float)
+                $values[] = (strpos($match[2], '.') !== false) ? (float)$match[2] : (int)$match[2];
+            } elseif (isset($match[3]) && strtoupper($match[3]) === 'NULL') {
+                // NULL value
+                $values[] = null;
+            } elseif (isset($match[3]) && $match[3] !== '') {
+                // Unquoted string/identifier
+                $values[] = $match[3];
+            } elseif (strtoupper($match[0]) === 'NULL') {
+                // Direct NULL match
+                $values[] = null;
             }
         }
         
         if ($this->option('debug')) {
-            $this->info("Total values found: " . count($values));
+            $this->warn("DEBUG Strategy 1 (enhanced regex) found " . count($values) . " values");
+            $this->warn("DEBUG Strategy 1 values preview: " . json_encode(array_map(function($v) {
+                return is_string($v) ? substr($v, 0, 100) . (strlen($v) > 100 ? '...' : '') : $v;
+            }, $values)));
+        }
+        
+        // If enhanced regex didn't work well, try manual parsing
+        if (count($values) < 3) { // We expect at least 3 values (id, theme, data, etc.)
+            if ($this->option('debug')) {
+                $this->warn("DEBUG Enhanced regex found insufficient values (" . count($values) . "), trying Strategy 2 (manual parsing)");
+            }
+            $values = $this->manualValueParsing($rawVals);
         }
         
         return $values;
     }
     
     /**
-     * Clean and prepare value for database insertion
-     * @param string $value
-     * @return mixed
+     * Manual value parsing for complex cases
      */
-    protected function cleanValue($value)
+    protected function manualValueParsing($rawVals)
     {
-        $value = trim($value);
+        $values = [];
+        $length = strlen($rawVals);
+        $i = 0;
         
-        // Handle NULL values
-        if (strtoupper($value) === 'NULL') {
-            return null;
+        if ($this->option('debug')) {
+            $this->warn("DEBUG Manual parsing starting, length: $length");
         }
         
-        // Handle quoted strings
-        if ((substr($value, 0, 1) === '\'' && substr($value, -1) === '\'') ||
-            (substr($value, 0, 1) === '"' && substr($value, -1) === '"')) {
-            $value = substr($value, 1, -1);
-            // Unescape quotes
-            $value = str_replace(["\\\\", "\\'", '\\"'], ["\\", "'", '"'], $value);
+        while ($i < $length) {
+            // Skip whitespace and commas
+            while ($i < $length && in_array($rawVals[$i], [' ', "\t", "\n", "\r", ','])) {
+                $i++;
+            }
+            
+            if ($i >= $length) break;
+            
+            // Check for NULL
+            if (substr($rawVals, $i, 4) === 'NULL') {
+                $values[] = null;
+                $i += 4;
+                if ($this->option('debug')) {
+                    $this->warn("DEBUG Found NULL at position $i");
+                }
+                continue;
+            }
+            
+            // Check for quoted string
+            if ($rawVals[$i] === "'") {
+                $i++; // Skip opening quote
+                $value = '';
+                $escaped = false;
+                
+                while ($i < $length) {
+                    if ($escaped) {
+                        $value .= $rawVals[$i];
+                        $escaped = false;
+                    } elseif ($rawVals[$i] === '\\') {
+                        $escaped = true;
+                    } elseif ($rawVals[$i] === "'") {
+                        // End of string
+                        break;
+                    } else {
+                        $value .= $rawVals[$i];
+                    }
+                    $i++;
+                }
+                
+                if ($i < $length && $rawVals[$i] === "'") {
+                    $i++; // Skip closing quote
+                }
+                
+                $values[] = $value;
+                
+                if ($this->option('debug')) {
+                    $valuePreview = strlen($value) > 100 ? substr($value, 0, 100) . '...' : $value;
+                    $this->warn("DEBUG Found quoted string at position $i, length: " . strlen($value) . ", preview: $valuePreview");
+                }
+            } else {
+                // Unquoted value (number, etc.)
+                $value = '';
+                while ($i < $length && !in_array($rawVals[$i], [',', ' ', "\t", "\n", "\r"])) {
+                    $value .= $rawVals[$i];
+                    $i++;
+                }
+                
+                if ($value !== '') {
+                    // Try to convert to appropriate type
+                    if (is_numeric($value)) {
+                        $values[] = (strpos($value, '.') !== false) ? (float)$value : (int)$value;
+                    } else {
+                        $values[] = $value;
+                    }
+                    
+                    if ($this->option('debug')) {
+                        $this->warn("DEBUG Found unquoted value: $value");
+                    }
+                }
+            }
         }
         
-        return $value;
+        if ($this->option('debug')) {
+            $this->warn("DEBUG Manual parsing completed, found " . count($values) . " values");
+        }
+        
+        return $values;
     }
     
     /**
-     * Execute INSERT statement using prepared statement
-     * @param array $parsed
-     * @param string $tableName
-     * @return void
+     * Analyze column/value mismatch to help debugging
      */
-    protected function executeInsertStatement($parsed, $tableName)
-     {
-         $data = array_combine($parsed['columns'], $parsed['values']);
-         DB::table($tableName)->insert($data);
-     }
-     
-     /**
-      * Convert MySQL syntax to PostgreSQL compatible syntax
-      * @param string $sql
-      * @return string
-      */
-     protected function convertMySqlToPostgreSQL($sql)
-     {
-         // Remove backticks around table and column names
-         $sql = str_replace('`', '', $sql);
-         
-         // Convert MySQL specific functions and syntax
-         $replacements = [
-             // MySQL boolean values
-             "'0'" => 'false',
-             "'1'" => 'true',
-             // MySQL date functions (basic conversion)
-             'NOW()' => 'CURRENT_TIMESTAMP',
-             'CURDATE()' => 'CURRENT_DATE',
-             'CURTIME()' => 'CURRENT_TIME',
-         ];
-         
-         foreach ($replacements as $search => $replace) {
-             $sql = str_ireplace($search, $replace, $sql);
-         }
-         
-         return $sql;
-     }
+    protected function analyzeColumnValueMismatch($rawCols, $rawVals, $columns, $values)
+    {
+        $this->warn("=== MISMATCH ANALYSIS ===");
+        
+        // Look for potential issues in column parsing
+        $this->warn("Raw columns string: '$rawCols'");
+        $commaCount = substr_count($rawCols, ',');
+        $this->warn("Comma count in columns: $commaCount (expected " . (count($columns) - 1) . ")");
+        
+        // Look for potential issues in value parsing
+        $this->warn("Raw values string length: " . strlen($rawVals));
+        $singleQuoteCount = substr_count($rawVals, "'");
+        $this->warn("Single quote count in values: $singleQuoteCount");
+        $nullCount = substr_count(strtoupper($rawVals), 'NULL');
+        $this->warn("NULL count in values: $nullCount");
+        
+        // Check for balanced quotes
+        $this->warn("Quote balance check: " . ($singleQuoteCount % 2 === 0 ? 'BALANCED' : 'UNBALANCED!'));
+        
+        // Try to identify where parsing might have gone wrong
+        if (count($values) < count($columns)) {
+            $this->warn("Too few values parsed - might be missing complex strings");
+        } elseif (count($values) > count($columns)) {
+            $this->warn("Too many values parsed - might be splitting on commas inside strings");
+        }
+    }
+
+    protected function extractTableName($sql)
+    {
+        if (preg_match('/INSERT\s+INTO\s+`?([a-zA-Z0-9_]+)`?/i', $sql, $matches)) {
+            return $matches[1];
+        }
+        return null;
+    }
+
+    protected function convertMySqlToPostgreSQL($sql)
+    {
+        $sql = str_replace('`', '', $sql);
+
+        $replacements = [
+            "'0'" => 'false',
+            "'1'" => 'true',
+            'NOW()' => 'CURRENT_TIMESTAMP',
+        ];
+
+        foreach ($replacements as $search => $replace) {
+            $sql = str_ireplace($search, $replace, $sql);
+        }
+
+        return $sql;
+    }
 }
