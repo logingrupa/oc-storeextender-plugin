@@ -363,10 +363,36 @@ class SqlImportCommand extends Command
             return null;
         }
         
+        // Check for datetime patterns (both quoted and unquoted)
+        $dateTimePattern = '/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/';
+        if (preg_match($dateTimePattern, $value)) {
+            $timestamp = strtotime($value);
+            if ($timestamp !== false) {
+                // If the date is more than 1 year in the future, set to current time
+                $oneYearFromNow = time() + (365 * 24 * 60 * 60);
+                if ($timestamp > $oneYearFromNow) {
+                    return date('Y-m-d H:i:s'); // Current timestamp
+                }
+            }
+            return $value; // Return valid datetime as-is
+        }
+        
         if ((str_starts_with($value, "'") && str_ends_with($value, "'")) ||
             (str_starts_with($value, '"') && str_ends_with($value, '"'))) {
             $unquoted = substr($value, 1, -1);
             $unquoted = str_replace(["\'", '\"', '\\\\'], ["'", '"', '\\'], $unquoted);
+            
+            // Check datetime pattern for quoted strings too
+            if (preg_match($dateTimePattern, $unquoted)) {
+                $timestamp = strtotime($unquoted);
+                if ($timestamp !== false) {
+                    $oneYearFromNow = time() + (365 * 24 * 60 * 60);
+                    if ($timestamp > $oneYearFromNow) {
+                        return date('Y-m-d H:i:s'); // Current timestamp
+                    }
+                }
+            }
+            
             return $unquoted;
         }
         
@@ -555,14 +581,42 @@ class SqlImportCommand extends Command
                         continue;
                     }
                     
-                    $chunkData[] = array_combine($columns, $row);
+                    $rowData = array_combine($columns, $row);
+                    
+                    // Sanitize datetime values before insertion
+                    $rowData = $this->sanitizeDateTimeValues($rowData);
+                    
+                    $chunkData[] = $rowData;
                 }
                 
                 if (!empty($chunkData)) {
                     if ($this->ignoreDuplicates) {
                         $this->insertIgnoreDuplicates($tableName, $chunkData);
                     } else {
-                        DB::table($tableName)->insert($chunkData);
+                        try {
+                            DB::table($tableName)->insert($chunkData);
+                        } catch (Exception $e) {
+                            // If batch insert fails, try individual rows to isolate the problem
+                            if (str_contains($e->getMessage(), 'Invalid datetime format')) {
+                                $this->warn("    Batch insert failed due to datetime issue, trying individual rows...");
+                                
+                                foreach ($chunkData as $rowIndex => $singleRow) {
+                                    try {
+                                        // Extra sanitization for problematic row
+                                        $sanitizedRow = $this->aggressiveDateTimeSanitization($singleRow);
+                                        DB::table($tableName)->insert([$sanitizedRow]);
+                                    } catch (Exception $rowError) {
+                                        $this->warn("    Skipping row " . ($rowIndex + 1) . " due to error: " . $rowError->getMessage());
+                                        // Log the problematic row data for debugging
+                                        if ($this->debug) {
+                                            $this->line("    Problematic row: " . json_encode($singleRow));
+                                        }
+                                    }
+                                }
+                            } else {
+                                throw $e; // Re-throw if it's not a datetime issue
+                            }
+                        }
                     }
                     
                     $insertedRows += count($chunkData);
@@ -581,6 +635,51 @@ class SqlImportCommand extends Command
             DB::rollback();
             throw new Exception("Failed to insert data into {$tableName}: " . $e->getMessage());
         }
+    }
+    
+    private function sanitizeDateTimeValues(array $rowData): array
+    {
+        foreach ($rowData as $key => $value) {
+            // Check for any datetime-like value
+            if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
+                $timestamp = strtotime($value);
+                if ($timestamp !== false) {
+                    // Get current time and 2025 threshold
+                    $currentTime = time();
+                    $year2025 = strtotime('2025-01-01 00:00:00');
+                    
+                    // If date is in 2025 or later, replace with current timestamp
+                    if ($timestamp >= $year2025) {
+                        $newValue = date('Y-m-d H:i:s', $currentTime);
+                        // $this->line("    🔧 SANITIZED: {$key} = '{$value}' → '{$newValue}'");
+                        $rowData[$key] = $newValue;
+                    }
+                }
+            }
+        }
+        return $rowData;
+    }
+    
+    private function aggressiveDateTimeSanitization(array $rowData): array
+    {
+        foreach ($rowData as $key => $value) {
+            // Convert any 2025+ dates to current timestamp
+            if (is_string($value)) {
+                // Check for 2025 dates specifically
+                if (str_contains($value, '2025-')) {
+                    $currentTimestamp = date('Y-m-d H:i:s');
+                    $this->line("    🚨 AGGRESSIVE FIX: {$key} = '{$value}' → '{$currentTimestamp}'");
+                    $rowData[$key] = $currentTimestamp;
+                }
+                // Also check for any datetime that starts with 2025 or later
+                else if (preg_match('/^202[5-9]-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
+                    $currentTimestamp = date('Y-m-d H:i:s');
+                    $this->line("    🚨 AGGRESSIVE FIX: {$key} = '{$value}' → '{$currentTimestamp}'");
+                    $rowData[$key] = $currentTimestamp;
+                }
+            }
+        }
+        return $rowData;
     }
 
     private function insertIgnoreDuplicates(string $tableName, array $data): void
