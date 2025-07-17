@@ -30,7 +30,12 @@ class SqlImportCommand extends Command
 
     public function handle(): int
     {
-        $this->initializeOptions();
+        $this->debug = $this->option('debug');
+        $this->dryRun = $this->option('dry-run');
+        $this->chunkSize = (int) $this->option('chunk-size');
+        $this->skipMissingColumns = $this->option('skip-missing-columns');
+        $this->ignoreDuplicates = $this->option('ignore-duplicates');
+
         $this->info('Starting SQL Import Process...');
         
         try {
@@ -51,40 +56,12 @@ class SqlImportCommand extends Command
         return 0;
     }
 
-    private function initializeOptions(): void
-    {
-        $this->debug = $this->option('debug');
-        $functionName = __FUNCTION__;
-        
-        if ($this->debug) {
-            $this->debugFunction($functionName, 'Starting function');
-        }
-
-        $this->dryRun = $this->option('dry-run');
-        $this->chunkSize = (int) $this->option('chunk-size');
-        $this->skipMissingColumns = $this->option('skip-missing-columns');
-        $this->ignoreDuplicates = $this->option('ignore-duplicates');
-
-        if ($this->debug) {
-            $this->debugFunction($functionName, 'Options initialized', [
-                'dry_run' => $this->dryRun,
-                'chunk_size' => $this->chunkSize,
-                'skip_missing_columns' => $this->skipMissingColumns,
-                'ignore_duplicates' => $this->ignoreDuplicates
-            ]);
-        }
-    }
-
     private function getSqlContent(): string
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, 'Starting function');
-
         $sqlFile = $this->argument('file');
         $directSql = $this->option('sql');
 
         if ($directSql) {
-            $this->debugFunction($functionName, 'Using direct SQL input', ['length' => strlen($directSql)]);
             return $directSql;
         }
 
@@ -101,38 +78,20 @@ class SqlImportCommand extends Command
             throw new Exception("Could not read SQL file: {$sqlFile}");
         }
 
-        $this->debugFunction($functionName, 'File content loaded', [
-            'file_path' => $sqlFile,
-            'content_length' => strlen($content),
-            'first_100_chars' => substr($content, 0, 100)
-        ]);
-
         return $content;
     }
 
     private function parseInsertStatements(string $sqlContent): array
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, 'Starting function');
-
-        // Clean and normalize SQL content
         $sqlContent = $this->cleanSqlContent($sqlContent);
-        
-        // Split by semicolons but preserve semicolons inside quotes
         $statements = $this->splitSqlStatements($sqlContent);
         
         $insertStatements = [];
         
-        foreach ($statements as $statement) {
+        foreach ($statements as $index => $statement) {
             $statement = trim($statement);
             
-            // Skip empty statements
-            if (empty($statement)) {
-                continue;
-            }
-            
-            // Check if it's an INSERT statement
-            if (!preg_match('/^\s*INSERT\s+INTO\s+/i', $statement)) {
+            if (empty($statement) || !preg_match('/^\s*INSERT\s+INTO\s+/i', $statement)) {
                 continue;
             }
             
@@ -140,22 +99,12 @@ class SqlImportCommand extends Command
                 $parsedStatement = $this->parseIndividualInsertStatement($statement);
                 if ($parsedStatement) {
                     $insertStatements[] = $parsedStatement;
+                    $this->info("✓ Parsed table: " . $parsedStatement['table'] . " (" . count($parsedStatement['rows']) . " rows)");
                 }
             } catch (Exception $e) {
-                $this->warn("Failed to parse statement: " . substr($statement, 0, 100) . "... Error: " . $e->getMessage());
-                if ($this->debug) {
-                    $this->debugFunction($functionName, 'Parse error', [
-                        'statement_preview' => substr($statement, 0, 200),
-                        'error' => $e->getMessage()
-                    ]);
-                }
+                $this->warn("Failed to parse statement " . ($index + 1) . ": " . $e->getMessage());
             }
         }
-
-        $this->debugFunction($functionName, 'Parsing completed', [
-            'total_statements' => count($insertStatements),
-            'tables_found' => array_unique(array_column($insertStatements, 'table'))
-        ]);
 
         if (empty($insertStatements)) {
             throw new Exception('No valid INSERT statements found in the provided SQL');
@@ -166,34 +115,102 @@ class SqlImportCommand extends Command
 
     private function cleanSqlContent(string $content): string
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, 'Starting function');
-
-        // Remove SQL comments
         $content = preg_replace('/--.*$/m', '', $content);
         $content = preg_replace('/\/\*.*?\*\//s', '', $content);
-        
-        // Normalize whitespace but preserve structure
         $content = preg_replace('/[ \t]+/', ' ', $content);
         $content = preg_replace('/\n\s*\n/', "\n", $content);
-        
-        $this->debugFunction($functionName, 'Content cleaned', [
-            'cleaned_length' => strlen($content)
-        ]);
-
         return trim($content);
     }
 
     private function splitSqlStatements(string $sql): array
     {
+        $this->line("Splitting SQL statements...");
+        
+        // Use regex to find INSERT statements reliably
+        $pattern = '/INSERT\s+INTO\s+.*?(?=\s*(?:INSERT\s+INTO|$))/is';
+        
+        if (preg_match_all($pattern, $sql, $matches)) {
+            $statements = [];
+            
+            foreach ($matches[0] as $match) {
+                $statement = trim($match, " \t\n\r\0\x0B;");
+                if (!empty($statement)) {
+                    $statements[] = $statement;
+                }
+            }
+            
+            $this->info("Found " . count($statements) . " INSERT statements");
+            return $statements;
+        }
+        
+        // Simple fallback
+        $this->warn("Regex failed, using fallback method");
+        $parts = preg_split('/(?=INSERT\s+INTO)/i', $sql);
         $statements = [];
+        
+        foreach ($parts as $part) {
+            $part = trim($part);
+            if (!empty($part) && preg_match('/^INSERT\s+INTO/i', $part)) {
+                $statements[] = $part;
+            }
+        }
+        
+        return $statements;
+    }
+
+    private function parseIndividualInsertStatement(string $statement): ?array
+    {
+        if (!preg_match('/INSERT\s+INTO\s+`?([^`\s(]+)`?\s*\(/i', $statement, $tableMatches)) {
+            throw new Exception('Could not extract table name from INSERT statement');
+        }
+        
+        $tableName = trim($tableMatches[1], '`');
+        
+        if (!preg_match('/INSERT\s+INTO\s+`?[^`\s(]+`?\s*\(([^)]+)\)\s+VALUES/i', $statement, $columnMatches)) {
+            throw new Exception('Could not extract columns from INSERT statement');
+        }
+        
+        $columnsString = $columnMatches[1];
+        $columns = array_map(fn($col) => trim($col, '` '), explode(',', $columnsString));
+        
+        if (!preg_match('/VALUES\s+(.+)$/is', $statement, $valuesMatches)) {
+            throw new Exception('Could not extract VALUES section from INSERT statement');
+        }
+        
+        $valuesSection = trim($valuesMatches[1], '; ');
+        
+        try {
+            $rows = $this->parseValuesSection($valuesSection);
+        } catch (Exception $e) {
+            throw new Exception("Failed to parse VALUES section for table {$tableName}: " . $e->getMessage());
+        }
+        
+        return [
+            'table' => $tableName,
+            'columns' => $columns,
+            'rows' => $rows
+        ];
+    }
+
+    private function parseValuesSection(string $valuesSection): array
+    {
+        $rows = [];
+        $valuesSection = trim($valuesSection, '; ');
+        $length = strlen($valuesSection);
+        
+        if ($length === 0) {
+            return $rows;
+        }
+        
         $current = '';
         $inQuotes = false;
         $quoteChar = '';
         $escaped = false;
+        $parenDepth = 0;
+        $rowStart = false;
         
-        for ($i = 0; $i < strlen($sql); $i++) {
-            $char = $sql[$i];
+        for ($i = 0; $i < $length; $i++) {
+            $char = $valuesSection[$i];
             
             if ($escaped) {
                 $current .= $char;
@@ -215,117 +232,66 @@ class SqlImportCommand extends Command
             }
             
             if ($inQuotes && $char === $quoteChar) {
-                $inQuotes = false;
+                $nextChar = ($i + 1 < $length) ? $valuesSection[$i + 1] : '';
+                if ($nextChar === $quoteChar) {
+                    $current .= $char . $nextChar;
+                    $i++;
+                    continue;
+                } else {
+                    $inQuotes = false;
+                    $quoteChar = '';
+                    $current .= $char;
+                    continue;
+                }
+            }
+            
+            if (!$inQuotes && $char === '(') {
+                $parenDepth++;
+                if ($parenDepth === 1) {
+                    $rowStart = true;
+                    $current = '';
+                    continue;
+                }
+            }
+            
+            if (!$inQuotes && $char === ')') {
+                $parenDepth--;
+                if ($parenDepth === 0 && $rowStart) {
+                    try {
+                        $values = $this->parseValueSet($current);
+                        if (!empty($values)) {
+                            $rows[] = $values;
+                        }
+                    } catch (Exception $e) {
+                        if ($this->debug) {
+                            $this->warn("Failed to parse row: " . $e->getMessage());
+                        }
+                    }
+                    $current = '';
+                    $rowStart = false;
+                    continue;
+                }
+            }
+            
+            if ($rowStart) {
                 $current .= $char;
-                continue;
-            }
-            
-            if (!$inQuotes && $char === ';') {
-                $statements[] = trim($current);
-                $current = '';
-                continue;
-            }
-            
-            $current .= $char;
-        }
-        
-        // Add final statement if exists
-        if (!empty(trim($current))) {
-            $statements[] = trim($current);
-        }
-        
-        return array_filter($statements, fn($stmt) => !empty($stmt));
-    }
-
-    private function parseIndividualInsertStatement(string $statement): ?array
-    {
-        $functionName = __FUNCTION__;
-        
-        // Extract table name
-        if (!preg_match('/INSERT\s+INTO\s+`?([^`\s(]+)`?\s*\(/i', $statement, $tableMatches)) {
-            throw new Exception('Could not extract table name from INSERT statement');
-        }
-        
-        $tableName = trim($tableMatches[1], '`');
-        
-        // Extract columns
-        if (!preg_match('/INSERT\s+INTO\s+`?[^`\s(]+`?\s*\(([^)]+)\)\s+VALUES/i', $statement, $columnMatches)) {
-            throw new Exception('Could not extract columns from INSERT statement');
-        }
-        
-        $columnsString = $columnMatches[1];
-        $columns = array_map(fn($col) => trim($col, '` '), explode(',', $columnsString));
-        
-        // Extract VALUES section
-        if (!preg_match('/VALUES\s+(.+)$/is', $statement, $valuesMatches)) {
-            throw new Exception('Could not extract VALUES section from INSERT statement');
-        }
-        
-        $valuesSection = trim($valuesMatches[1], '; ');
-        $rows = $this->parseValuesSection($valuesSection);
-        
-        if ($this->debug) {
-            $this->debugFunction($functionName, 'Individual statement parsed', [
-                'table' => $tableName,
-                'columns_count' => count($columns),
-                'rows_count' => count($rows),
-                'columns' => $columns
-            ]);
-        }
-        
-        return [
-            'table' => $tableName,
-            'columns' => $columns,
-            'rows' => $rows
-        ];
-    }
-
-    private function parseValuesSection(string $valuesSection): array
-    {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, 'Starting function');
-
-        $rows = [];
-        $valuesSection = trim($valuesSection, '; ');
-        
-        // Split by ),( to get individual value sets
-        $pattern = '/\),\s*\(/';
-        $valueSets = preg_split($pattern, $valuesSection);
-        
-        foreach ($valueSets as $index => $valueSet) {
-            // Clean up the value set
-            $valueSet = trim($valueSet, '() ');
-            
-            if (empty($valueSet)) {
-                continue;
-            }
-            
-            $values = $this->parseValueSet($valueSet);
-            if (!empty($values)) {
-                $rows[] = $values;
             }
         }
-
-        $this->debugFunction($functionName, 'Values section parsed', [
-            'total_rows' => count($rows),
-            'sample_row' => isset($rows[0]) ? $rows[0] : null
-        ]);
 
         return $rows;
     }
 
     private function parseValueSet(string $valueSet): array
     {
-        $functionName = __FUNCTION__;
-        
         $values = [];
         $current = '';
         $inQuotes = false;
         $quoteChar = '';
         $escaped = false;
-        $depth = 0;
+        $braceDepth = 0;
+        $length = strlen($valueSet);
 
-        for ($i = 0; $i < strlen($valueSet); $i++) {
+        for ($i = 0; $i < $length; $i++) {
             $char = $valueSet[$i];
             
             if ($escaped) {
@@ -348,25 +314,32 @@ class SqlImportCommand extends Command
             }
             
             if ($inQuotes && $char === $quoteChar) {
-                $inQuotes = false;
-                $quoteChar = '';
-                $current .= $char;
-                continue;
+                $nextChar = ($i + 1 < $length) ? $valueSet[$i + 1] : '';
+                if ($nextChar === $quoteChar) {
+                    $current .= $char . $nextChar;
+                    $i++;
+                    continue;
+                } else {
+                    $inQuotes = false;
+                    $quoteChar = '';
+                    $current .= $char;
+                    continue;
+                }
             }
             
             if (!$inQuotes && $char === '{') {
-                $depth++;
+                $braceDepth++;
                 $current .= $char;
                 continue;
             }
             
             if (!$inQuotes && $char === '}') {
-                $depth--;
+                $braceDepth--;
                 $current .= $char;
                 continue;
             }
             
-            if (!$inQuotes && $depth === 0 && $char === ',') {
+            if (!$inQuotes && $braceDepth === 0 && $char === ',') {
                 $values[] = $this->processValue(trim($current));
                 $current = '';
                 continue;
@@ -375,16 +348,8 @@ class SqlImportCommand extends Command
             $current .= $char;
         }
         
-        // Add the last value
         if ($current !== '') {
             $values[] = $this->processValue(trim($current));
-        }
-
-        if ($this->debug && count($values) <= 5) { // Only debug small value sets
-            $this->debugFunction($functionName, 'Value set parsed', [
-                'values_count' => count($values),
-                'values' => $values
-            ]);
         }
 
         return $values;
@@ -394,28 +359,23 @@ class SqlImportCommand extends Command
     {
         $value = trim((string) $value);
         
-        // Handle NULL
         if (strtoupper($value) === 'NULL') {
             return null;
         }
         
-        // Handle quoted strings
         if ((str_starts_with($value, "'") && str_ends_with($value, "'")) ||
             (str_starts_with($value, '"') && str_ends_with($value, '"'))) {
             $unquoted = substr($value, 1, -1);
-            // Unescape quotes
             $unquoted = str_replace(["\'", '\"', '\\\\'], ["'", '"', '\\'], $unquoted);
             return $unquoted;
         }
         
-        // Handle numbers
         if (is_numeric($value)) {
             return str_contains($value, '.') ? (float) $value : (int) $value;
         }
         
-        // Handle JSON-like structures
         if (str_starts_with($value, '{') && str_ends_with($value, '}')) {
-            return $value; // Keep as string for now
+            return $value;
         }
         
         return $value;
@@ -423,9 +383,6 @@ class SqlImportCommand extends Command
 
     private function groupStatementsByTable(array $statements): array
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, 'Starting function');
-
         $grouped = [];
         foreach ($statements as $statement) {
             $table = $statement['table'];
@@ -436,24 +393,14 @@ class SqlImportCommand extends Command
                 ];
             }
             
-            // Merge rows from this statement
             $grouped[$table]['rows'] = array_merge($grouped[$table]['rows'], $statement['rows']);
         }
-
-        $this->debugFunction($functionName, 'Statements grouped', [
-            'tables_count' => count($grouped),
-            'tables' => array_keys($grouped),
-            'rows_per_table' => array_map(fn($data) => count($data['rows']), $grouped)
-        ]);
 
         return $grouped;
     }
 
     private function processTableGroups(array $groupedStatements): void
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, 'Starting function');
-
         $this->totalTables = count($groupedStatements);
 
         foreach ($groupedStatements as $tableName => $tableData) {
@@ -471,32 +418,17 @@ class SqlImportCommand extends Command
                     'status' => 'failed',
                     'error' => $e->getMessage()
                 ];
-                
-                if ($this->debug) {
-                    $this->error("Stack trace for {$tableName}: " . $e->getTraceAsString());
-                }
             }
         }
-
-        $this->debugFunction($functionName, 'All tables processed', [
-            'processed_tables' => $this->processedTables
-        ]);
     }
 
     private function processTable(string $tableName, array $tableData): void
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, "Starting function for table: {$tableName}");
-
-        // Check if table exists
         if (!$this->tableExists($tableName)) {
             throw new Exception("Table '{$tableName}' does not exist in database");
         }
 
-        // Get table schema
         $tableSchema = $this->getTableSchema($tableName);
-        
-        // Validate and filter columns
         $validatedData = $this->validateAndFilterColumns($tableName, $tableData, $tableSchema);
         
         if (empty($validatedData['columns']) || empty($validatedData['rows'])) {
@@ -504,38 +436,17 @@ class SqlImportCommand extends Command
             return;
         }
 
-        // Truncate table
         $this->truncateTable($tableName);
-
-        // Insert data in chunks
         $this->insertDataInChunks($tableName, $validatedData['columns'], $validatedData['rows']);
-
-        $this->debugFunction($functionName, "Table processing completed", [
-            'table' => $tableName,
-            'columns_count' => count($validatedData['columns']),
-            'rows_count' => count($validatedData['rows'])
-        ]);
     }
 
     private function tableExists(string $tableName): bool
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, "Checking table existence: {$tableName}");
-
-        $exists = Schema::hasTable($tableName);
-        
-        $this->debugFunction($functionName, "Table existence check result", [
-            'table' => $tableName,
-            'exists' => $exists
-        ]);
-
-        return $exists;
+        return Schema::hasTable($tableName);
     }
 
     private function getTableSchema(string $tableName): array
     {
-        $functionName = __FUNCTION__;
-        
         if (isset($this->tableSchemas[$tableName])) {
             return $this->tableSchemas[$tableName];
         }
@@ -543,26 +454,16 @@ class SqlImportCommand extends Command
         $columns = Schema::getColumnListing($tableName);
         $this->tableSchemas[$tableName] = $columns;
         
-        if ($this->debug) {
-            $this->debugFunction($functionName, "Retrieved schema for table: {$tableName}", [
-                'columns' => $columns
-            ]);
-        }
-        
         return $columns;
     }
 
     private function validateAndFilterColumns(string $tableName, array $tableData, array $tableSchema): array
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, "Validating columns for table: {$tableName}");
-
         $sourceColumns = $tableData['columns'];
         $validColumns = [];
         $columnMapping = [];
         $missingColumns = [];
 
-        // Check which columns exist in the target table
         foreach ($sourceColumns as $index => $column) {
             if (in_array($column, $tableSchema)) {
                 $validColumns[] = $column;
@@ -579,7 +480,6 @@ class SqlImportCommand extends Command
             $this->warn("Skipping missing columns in {$tableName}: " . implode(', ', $missingColumns));
         }
 
-        // Filter rows based on valid columns
         $validRows = [];
         foreach ($tableData['rows'] as $row) {
             if (count($row) !== count($sourceColumns)) {
@@ -597,14 +497,6 @@ class SqlImportCommand extends Command
             }
         }
 
-        $this->debugFunction($functionName, "Column validation completed", [
-            'original_columns' => count($sourceColumns),
-            'valid_columns' => count($validColumns),
-            'missing_columns' => $missingColumns,
-            'original_rows' => count($tableData['rows']),
-            'valid_rows' => count($validRows)
-        ]);
-
         return [
             'columns' => $validColumns,
             'rows' => $validRows
@@ -613,16 +505,12 @@ class SqlImportCommand extends Command
 
     private function truncateTable(string $tableName): void
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, "Truncating table: {$tableName}");
-
         if ($this->dryRun) {
             $this->line("  [DRY RUN] Would truncate table: {$tableName}");
             return;
         }
 
         try {
-            // Disable foreign key checks temporarily
             DB::statement('SET FOREIGN_KEY_CHECKS=0');
             DB::table($tableName)->truncate();
             DB::statement('SET FOREIGN_KEY_CHECKS=1');
@@ -630,7 +518,6 @@ class SqlImportCommand extends Command
             $this->line("  ✓ Truncated table: {$tableName}");
             
         } catch (Exception $e) {
-            // Try alternative deletion method
             try {
                 DB::statement('SET FOREIGN_KEY_CHECKS=0');
                 DB::table($tableName)->delete();
@@ -641,21 +528,13 @@ class SqlImportCommand extends Command
                 throw new Exception("Failed to clear table {$tableName}: " . $e2->getMessage());
             }
         }
-
-        $this->debugFunction($functionName, "Table truncated successfully: {$tableName}");
     }
 
     private function insertDataInChunks(string $tableName, array $columns, array $rows): void
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, "Starting bulk insert for table: {$tableName}");
-
         if ($this->dryRun) {
             $this->line("  [DRY RUN] Would insert " . count($rows) . " rows into {$tableName}");
             $this->line("  [DRY RUN] Columns: " . implode(', ', $columns));
-            if ($this->debug && isset($rows[0])) {
-                $this->line("  [DRY RUN] Sample row: " . json_encode($rows[0]));
-            }
             return;
         }
 
@@ -681,7 +560,6 @@ class SqlImportCommand extends Command
                 
                 if (!empty($chunkData)) {
                     if ($this->ignoreDuplicates) {
-                        // Use INSERT IGNORE for MySQL or similar approach
                         $this->insertIgnoreDuplicates($tableName, $chunkData);
                     } else {
                         DB::table($tableName)->insert($chunkData);
@@ -703,13 +581,6 @@ class SqlImportCommand extends Command
             DB::rollback();
             throw new Exception("Failed to insert data into {$tableName}: " . $e->getMessage());
         }
-
-        $this->debugFunction($functionName, "Bulk insert completed", [
-            'table' => $tableName,
-            'total_rows' => count($rows),
-            'inserted_rows' => $insertedRows,
-            'chunks_processed' => $totalChunks
-        ]);
     }
 
     private function insertIgnoreDuplicates(string $tableName, array $data): void
@@ -718,13 +589,10 @@ class SqlImportCommand extends Command
             try {
                 DB::table($tableName)->insert($row);
             } catch (Exception $e) {
-                // Check if it's a duplicate key error
                 if (str_contains($e->getMessage(), 'Duplicate entry') || 
                     str_contains($e->getMessage(), 'Integrity constraint violation')) {
-                    // Silently skip duplicates
                     continue;
                 } else {
-                    // Re-throw other errors
                     throw $e;
                 }
             }
@@ -733,9 +601,6 @@ class SqlImportCommand extends Command
 
     private function displaySummary(): void
     {
-        $functionName = __FUNCTION__;
-        $this->debugFunction($functionName, 'Displaying summary');
-
         $this->info("\n" . str_repeat('=', 60));
         $this->info('IMPORT SUMMARY');
         $this->info(str_repeat('=', 60));
@@ -761,36 +626,6 @@ class SqlImportCommand extends Command
         
         if ($this->dryRun) {
             $this->warn("\n⚠ This was a DRY RUN - no data was actually imported!");
-        }
-
-        $this->debugFunction($functionName, 'Summary displayed', [
-            'successful_tables' => $successCount,
-            'failed_tables' => $failedCount,
-            'total_records' => $this->totalRecords
-        ]);
-    }
-
-    private function debugFunction(string $functionName, string $message, array $data = []): void
-    {
-        if (!$this->debug) {
-            return;
-        }
-
-        $this->line("🔍 [{$functionName}] {$message}");
-        
-        if (!empty($data)) {
-            foreach ($data as $key => $value) {
-                if (is_array($value) || is_object($value)) {
-                    $jsonString = json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-                    // Truncate very long JSON for readability
-                    if (strlen($jsonString) > 500) {
-                        $jsonString = substr($jsonString, 0, 500) . '...}';
-                    }
-                    $this->line("   📊 {$key}: " . $jsonString);
-                } else {
-                    $this->line("   📊 {$key}: " . var_export($value, true));
-                }
-            }
         }
     }
 }
