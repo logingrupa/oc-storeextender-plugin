@@ -14,7 +14,8 @@ class SqlImportCommand extends Command
                             {--debug : Show detailed debug information}
                             {--chunk-size=1000 : Number of records to insert in each batch}
                             {--skip-missing-columns : Skip columns that don\'t exist in target table}
-                            {--ignore-duplicates : Use INSERT IGNORE to skip duplicate entries}';
+                            {--ignore-duplicates : Use INSERT IGNORE to skip duplicate entries}
+                            {--pg : Use PostgreSQL-specific syntax (default is MySQL)}';
 
     protected $description = 'Import raw SQL INSERT statements to database with schema validation';
 
@@ -23,6 +24,7 @@ class SqlImportCommand extends Command
     private int $chunkSize = 1000;
     private bool $skipMissingColumns = false;
     private bool $ignoreDuplicates = false;
+    private bool $usePostgreSQL = false;
     private array $processedTables = [];
     private int $totalRecords = 0;
     private int $totalTables = 0;
@@ -35,8 +37,14 @@ class SqlImportCommand extends Command
         $this->chunkSize = (int) $this->option('chunk-size');
         $this->skipMissingColumns = $this->option('skip-missing-columns');
         $this->ignoreDuplicates = $this->option('ignore-duplicates');
+        $this->usePostgreSQL = $this->option('pg');
 
         $this->info('Starting SQL Import Process...');
+        if ($this->usePostgreSQL) {
+            $this->line('Using PostgreSQL-specific syntax');
+        } else {
+            $this->line('Using MySQL-specific syntax');
+        }
         
         try {
             $sqlContent = $this->getSqlContent();
@@ -537,17 +545,31 @@ class SqlImportCommand extends Command
         }
 
         try {
-            DB::statement('SET FOREIGN_KEY_CHECKS=0');
-            DB::table($tableName)->truncate();
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            if ($this->usePostgreSQL) {
+                // PostgreSQL approach - use CASCADE to handle foreign keys
+                DB::statement("TRUNCATE TABLE \"{$tableName}\" RESTART IDENTITY CASCADE");
+            } else {
+                // MySQL approach
+                DB::statement('SET FOREIGN_KEY_CHECKS=0');
+                DB::table($tableName)->truncate();
+                DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            }
             
             $this->line("  ✓ Truncated table: {$tableName}");
             
         } catch (Exception $e) {
+            // Fallback to DELETE if TRUNCATE fails
             try {
-                DB::statement('SET FOREIGN_KEY_CHECKS=0');
+                if (!$this->usePostgreSQL) {
+                    // Only use foreign key checks for MySQL
+                    DB::statement('SET FOREIGN_KEY_CHECKS=0');
+                }
+                
                 DB::table($tableName)->delete();
-                DB::statement('SET FOREIGN_KEY_CHECKS=1');
+                
+                if (!$this->usePostgreSQL) {
+                    DB::statement('SET FOREIGN_KEY_CHECKS=1');
+                }
                 
                 $this->line("  ✓ Cleared table: {$tableName}");
             } catch (Exception $e2) {
@@ -651,7 +673,7 @@ class SqlImportCommand extends Command
                     // If date is in 2025 or later, replace with current timestamp
                     if ($timestamp >= $year2025) {
                         $newValue = date('Y-m-d H:i:s', $currentTime);
-                        // $this->line("    🔧 SANITIZED: {$key} = '{$value}' → '{$newValue}'");
+                        $this->line("    🔧 SANITIZED: {$key} = '{$value}' → '{$newValue}'");
                         $rowData[$key] = $newValue;
                     }
                 }
@@ -686,12 +708,22 @@ class SqlImportCommand extends Command
     {
         foreach ($data as $row) {
             try {
-                DB::table($tableName)->insert($row);
+                if ($this->usePostgreSQL) {
+                    // PostgreSQL: Use INSERT ... ON CONFLICT DO NOTHING
+                    // This is a simplified approach - you might need to specify conflict columns
+                    DB::table($tableName)->insertOrIgnore($row);
+                } else {
+                    // MySQL: Use regular insert and catch duplicate errors
+                    DB::table($tableName)->insert($row);
+                }
             } catch (Exception $e) {
                 if (str_contains($e->getMessage(), 'Duplicate entry') || 
-                    str_contains($e->getMessage(), 'Integrity constraint violation')) {
+                    str_contains($e->getMessage(), 'Integrity constraint violation') ||
+                    str_contains($e->getMessage(), 'duplicate key')) {
+                    // Silently skip duplicates
                     continue;
                 } else {
+                    // Re-throw other errors
                     throw $e;
                 }
             }
