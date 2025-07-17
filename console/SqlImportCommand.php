@@ -673,7 +673,7 @@ class SqlImportCommand extends Command
                     // If date is in 2025 or later, replace with current timestamp
                     if ($timestamp >= $year2025) {
                         $newValue = date('Y-m-d H:i:s', $currentTime);
-                        $this->line("    🔧 SANITIZED: {$key} = '{$value}' → '{$newValue}'");
+                        // $this->line("    🔧 SANITIZED: {$key} = '{$value}' → '{$newValue}'");
                         $rowData[$key] = $newValue;
                     }
                 }
