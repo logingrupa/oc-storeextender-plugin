@@ -1,2 +1,0 @@
-INSERT INTO `cms_theme_data` (`id`, `theme`, `data`, `created_at`, `updated_at`) VALUES
-(1, 'naisstore', '{"start_publish":null,"end_publish":null,"image":"\\/2025\\/05\\/tv\\/2025_05_jaunums_LOTIONS_TV veikals.jpg","slug":""},{"start_publish":null,"end_publish":null,"image":"\\/2025\\/05\\/tv\\/2025_05_jaunums_WANTED new shades_TV-09_VEIKALS.jpg","slug":""},{"start_publish":null,"end_publish":"2025-07-03 12:40:15","image":"\\/2025\\/03\\/tv veikals\\/2025_03_jaunums_ACRYGEL DUO new shades_TV-09_VEIKALS.jpg","slug":""}]}', '2025-01-27 10:30:00', '2025-01-27 10:30:00');
