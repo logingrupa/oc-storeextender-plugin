@@ -9,7 +9,7 @@ use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
 use Lovata\DiscountsShopaholic\Models\Discount;
 
 use Logingrupa\StoreExtender\Classes\Helper\ActivePriceHelper;
-use October\Rain\Argon\Argon;
+use Carbon\Carbon;
 use Pheanstalk\Exception;
 
 /**
@@ -195,7 +195,7 @@ class ExtendOfferImport
         }
 
         try {
-            $obDiscountDateEnd = Argon::parse($sDiscountDateEnd);
+            $obDiscountDateEnd = Carbon::parse($sDiscountDateEnd);
         } catch (Exception $obException) {
             $obDiscountDateEnd = null;
         }
@@ -218,7 +218,7 @@ class ExtendOfferImport
                     'name' => $sDiscountName,
                     'discount_value' => $fDiscountPercentage,
                     'discount_type' => Discount::PERCENT_TYPE,
-                    'date_begin' => Argon::now(),
+                    'date_begin' => Carbon::now(),
                     'date_end' => $obDiscountDateEnd,
                 ]);
             } else {
