@@ -86,7 +86,14 @@ class ExtendOfferImport
     protected function fixExternalID($arImportData)
     {
         $sExternalID = array_pull($arImportData, 'external_id');
-        $arPartList = explode('#', $sExternalID);
+
+        if (is_array($sExternalID)) {
+            $sExternalID = collect($sExternalID)->first(function ($sValue) {
+                return is_string($sValue) && str_contains($sValue, '#');
+            }) ?? reset($sExternalID);
+        }
+
+        $arPartList = explode('#', (string) $sExternalID);
         if (count($arPartList) == 2) {
             $arImportData['product_id'] = array_shift($arPartList);
             $arImportData['external_id'] = array_shift($arPartList);
