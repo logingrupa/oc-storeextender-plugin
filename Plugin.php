@@ -39,6 +39,9 @@ use Logingrupa\StoreExtender\Classes\Event\UserGroup\ExtendUserGroupController;
 use Logingrupa\StoreExtender\Classes\Event\User\UserModelHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserController;
 
+//Cart component events
+use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
+
 //CartPosition events
 use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
@@ -109,6 +112,8 @@ class Plugin extends PluginBase
         Event::subscribe(UserModelHandler::class);
         //User events
         Event::subscribe(ExtendUserController::class);
+        //Cart component events
+        Event::subscribe(CartComponentHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
         //Order position
