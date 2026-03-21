@@ -269,7 +269,7 @@ class Plugin extends PluginBase
         return [
             'storeextender' => [
                 'label' => 'Edit frontend',
-                'url' => Backend::url('cms/themeoptions/update/naisstore'),
+                'url' => Backend::url('cms/themeoptions/update/logingrupa-naisstore'),
                 'icon' => 'icon-laptop',
                 'permissions' => ['logingrupa.storeextender.*'],
                 'order' => 500,
