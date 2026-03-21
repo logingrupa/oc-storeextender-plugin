@@ -16,9 +16,12 @@ use Lovata\Shopaholic\Models\Currency as ShopaholicCurrencyModel;
 use Lovata\Shopaholic\Controllers\Currencies as ShopaholicCurrenciesController;
 use Lovata\Shopaholic\Controllers\Products as ShopaholicProductsController;
 use Lovata\Shopaholic\Controllers\Offers as ShopaholicOffersController;
+use Lovata\Shopaholic\Models\Tax as ShopaholicTaxModel;
+use Lovata\Shopaholic\Models\XmlImportSettings;
 use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
 use Lovata\Shopaholic\Classes\Import\ImportProductModelFromXML;
 use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
+use Lovata\Toolbox\Classes\Helper\AbstractImportModel;
 
 //Events
 use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
@@ -119,6 +122,12 @@ class Plugin extends PluginBase
         //Extend currency form to allow more decimal places in rate field
         $this->extendShopaholicCurrenciesController();
 
+        //Auto-link products to target Tax entries during import based on VAT mapping
+        Event::listen(AbstractImportModel::EVENT_AFTER_IMPORT, function ($obModel, $arImportData) {
+            if ($obModel instanceof ShopaholicProductModel) {
+                $this->autoLinkProductTax($obModel, $arImportData);
+            }
+        });
     }
 
     public function extendShopaholicProductsController()
@@ -177,7 +186,8 @@ class Plugin extends PluginBase
                 'popularity' => 'Popularity',
                 'search_synonym' => 'Search Synonym, tags',
                 'search_content' => 'Search Content, tags',
-                'hide_dropdown' => 'Hide dropdown and show variation images'
+                'hide_dropdown' => 'Hide dropdown and show variation images',
+                'source_vat_rate' => 'Source Tax Rate (НДС Ставка)',
             ];
             $arFieldList = array_merge($arFieldList, $arCustumFields);
             return $arFieldList;
@@ -223,6 +233,58 @@ class Plugin extends PluginBase
                 ],
             ]);
         });
+    }
+
+    /**
+     * Auto-link product to the correct target Tax entry based on VAT mapping
+     * Runs during product import (EVENT_AFTER_IMPORT)
+     *
+     * @param ShopaholicProductModel $obProduct
+     * @param array $arImportData
+     */
+    protected function autoLinkProductTax($obProduct, $arImportData)
+    {
+        $bVatRecalculateEnabled = (bool) XmlImportSettings::getValue('import_vat_recalculate_enable', false);
+        if (!$bVatRecalculateEnabled) {
+            return;
+        }
+
+        $arVatMapping = (array) XmlImportSettings::getValue('import_vat_mapping', []);
+        if (empty($arVatMapping)) {
+            return;
+        }
+
+        $fSourceVatRate = array_get($arImportData, 'source_vat_rate');
+        if ($fSourceVatRate === null || $fSourceVatRate === '') {
+            return;
+        }
+
+        $fSourceVatRate = (float) $fSourceVatRate;
+
+        // Get the default source rate (first mapping row)
+        $arDefaultMapping = array_first($arVatMapping);
+        $fDefaultSourceRate = (float) array_get($arDefaultMapping, 'source_vat_rate', 0);
+
+        // If product has the default source VAT rate, skip — global tax handles it
+        if ($fSourceVatRate == $fDefaultSourceRate) {
+            return;
+        }
+
+        // Find the mapping row that matches this product's source VAT rate
+        foreach ($arVatMapping as $arMappingRow) {
+            $fMappingSourceRate = (float) array_get($arMappingRow, 'source_vat_rate', 0);
+            if ($fMappingSourceRate == $fSourceVatRate) {
+                $iTargetTaxId = (int) array_get($arMappingRow, 'target_tax_id', 0);
+                if (!empty($iTargetTaxId)) {
+                    $obTargetTax = ShopaholicTaxModel::find($iTargetTaxId);
+                    if (!empty($obTargetTax)) {
+                        $obTargetTax->product()->syncWithoutDetaching([$obProduct->id]);
+                    }
+                }
+
+                return;
+            }
+        }
     }
 
     /**

@@ -3,7 +3,10 @@
 use Lovata\Toolbox\Classes\Helper\PriceHelper;
 
 use Lovata\Shopaholic\Models\Offer;
+use Lovata\Shopaholic\Models\Tax;
+use Lovata\Shopaholic\Models\XmlImportSettings;
 use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
+use Lovata\Shopaholic\Classes\Helper\TaxHelper;
 use Lovata\Shopaholic\Classes\Import\ImportOfferPriceFromXML;
 use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
 use Lovata\DiscountsShopaholic\Models\Discount;
@@ -19,6 +22,256 @@ use Pheanstalk\Exception;
  */
 class ExtendOfferImport
 {
+    /** @var bool Flag to run expired discount cleanup only once per import */
+    protected $bExpiredDiscountsCleaned = false;
+
+    /** @var float|null Cached VAT rate multiplier from settings */
+    protected $fVatRateMultiplier = null;
+
+    /** @var float|null Cached conversion rate from settings */
+    protected $fConversionRate = null;
+
+    /** @var bool|null Cached VAT recalculation enabled flag */
+    protected $bVatRecalculateEnabled = null;
+
+    /** @var array|null Cached VAT mapping from settings */
+    protected $arVatMapping = null;
+
+    /**
+     * Get VAT rate multiplier from import settings (cached per import run)
+     * @return float
+     */
+    protected function getVatRateMultiplier()
+    {
+        if ($this->fVatRateMultiplier === null) {
+            $fVatPercentage = (float) XmlImportSettings::getValue('import_vat_rate', 21);
+            $this->fVatRateMultiplier = 1 + ($fVatPercentage / 100);
+        }
+
+        return $this->fVatRateMultiplier;
+    }
+
+    /**
+     * Get conversion rate from import settings (cached per import run)
+     * Returns 1.0 if conversion is disabled
+     * @return float
+     */
+    protected function getConversionRate()
+    {
+        if ($this->fConversionRate === null) {
+            $bEnabled = (bool) XmlImportSettings::getValue('import_currency_convert_enable', false);
+            $this->fConversionRate = $bEnabled
+                ? (float) XmlImportSettings::getValue('import_conversion_rate', 1)
+                : 1.0;
+        }
+
+        return $this->fConversionRate;
+    }
+
+    /**
+     * Check if VAT recalculation is enabled (cached per import run)
+     * @return bool
+     */
+    protected function isVatRecalculateEnabled()
+    {
+        if ($this->bVatRecalculateEnabled === null) {
+            $this->bVatRecalculateEnabled = (bool) XmlImportSettings::getValue('import_vat_recalculate_enable', false);
+        }
+
+        return $this->bVatRecalculateEnabled;
+    }
+
+    /**
+     * Get VAT mapping from import settings (cached per import run)
+     * @return array
+     */
+    protected function getVatMapping()
+    {
+        if ($this->arVatMapping === null) {
+            $this->arVatMapping = (array) XmlImportSettings::getValue('import_vat_mapping', []);
+        }
+
+        return $this->arVatMapping;
+    }
+
+    /**
+     * Find source and target VAT rates for a product based on its Tax links
+     * Returns [sourceRate, targetRate] or null if recalculation is disabled
+     * @param int $iProductId
+     * @return array|null
+     */
+    protected function findVatRatesForProduct($iProductId)
+    {
+        $arVatMapping = $this->getVatMapping();
+        if (empty($arVatMapping)) {
+            return null;
+        }
+
+        // Get non-global taxes linked to this product
+        $obProductTaxList = Tax::active()
+            ->where('is_global', false)
+            ->whereHas('product', function ($obQuery) use ($iProductId) {
+                $obQuery->where('lovata_shopaholic_tax_product_link.product_id', $iProductId);
+            })
+            ->get();
+
+        // If product has a specific tax link, find matching mapping row via reverse lookup
+        if ($obProductTaxList->isNotEmpty()) {
+            foreach ($obProductTaxList as $obTax) {
+                foreach ($arVatMapping as $arMappingRow) {
+                    $iTargetTaxId = (int) array_get($arMappingRow, 'target_tax_id', 0);
+                    if ($iTargetTaxId == $obTax->id) {
+                        $fSourceRate = (float) array_get($arMappingRow, 'source_vat_rate', 0);
+                        $fTargetRate = (float) $obTax->percent;
+
+                        return [$fSourceRate, $fTargetRate];
+                    }
+                }
+            }
+        }
+
+        // No specific tax link — use the first mapping row as default
+        $arDefaultMapping = array_first($arVatMapping);
+        if (empty($arDefaultMapping)) {
+            return null;
+        }
+
+        $fSourceRate = (float) array_get($arDefaultMapping, 'source_vat_rate', 0);
+        $iTargetTaxId = (int) array_get($arDefaultMapping, 'target_tax_id', 0);
+        $obTargetTax = Tax::find($iTargetTaxId);
+
+        if (empty($obTargetTax)) {
+            return null;
+        }
+
+        return [$fSourceRate, (float) $obTargetTax->percent];
+    }
+
+    /**
+     * Apply currency conversion to all prices in import data
+     * Runs as the LAST step — after all calculations in the source currency
+     * @param array $arImportData
+     * @return array
+     */
+    protected function applyCurrencyConversion($arImportData)
+    {
+        $fConversionRate = $this->getConversionRate();
+
+        if ($fConversionRate == 1.0) {
+            return $arImportData;
+        }
+
+        // Convert main price
+        $fPrice = PriceHelper::toFloat(array_get($arImportData, 'price'));
+        if (!empty($fPrice)) {
+            $arImportData['price'] = PriceHelper::round($fPrice * $fConversionRate);
+        }
+
+        // Convert main old_price
+        $fOldPrice = PriceHelper::toFloat(array_get($arImportData, 'old_price'));
+        if (!empty($fOldPrice)) {
+            $arImportData['old_price'] = PriceHelper::round($fOldPrice * $fConversionRate);
+        }
+
+        // Convert all price_list entries
+        $arPriceList = array_get($arImportData, 'price_list', []);
+        foreach ($arPriceList as $iPriceTypeId => $arPriceData) {
+            $fTypePrice = PriceHelper::toFloat(array_get($arPriceData, 'price'));
+            if (!empty($fTypePrice)) {
+                array_set($arImportData, 'price_list.' . $iPriceTypeId . '.price', PriceHelper::round($fTypePrice * $fConversionRate));
+            }
+
+            $fTypeOldPrice = PriceHelper::toFloat(array_get($arPriceData, 'old_price'));
+            if (!empty($fTypeOldPrice)) {
+                array_set($arImportData, 'price_list.' . $iPriceTypeId . '.old_price', PriceHelper::round($fTypeOldPrice * $fConversionRate));
+            }
+        }
+
+        return $arImportData;
+    }
+
+    /**
+     * Apply currency conversion to price_list entries ONLY (not main price)
+     * Used in EVENT_BEFORE_IMPORT where main price will be overwritten by the price import later
+     * @param array $arImportData
+     * @return array
+     */
+    protected function convertPriceListOnly($arImportData)
+    {
+        $fConversionRate = $this->getConversionRate();
+
+        if ($fConversionRate == 1.0) {
+            return $arImportData;
+        }
+
+        $arPriceList = array_get($arImportData, 'price_list', []);
+        foreach ($arPriceList as $iPriceTypeId => $arPriceData) {
+            $fTypePrice = PriceHelper::toFloat(array_get($arPriceData, 'price'));
+            if (!empty($fTypePrice)) {
+                array_set($arImportData, 'price_list.' . $iPriceTypeId . '.price', PriceHelper::round($fTypePrice * $fConversionRate));
+            }
+
+            $fTypeOldPrice = PriceHelper::toFloat(array_get($arPriceData, 'old_price'));
+            if (!empty($fTypeOldPrice)) {
+                array_set($arImportData, 'price_list.' . $iPriceTypeId . '.old_price', PriceHelper::round($fTypeOldPrice * $fConversionRate));
+            }
+        }
+
+        return $arImportData;
+    }
+
+    /**
+     * Recalculate main price VAT: strip source VAT and apply target tax rate per product
+     * @param array $arImportData
+     * @return array
+     */
+    protected function recalculateMainPriceVat($arImportData)
+    {
+        if (!$this->isVatRecalculateEnabled()) {
+            return $arImportData;
+        }
+
+        // Find the offer to get its product
+        $sExternalId = array_get($arImportData, 'external_id');
+        if (empty($sExternalId)) {
+            return $arImportData;
+        }
+
+        $obOffer = Offer::withTrashed()->where('external_id', $sExternalId)->first();
+        if (empty($obOffer) || empty($obOffer->product_id)) {
+            return $arImportData;
+        }
+
+        $arVatRates = $this->findVatRatesForProduct($obOffer->product_id);
+        if (empty($arVatRates)) {
+            return $arImportData;
+        }
+
+        list($fSourceRate, $fTargetRate) = $arVatRates;
+
+        if ($fSourceRate <= 0) {
+            return $arImportData;
+        }
+
+        $obTaxHelper = TaxHelper::instance();
+
+        // Recalculate main price
+        $fPrice = PriceHelper::toFloat(array_get($arImportData, 'price'));
+        if (!empty($fPrice)) {
+            $fPriceWithoutVat = $obTaxHelper->calculatePriceWithoutTax($fPrice, $fSourceRate);
+            $arImportData['price'] = $obTaxHelper->calculatePriceWithTax($fPriceWithoutVat, $fTargetRate);
+        }
+
+        // Recalculate main old_price
+        $fOldPrice = PriceHelper::toFloat(array_get($arImportData, 'old_price'));
+        if (!empty($fOldPrice)) {
+            $fOldPriceWithoutVat = $obTaxHelper->calculatePriceWithoutTax($fOldPrice, $fSourceRate);
+            $arImportData['old_price'] = $obTaxHelper->calculatePriceWithTax($fOldPriceWithoutVat, $fTargetRate);
+        }
+
+        return $arImportData;
+    }
+
     /**
      * Add listeners
      * @param \Illuminate\Events\Dispatcher $obEvent
@@ -44,6 +297,7 @@ class ExtendOfferImport
         }, 1000);
 
         $obEvent->listen(ImportOfferModelFromXML::EXTEND_IMPORT_DATA, function ($arImportData, $obParseNode) {
+            $this->cleanupExpiredDiscounts();
             $arImportData = $this->fixExternalID($arImportData);
             $arImportData = $this->fixQuantity($arImportData);
             $arImportData = $this->fixVariationText($arImportData);
@@ -58,10 +312,12 @@ class ExtendOfferImport
         $obEvent->listen(ImportOfferPriceFromXML::EXTEND_IMPORT_DATA, function ($arImportData, $obParseNode) {
             $arImportData = $this->fixExternalID($arImportData);
             array_forget($arImportData, 'product_id');
+            $arImportData = $this->recalculateMainPriceVat($arImportData);
             $arImportData = $this->applyOfferDiscount($arImportData);
             $arImportData = $this->applyVatToSalonaPriceOffers($arImportData);
             $arImportData = $this->applyOldPriceToIzplatitajuPriceOffers($arImportData);
             $arImportData = $this->applyOldPriceAndApplyVatToVairumPriceOffers($arImportData);
+            $arImportData = $this->applyCurrencyConversion($arImportData);
             return $arImportData;
         });
 
@@ -70,11 +326,14 @@ class ExtendOfferImport
                 return null;
             }
 
-            return $this->calculatePrices($arImportData);
+            $arImportData = $this->calculatePrices($arImportData);
+            $arImportData = $this->convertPriceListOnly($arImportData);
+
+            return $arImportData;
         });
 
         $obEvent->listen(ImportOfferModelFromXML::EVENT_AFTER_IMPORT, function ($obOffer, $arImportData) {
-            $this->updateDiscountSync($obOffer);
+            $this->updateDiscountSync($obOffer, $arImportData);
         });
     }
 
@@ -202,7 +461,7 @@ class ExtendOfferImport
         }
 
         try {
-            $obDiscountDateEnd = Carbon::parse($sDiscountDateEnd);
+            $obDiscountDateEnd = Carbon::parse($sDiscountDateEnd)->endOfMonth();
         } catch (Exception $obException) {
             $obDiscountDateEnd = null;
         }
@@ -211,11 +470,10 @@ class ExtendOfferImport
             return $arImportData;
         }
 
-        /**
-         * @var Discount $obDiscount
-         */
+        // Find existing discount by percentage and matching month/year of end date
         $obDiscount = Discount::where('discount_value', $fDiscountPercentage)
-            ->where('date_end', $obDiscountDateEnd->toDateString())
+            ->whereYear('date_end', $obDiscountDateEnd->year)
+            ->whereMonth('date_end', $obDiscountDateEnd->month)
             ->first();
 
         try {
@@ -225,11 +483,14 @@ class ExtendOfferImport
                     'name' => $sDiscountName,
                     'discount_value' => $fDiscountPercentage,
                     'discount_type' => Discount::PERCENT_TYPE,
-                    'date_begin' => Carbon::now(),
+                    'date_begin' => Carbon::now()->startOfMonth(),
                     'date_end' => $obDiscountDateEnd,
                 ]);
             } else {
-                $obDiscount->update(['name' => $sDiscountName]);
+                $obDiscount->update([
+                    'name' => $sDiscountName,
+                    'date_end' => $obDiscountDateEnd,
+                ]);
             }
         } catch (Exception $obException) {
             return $arImportData;
@@ -306,7 +567,7 @@ class ExtendOfferImport
         $arPriceData['old_price'] = $fOriginalOldPrice;  //0.00
         // $arPriceData['salon_price'] = $fSalonaPrice * 1.21;
 
-        $fSalonaPricePlusVAT = $fSalonaPrice * 1.21; //8.00
+        $fSalonaPricePlusVAT = $fSalonaPrice * $this->getVatRateMultiplier(); //8.00
         if ($fSalonaPricePlusVAT > $fOriginalPrice) { //8.00 > 9.58 = false
             $arPriceData['price'] = $fSalonaPrice = $fOriginalPrice; // 9.58 = 6.61 = 9.58
             $arPriceData['old_price'] = $fSalonaOldPrice = $fOriginalOldPrice; //0.00
@@ -405,7 +666,7 @@ class ExtendOfferImport
         // $arPriceData['salon_price'] = $fVairumPrice * 1.21;
 
         // dd(array_get($arImportData, 'price_list.3.price'));
-        $fVairumPricePlusVAT = $fVairumPrice * 1.21; //8.00
+        $fVairumPricePlusVAT = $fVairumPrice * $this->getVatRateMultiplier(); //8.00
         if ($fVairumPricePlusVAT > $fOriginalPrice) { //8.00 > 9.58 = false
             $arPriceData['price'] = $fVairumPrice = $fOriginalPrice; // 9.58 = 0.49 = 9.58
             $arPriceData['old_price'] = $fVairumOldPrice = $fOriginalOldPrice; //0.00
@@ -438,6 +699,10 @@ class ExtendOfferImport
         if (empty($iProductId)) {
             return $arImportData;
         }
+
+        // Recalculate VAT on the base price before applying discounts
+        // so regular/authorized price types use the correct VAT-adjusted price
+        $arImportData = $this->recalculateMainPriceVat($arImportData);
 
         $arImportData = $this->applyOfferDiscount($arImportData);
         $arImportData = $this->applyAuthorizedDiscount($iProductId, $arImportData);
@@ -553,18 +818,71 @@ class ExtendOfferImport
      *
      * @param Offer $obOffer
      */
-    protected function updateDiscountSync($obOffer)
+    /**
+     * Update discount sync - save discount_id on offer and link offer to discount
+     *
+     * @param Offer $obOffer
+     * @param array $arImportData
+     */
+    protected function updateDiscountSync($obOffer, $arImportData = [])
     {
-        if (empty($obOffer) || !$obOffer instanceof Offer || empty($obOffer->discount_id)) {
+        if (empty($obOffer) || !$obOffer instanceof Offer) {
             return;
         }
 
-        $obDiscount = Discount::find($obOffer->discount_id);
+        $iDiscountId = array_get($arImportData, 'discount_id', $obOffer->discount_id);
 
+        if (empty($iDiscountId)) {
+            return;
+        }
+
+        // Save discount_id directly on the offer (not in $fillable, so use query)
+        Offer::where('id', $obOffer->id)->update(['discount_id' => $iDiscountId]);
+
+        $obDiscount = Discount::find($iDiscountId);
         if (empty($obDiscount)) {
             return;
         }
 
-        $obDiscount->offer()->sync($obOffer->id, false);
+        $obDiscount->offer()->syncWithoutDetaching([$obOffer->id]);
+    }
+
+    /**
+     * Clean up expired discounts: detach offers, clear discount_id, delete discount
+     * Only runs once per import (skips discounts with code like 'regular'/'authorized')
+     */
+    protected function cleanupExpiredDiscounts()
+    {
+        if ($this->bExpiredDiscountsCleaned) {
+            return;
+        }
+
+        $this->bExpiredDiscountsCleaned = true;
+
+        $obExpiredDiscounts = Discount::whereNotNull('date_end')
+            ->where('date_end', '<', Carbon::now())
+            ->where(function ($obQuery) {
+                $obQuery->whereNull('code')->orWhere('code', '');
+            })
+            ->get();
+
+        if ($obExpiredDiscounts->isEmpty()) {
+            return;
+        }
+
+        $arExpiredIds = $obExpiredDiscounts->pluck('id')->toArray();
+
+        // Clear discount_id on offers referencing expired discounts
+        Offer::whereIn('discount_id', $arExpiredIds)->update([
+            'discount_id' => null,
+            'discount_value' => null,
+            'discount_type' => null,
+        ]);
+
+        // Detach offers and delete expired discounts
+        foreach ($obExpiredDiscounts as $obDiscount) {
+            $obDiscount->offer()->detach();
+            $obDiscount->forceDelete();
+        }
     }
 }
