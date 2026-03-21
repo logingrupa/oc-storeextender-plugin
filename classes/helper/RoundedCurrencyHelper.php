@@ -16,9 +16,6 @@ use Lovata\Shopaholic\Classes\Helper\CurrencyHelper;
  */
 class RoundedCurrencyHelper extends CurrencyHelper
 {
-    /** @var array Currency codes that should be rounded to whole numbers */
-    const WHOLE_NUMBER_CURRENCY_CODES = ['NOK', 'SEK', 'DKK'];
-
     /**
      * Convert price to target currency with appropriate rounding
      *
@@ -35,7 +32,7 @@ class RoundedCurrencyHelper extends CurrencyHelper
             $sCurrencyCode = $this->getActiveCurrencyCode();
         }
 
-        if (in_array($sCurrencyCode, self::WHOLE_NUMBER_CURRENCY_CODES)) {
+        if (WholeNumberCurrencyConfig::isWholeNumberCurrency($sCurrencyCode)) {
             return round($fConvertedPrice, 0);
         }
 
