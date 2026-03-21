@@ -12,6 +12,8 @@ use System\Classes\PluginBase;
 use Lovata\Shopaholic\Models\Offer as ShopaholicOfferModel;
 use Lovata\Shopaholic\Models\Product as ShopaholicProductModel;
 use Lovata\OrdersShopaholic\Models\Order as ShopaholicOrderModel;
+use Lovata\Shopaholic\Models\Currency as ShopaholicCurrencyModel;
+use Lovata\Shopaholic\Controllers\Currencies as ShopaholicCurrenciesController;
 use Lovata\Shopaholic\Controllers\Products as ShopaholicProductsController;
 use Lovata\Shopaholic\Controllers\Offers as ShopaholicOffersController;
 use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
@@ -39,6 +41,9 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
 //Order position
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
+
+//Currency rounding
+use Logingrupa\StoreExtender\Classes\Event\Currency\ExtendCurrencyConversion;
 
 /**
  * StoreExtender Plugin Information File
@@ -107,6 +112,12 @@ class Plugin extends PluginBase
         Event::subscribe(OrderPositionItemHandler::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
+
+        //Currency rounding for NOK, SEK, DKK
+        ExtendCurrencyConversion::swapCurrencyHelper();
+
+        //Extend currency form to allow more decimal places in rate field
+        $this->extendShopaholicCurrenciesController();
 
     }
 
@@ -197,6 +208,23 @@ class Plugin extends PluginBase
         });
     }
 
+    public function extendShopaholicCurrenciesController()
+    {
+        ShopaholicCurrenciesController::extendFormFields(function ($widget) {
+            if (!$widget->model instanceof ShopaholicCurrencyModel) {
+                return;
+            }
+
+            $widget->addFields([
+                'rate' => [
+                    'label' => 'lovata.shopaholic::lang.field.rate',
+                    'span'  => 'right',
+                    'type'  => 'text',
+                ],
+            ]);
+        });
+    }
+
     /**
      * Registers any front-end components implemented in this plugin.
      *
@@ -258,6 +286,8 @@ class Plugin extends PluginBase
                 'highlight' => [$this, 'makeTextHighlighted'],
                 // A local method, i.e $this->makeTextAllCaps()
                 'uppercase' => [$this, 'makeTextAllCaps'],
+                // Currency-aware price formatting (e.g., "225,-" for NOK)
+                'currency_price' => [ExtendCurrencyConversion::class, 'formatPrice'],
             ],
             'functions' => [
 
