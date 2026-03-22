@@ -101,6 +101,7 @@ class Plugin extends PluginBase
         // on whichever model class the form is using at render time.
         $this->extendThemeDataDropdownMethods();
         $this->extendThemeOptionsController();
+        $this->registerProductPageLookupType();
 
         $this->extendShopaholicProductsController();
         $this->extendShopaholicOffersController();
@@ -486,4 +487,100 @@ class Plugin extends PluginBase
             });
         });
     }
+
+    /**
+     * registerProductPageLookupType registers a "shop-product" type for the
+     * pagefinder widget so individual products can be selected as link targets.
+     */
+    protected function registerProductPageLookupType()
+    {
+        // Register shop-product type on both event sets (same pattern as RainLab Pages)
+        Event::listen(['cms.pageLookup.listTypes', 'pages.menuitem.listTypes'], function () {
+            return ['shop-product' => 'Product'];
+        });
+
+        Event::listen(['cms.pageLookup.getTypeInfo', 'pages.menuitem.getTypeInfo'], function ($sType) {
+            if ($sType !== 'shop-product') {
+                return;
+            }
+
+            $arReferences = \Lovata\Shopaholic\Models\Product::lists('name', 'id');
+
+            $obTheme = \Cms\Classes\Theme::getActiveTheme();
+            $obPageList = \Cms\Classes\Page::listInTheme($obTheme, true);
+            $arCmsPages = [];
+            foreach ($obPageList as $obPage) {
+                if (!$obPage->hasComponent('ProductPage')) {
+                    continue;
+                }
+
+                $arPropertyList = $obPage->getComponentProperties('ProductPage');
+                if (!isset($arPropertyList['slug']) || !preg_match('/{{\s*:/', $arPropertyList['slug'])) {
+                    continue;
+                }
+
+                $arCmsPages[] = $obPage;
+            }
+
+            return [
+                'references' => $arReferences,
+                'cmsPages' => $arCmsPages,
+            ];
+        });
+
+        Event::listen(['cms.pageLookup.resolveItem', 'pages.menuitem.resolveItem'], function ($sType, $obItem, $sURL) {
+            if ($sType !== 'shop-product') {
+                return;
+            }
+
+            if (empty($obItem->reference)) {
+                return [];
+            }
+
+            $obProductItem = \Lovata\Shopaholic\Classes\Item\ProductItem::make($obItem->reference);
+            if ($obProductItem->isEmpty()) {
+                return [];
+            }
+
+            $sPageUrl = $obProductItem->getPageUrl($obItem->cmsPage);
+
+            return [
+                'title' => $obProductItem->name,
+                'url' => $sPageUrl,
+                'isActive' => $sPageUrl == $sURL,
+                'mtime' => $obProductItem->updated_at,
+            ];
+        });
+
+        // Mirror Shopaholic's category/catalog types to cms.pageLookup.* events
+        // (Shopaholic only registers on pages.menuitem.* — pagefinder needs both)
+        $arShopaholicMenuTypes = [
+            \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::class,
+            \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::class,
+            \Lovata\Shopaholic\Classes\Helper\AllCategoriesMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\AllCategoriesMenuType::class,
+        ];
+
+        Event::listen('cms.pageLookup.listTypes', function () {
+            return [
+                \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::MENU_TYPE => 'lovata.shopaholic::lang.menu.shop_catalog',
+                \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::MENU_TYPE => 'lovata.shopaholic::lang.menu.shop_category',
+                \Lovata\Shopaholic\Classes\Helper\AllCategoriesMenuType::MENU_TYPE => 'lovata.shopaholic::lang.menu.all_shop_categories',
+            ];
+        });
+
+        Event::listen('cms.pageLookup.getTypeInfo', function ($sType) use ($arShopaholicMenuTypes) {
+            if (!isset($arShopaholicMenuTypes[$sType])) {
+                return;
+            }
+            return (new $arShopaholicMenuTypes[$sType]())->getMenuTypeInfo();
+        });
+
+        Event::listen('cms.pageLookup.resolveItem', function ($sType, $obItem, $sURL) use ($arShopaholicMenuTypes) {
+            if (!isset($arShopaholicMenuTypes[$sType])) {
+                return;
+            }
+            return (new $arShopaholicMenuTypes[$sType]())->resolveMenuItem($obItem, $sURL);
+        });
+    }
+
 }
