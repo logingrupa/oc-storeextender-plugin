@@ -445,6 +445,15 @@ class Plugin extends PluginBase
                 return \Lovata\Shopaholic\Models\Currency::where('active', true)
                     ->lists('name', 'code');
             });
+            $obModel->addDynamicMethod('getTranslatedOptions', function () {
+                return \System\Models\SiteDefinition::where('is_enabled', true)
+                    ->get()
+                    ->mapWithKeys(function ($obSite) {
+                        $sCode = strtolower(substr($obSite->code, 0, 2));
+                        return [$sCode => $obSite->name];
+                    })
+                    ->toArray();
+            });
         };
 
         // Class-level extend — methods are added at construction time, before form renders
