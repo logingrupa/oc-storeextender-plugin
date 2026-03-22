@@ -542,7 +542,13 @@ class Plugin extends PluginBase
                 return [];
             }
 
-            $sPageUrl = $obProductItem->getPageUrl($obItem->cmsPage);
+            // Build URL via Page::url() because getPageUrl() fails when the
+            // ProductPage component is aliased as "CustomProductPage ProductPage"
+            // — Lovata's PageHelper regex only matches keys starting with "ProductPage".
+            $sPageUrl = \Cms\Classes\Page::url(
+                $obItem->cmsPage ?: 'product',
+                ['slug' => $obProductItem->slug]
+            );
 
             return [
                 'title' => $obProductItem->name,
