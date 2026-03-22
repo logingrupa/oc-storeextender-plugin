@@ -96,6 +96,12 @@ class Plugin extends PluginBase
         // Register aliases
         // $alias = AliasLoader::getInstance();
         // $alias->alias('ColorPalette', 'NikKanetiya\LaravelColorPalette\ColorPaletteFacade');
+        // Extend ThemeData/MLThemeData with dropdown option methods needed by theme
+        // customization form. Hooks into form field building to guarantee methods exist
+        // on whichever model class the form is using at render time.
+        $this->extendThemeDataDropdownMethods();
+        $this->extendThemeOptionsController();
+
         $this->extendShopaholicProductsController();
         $this->extendShopaholicOffersController();
         $this->extendShopaholicProductModel();
@@ -389,5 +395,86 @@ class Plugin extends PluginBase
         ];
     }
 
+    /**
+     * extendThemeDataDropdownMethods hooks into form field building to add dynamic
+     * dropdown option methods to the theme customization model. This covers both
+     * ThemeData (primary form) and MLThemeData (RainLab Translate proxy), regardless
+     * of instantiation order.
+     */
+    protected function extendThemeDataDropdownMethods()
+    {
+        $fnAddDropdownMethods = function ($obModel) {
+            $obModel->addDynamicMethod('getPromoBlockLeftOptions', function () {
+                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getPromoBlockMiddleOptions', function () {
+                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getPromoBlockRightOptions', function () {
+                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getProductIdOptions', function () {
+                return \Lovata\Shopaholic\Models\Product::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getCategoryIdOptions', function () {
+                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getCategoryLeftOptions', function () {
+                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getCategoryMiddleOptions', function () {
+                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getCategoryRightOptions', function () {
+                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
+            });
+            $obModel->addDynamicMethod('getTermsConditionsOptions', function () {
+                $arPages = \Cms\Classes\Page::sortBy('baseFileName')->lists('title', 'baseFileName');
+                if (class_exists('\\Rainlab\\Pages\\Classes\\Page')) {
+                    $arPages = $arPages + \Rainlab\Pages\Classes\Page::sortBy('title')->lists('title', 'baseFileName');
+                }
+                return $arPages;
+            });
+            $obModel->addDynamicMethod('getUserFieldsOptions', function () {
+                return \Lovata\Buddies\Models\Property::lists('name', 'code');
+            });
+            $obModel->addDynamicMethod('getShippingCodeOptions', function () {
+                return \Lovata\OrdersShopaholic\Models\ShippingType::lists('name', 'code');
+            });
+            $obModel->addDynamicMethod('getDefaultCurrencyCodeOptions', function () {
+                return \Lovata\Shopaholic\Models\Currency::where('active', true)
+                    ->lists('name', 'code');
+            });
+        };
 
+        // Class-level extend — methods are added at construction time, before form renders
+        \Cms\Models\ThemeData::extend($fnAddDropdownMethods);
+
+        if (class_exists('\RainLab\Translate\Models\MLThemeData')) {
+            \RainLab\Translate\Models\MLThemeData::extend($fnAddDropdownMethods);
+        }
+    }
+
+    /**
+     * extendThemeOptionsController adds the onGetProductPreviewImage AJAX handler
+     * to the ThemeOptions controller for product dropdown preview thumbnails.
+     */
+    protected function extendThemeOptionsController()
+    {
+        \Cms\Controllers\ThemeOptions::extend(function ($obController) {
+            $obController->addDynamicMethod('onGetProductPreviewImage', function () {
+                $iProductId = (int) post('product_id');
+
+                $obProduct = \Lovata\Shopaholic\Models\Product::with('preview_image')
+                    ->find($iProductId);
+
+                $sPreviewImageUrl = '';
+                if ($obProduct && $obProduct->preview_image) {
+                    $sPreviewImageUrl = $obProduct->preview_image->getThumb(300, 300, ['mode' => 'crop']);
+                }
+
+                return ['preview_image_url' => $sPreviewImageUrl];
+            });
+        });
+    }
 }
