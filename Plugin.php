@@ -510,11 +510,11 @@ class Plugin extends PluginBase
             $obPageList = \Cms\Classes\Page::listInTheme($obTheme, true);
             $arCmsPages = [];
             foreach ($obPageList as $obPage) {
-                if (!$obPage->hasComponent('ProductPage')) {
+                if (!$obPage->hasComponent('CustomProductPage')) {
                     continue;
                 }
 
-                $arPropertyList = $obPage->getComponentProperties('ProductPage');
+                $arPropertyList = $obPage->getComponentProperties('CustomProductPage');
                 if (!isset($arPropertyList['slug']) || !preg_match('/{{\s*:/', $arPropertyList['slug'])) {
                     continue;
                 }
