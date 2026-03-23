@@ -57,7 +57,7 @@ class LazyPromoBlockLoader extends \Cms\Classes\ComponentBase
      */
     public function onRun()
     {
-        $this->addJs('components/lazypromoblockloader/assets/js/lazy-tab-control.js');
+        $this->addJs('/plugins/logingrupa/storeextender/assets/js/lazy-tab-control.js');
 
         $obPromoBlockCollection = PromoBlockCollection::make()->active()->sort(
             $this->property('sorting', 'default')
