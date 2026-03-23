@@ -1,0 +1,8 @@
+{##}
+{# AJAX response partial — renders product cards for a single promo block tab #}
+{# @var obProductList \Lovata\Shopaholic\Classes\Collection\ProductCollection #}
+{# @var obPromoBlock \Lovata\Shopaholic\Classes\Item\PromoBlockItem #}
+
+{% for obProduct in obProductList %}
+    {% partial 'product/product-card/product-card' obProduct=obProduct cssClass='' obLoop=loop %}
+{% endfor %}

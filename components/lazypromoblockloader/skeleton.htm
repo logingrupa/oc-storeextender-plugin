@@ -1,0 +1,21 @@
+{##}
+{# Skeleton placeholder — 5 product card placeholders matching the product-card grid #}
+
+{% for i in 1..5 %}
+<div class="col-6 col-md-4 col-sm-6 mb-45 col-lg-is-5">
+    <div class="single-product skeleton-product">
+        <div class="single-product__image">
+            <div class="skeleton-pulse skeleton-image"></div>
+        </div>
+        <div class="single-product__content">
+            <div class="title">
+                <div class="skeleton-pulse skeleton-title"></div>
+                <div class="skeleton-pulse skeleton-link"></div>
+            </div>
+            <div class="price">
+                <div class="skeleton-pulse skeleton-price"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}

@@ -309,8 +309,8 @@ class Plugin extends PluginBase
         // return []; // Remove this line to activate
 
         return [
-            // 'Logingrupa\StoreExtender\Components\MyComponent' => 'myComponent',
             'Logingrupa\Storeextender\Components\CustomProductPage' => 'CustomProductPage',
+            'Logingrupa\Storeextender\Components\LazyPromoBlockLoader' => 'LazyPromoBlockLoader',
         ];
     }
 

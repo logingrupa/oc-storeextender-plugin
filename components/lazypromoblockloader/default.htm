@@ -1,0 +1,82 @@
+{##}
+{# LazyPromoBlockLoader — Tab navigation with lazy-loaded product content #}
+{# Products are fetched via AJAX when a tab becomes active #}
+
+{% if obPromoBlockList is not empty %}
+<style>
+.skeleton-product .skeleton-pulse {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: 4px;
+}
+.skeleton-product .skeleton-image {
+    width: 100%;
+    padding-bottom: 137%;
+    background-color: #f0f0f0;
+}
+.skeleton-product .skeleton-title {
+    height: 18px;
+    width: 80%;
+    margin: 12px 0 8px;
+}
+.skeleton-product .skeleton-link {
+    height: 14px;
+    width: 50%;
+    margin-bottom: 8px;
+}
+.skeleton-product .skeleton-price {
+    height: 18px;
+    width: 35%;
+}
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+</style>
+<div class="tab-product-list-area mb-25 mb-md-5 mb-sm-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-12"
+                 data-control="lazy-tab"
+                 data-lazy-tab-handler="{{ __SELF__ ~ '::onLoadPromoTab' }}">
+                <!--=======  tab product navigation  =======-->
+                <div class="tab-product-navigation mb-50">
+                    <div class="nav nav-tabs justify-content-center" id="nav-tab2" role="tablist">
+                        {% for obPromoBlock in obPromoBlockList %}
+                            <a class="nav-item nav-link {{ loop.first ? 'active' : '' }}"
+                               id="product-tab-{{ loop.index }}"
+                               data-toggle="tab"
+                               href="#product-series-{{ loop.index }}"
+                               role="tab"
+                               aria-selected="{{ loop.first ? 'true' : 'false' }}"
+                               data-promo-block-id="{{ obPromoBlock.id }}"
+                               data-promo-block-code="{{ obPromoBlock.code }}">
+                                {{ obPromoBlock.name }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!--=======  tab product content  =======-->
+                <div class="tab-content" id="nav-tabContent2">
+                    {% for obPromoBlock in obPromoBlockList %}
+                        <div class="tab-pane fade {{ loop.first ? 'show active' : '' }}"
+                             id="product-series-{{ loop.index }}"
+                             role="tabpanel"
+                             aria-labelledby="product-tab-{{ loop.index }}">
+                            <div class="row" id="lazy-tab-content-{{ obPromoBlock.id }}">
+                                {% partial __SELF__ ~ '::skeleton' %}
+                            </div>
+                            <div class="col-lg-12 text-center mb-50">
+                                <a class="btn btn-light" href="{{ 'promo-block-page'|page({slug:obPromoBlock.slug}) }}" role="button">{{ 'Show all'|_ }}</a>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <!--=======  End of tab product content  =======-->
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
