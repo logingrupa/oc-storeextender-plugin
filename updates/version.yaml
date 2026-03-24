@@ -22,3 +22,5 @@
 2.0.2:
   - 'Increase currency rate column precision from decimal(8,2) to decimal(12,6)'
   - update_table_currency_increase_rate_precision.php
+2.0.3:
+  - 'Redirect to order page instead of homepage after payment gateway cancel/return'

@@ -140,6 +140,41 @@ class Plugin extends PluginBase
                 $this->autoLinkProductTax($obModel, $arImportData);
             }
         });
+
+        //Redirect to order checkout page instead of homepage after payment cancel/return
+        $this->addPaymentGatewayRedirectListeners();
+    }
+
+    /**
+     * Listen to Omnipay gateway cancel/return events and redirect
+     * back to the order checkout page instead of homepage.
+     */
+    protected function addPaymentGatewayRedirectListeners(): void
+    {
+        $fnGetCheckoutURL = function ($obOrder) {
+            if (empty($obOrder) || empty($obOrder->secret_key)) {
+                return null;
+            }
+
+            // Resolve the CMS page that uses OrderPage component dynamically
+            $sPageURL = \Cms\Classes\Page::url('order-complete', ['slug' => $obOrder->secret_key]);
+            if (!empty($sPageURL)) {
+                return $sPageURL;
+            }
+
+            // Fallback if page lookup fails
+            return url('/checkout/' . $obOrder->secret_key);
+        };
+
+        Event::listen(
+            \Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::EVENT_GET_PAYMENT_GATEWAY_CANCEL_URL,
+            $fnGetCheckoutURL
+        );
+
+        Event::listen(
+            \Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::EVENT_GET_PAYMENT_GATEWAY_RETURN_URL,
+            $fnGetCheckoutURL
+        );
     }
 
     public function extendShopaholicProductsController()
