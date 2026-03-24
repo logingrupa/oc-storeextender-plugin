@@ -156,14 +156,14 @@ class Plugin extends PluginBase
                 return null;
             }
 
-            // Resolve the CMS page that uses OrderPage component dynamically
-            $sPageURL = \Cms\Classes\Page::url('order-complete', ['slug' => $obOrder->secret_key]);
-            if (!empty($sPageURL)) {
-                return $sPageURL;
+            // Find CMS page with OrderPage component dynamically
+            $sPageName = $this->findOrderPage();
+
+            if (!empty($sPageName)) {
+                return \Cms\Classes\Page::url($sPageName, ['slug' => $obOrder->secret_key]);
             }
 
-            // Fallback if page lookup fails
-            return url('/checkout/' . $obOrder->secret_key);
+            return null;
         };
 
         Event::listen(
@@ -175,6 +175,37 @@ class Plugin extends PluginBase
             \Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::EVENT_GET_PAYMENT_GATEWAY_RETURN_URL,
             $fnGetCheckoutURL
         );
+    }
+
+    /**
+     * Find the first CMS page that has the OrderPage component.
+     * Skips proforma/print pages by preferring pages without :print param.
+     *
+     * @return string|null CMS page file name
+     */
+    protected function findOrderPage(): ?string
+    {
+        $obTheme = \Cms\Classes\Theme::getActiveTheme();
+        $arPages = \Cms\Classes\Page::listInTheme($obTheme);
+
+        $sFirstMatch = null;
+
+        foreach ($arPages as $obPage) {
+            $arComponents = $obPage->settings['components'] ?? [];
+
+            if (!isset($arComponents['OrderPage'])) {
+                continue;
+            }
+
+            // Skip proforma/print pages
+            if (str_contains($obPage->url, ':print')) {
+                continue;
+            }
+
+            return $obPage->getBaseFileName();
+        }
+
+        return $sFirstMatch;
     }
 
     public function extendShopaholicProductsController()
