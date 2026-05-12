@@ -27,10 +27,11 @@ class RoundedCurrencyHelper extends CurrencyHelper
     {
         $fConvertedPrice = parent::convert($fPrice, $sCurrencyTo);
 
-        $sCurrencyCode = $sCurrencyTo;
-        if (empty($sCurrencyCode)) {
-            $sCurrencyCode = $this->getActiveCurrencyCode();
+        if ($fConvertedPrice === null) {
+            return null;
         }
+
+        $sCurrencyCode = $sCurrencyTo ?: $this->getActiveCurrencyCode();
 
         if (WholeNumberCurrencyConfig::isWholeNumberCurrency($sCurrencyCode)) {
             return round($fConvertedPrice, 0);
