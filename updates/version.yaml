@@ -24,3 +24,5 @@
   - update_table_currency_increase_rate_precision.php
 2.0.3:
   - 'Redirect to order page instead of homepage after payment gateway cancel/return'
+2.0.4:
+  - 'Guard null in RoundedCurrencyHelper::convert to fix PHP 8.4 round(null) deprecation'
