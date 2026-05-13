@@ -1,5 +1,6 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event\Cart;
 
+use Event;
 use Input;
 use Lovata\Shopaholic\Models\Offer;
 use Lovata\Shopaholic\Models\Product;
@@ -10,21 +11,36 @@ use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 
 /**
  * Class CartComponentHandler
- * Extends the Cart component with pixel/tracking purchase data handler.
+ * Provides Cart-scoped AJAX handlers via `cms.ajax.beforeRunHandler` event.
+ *
+ * Background: October Rain v4 / Laravel 12 invoke component AJAX handlers via
+ * `app()->call([$this, $handler])` → Reflection → cannot see methods
+ * registered via `addDynamicMethod()`. The outer `cms.ajax.beforeRunHandler`
+ * fires before component lookup → returning non-null short-circuits the
+ * entire dispatch pipeline. No Reflection, no `methodExists()` gate.
+ *
+ * Phase 4 extension: add additional `Cart::onXxx` entries to HANDLERS map.
  *
  * @package Logingrupa\StoreExtender\Classes\Event\Cart
  */
 class CartComponentHandler
 {
     /**
-     * Subscribe to Cart component extension
+     * Map of `Component::handler` → instance method that builds the AJAX response.
+     */
+    private const HANDLERS = [
+        'Cart::onGetPixelPurchaseData' => 'getPixelPurchaseData',
+    ];
+
+    /**
+     * Subscribe to outer AJAX dispatch event.
      */
     public function subscribe()
     {
-        Cart::extend(function ($obCartComponent) {
-            $obCartComponent->addDynamicMethod('onGetPixelPurchaseData', function () {
-                return $this->getPixelPurchaseData();
-            });
+        Event::listen('cms.ajax.beforeRunHandler', function ($obController, $sHandler) {
+            $sMethod = self::HANDLERS[$sHandler] ?? null;
+
+            return $sMethod !== null ? $this->{$sMethod}() : null;
         });
     }
 
