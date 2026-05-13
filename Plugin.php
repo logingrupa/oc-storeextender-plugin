@@ -82,12 +82,13 @@ class Plugin extends PluginBase
     {
         $this->registerConsoleCommand('storeextender.sqlimport', 'Logingrupa\StoreExtender\Console\SqlImportCommand');
 
-        // Rebind `mail.manager` (NOT `mailer`) so every mail entry point routes through
-        // SafeMailer. The `mailer` binding is a closure that resolves via
-        // mail.manager->mailer() per call — patching `mailer` would miss
-        // Mail::mailer('smtp'), queue worker code paths, and Mailable->send().
-        // Rebinding `mail.manager` covers all entry points.
-        $this->app->singleton('mail.manager', function ($app) {
+        // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
+        // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
+        // DeferrableProvider, so it registers `mail.manager` lazily on first Mail call —
+        // AFTER plugin register(). A singleton() rebind here gets clobbered when the
+        // deferred provider finally registers. extend() accumulates regardless of
+        // registration order and runs on resolve, after the original binding is built.
+        $this->app->extend('mail.manager', function ($obOriginal, $app) {
             $this->app['events']->dispatch('mailer.beforeRegister', [$this]);
             $obManager = new \Logingrupa\StoreExtender\Classes\Mail\SafeMailManager($app);
             $this->app['events']->dispatch('mailer.register', [$this, $obManager]);
