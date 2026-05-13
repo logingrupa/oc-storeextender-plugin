@@ -81,6 +81,18 @@ class Plugin extends PluginBase
     public function register()
     {
         $this->registerConsoleCommand('storeextender.sqlimport', 'Logingrupa\StoreExtender\Console\SqlImportCommand');
+
+        // Rebind `mail.manager` (NOT `mailer`) so every mail entry point routes through
+        // SafeMailer. The `mailer` binding is a closure that resolves via
+        // mail.manager->mailer() per call — patching `mailer` would miss
+        // Mail::mailer('smtp'), queue worker code paths, and Mailable->send().
+        // Rebinding `mail.manager` covers all entry points.
+        $this->app->singleton('mail.manager', function ($app) {
+            $this->app['events']->dispatch('mailer.beforeRegister', [$this]);
+            $obManager = new \Logingrupa\StoreExtender\Classes\Mail\SafeMailManager($app);
+            $this->app['events']->dispatch('mailer.register', [$this, $obManager]);
+            return $obManager;
+        });
     }
 
     /**
