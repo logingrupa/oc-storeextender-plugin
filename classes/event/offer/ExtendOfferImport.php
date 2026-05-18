@@ -191,6 +191,71 @@ class ExtendOfferImport
     }
 
     /**
+     * Apply per-PriceType factor markup to all prices in import data.
+     * Runs as the FINAL step — AFTER currency conversion. Opt-in via XmlImportSettings.
+     * Unmapped PriceTypes pass through unchanged. No fallback factor.
+     * @param array $arImportData
+     * @return array
+     */
+    protected function applyPriceFactor(array $arImportData): array
+    {
+        $bIsEnabled = (bool) XmlImportSettings::getValue('import_price_factor_enable');
+        if (!$bIsEnabled) {
+            return $arImportData;
+        }
+
+        $arMapping = (array) XmlImportSettings::getValue('import_price_factor_mapping', []);
+        $arFactorByPriceTypeId = [];
+        foreach ($arMapping as $arRow) {
+            $iPriceTypeId = (int) array_get($arRow, 'price_type_id', 0);
+            $fFactor = (float) array_get($arRow, 'factor', 0);
+            if (empty($iPriceTypeId) || empty($fFactor)) {
+                continue;
+            }
+            $arFactorByPriceTypeId[$iPriceTypeId] = $fFactor;
+        }
+
+        if (empty($arFactorByPriceTypeId)) {
+            return $arImportData;
+        }
+
+        // Apply factors to each matching price_list entry
+        $arPriceList = array_get($arImportData, 'price_list', []);
+        if (is_array($arPriceList)) {
+            foreach ($arPriceList as $iPriceTypeId => $arPriceData) {
+                if (!is_array($arPriceData) || !isset($arFactorByPriceTypeId[$iPriceTypeId])) {
+                    continue;
+                }
+                $fFactor = $arFactorByPriceTypeId[$iPriceTypeId];
+
+                if (!empty($arPriceData['price'])) {
+                    $arImportData['price_list'][$iPriceTypeId]['price'] = PriceHelper::round(PriceHelper::toFloat($arPriceData['price']) * $fFactor);
+                }
+                if (!empty($arPriceData['old_price'])) {
+                    $arImportData['price_list'][$iPriceTypeId]['old_price'] = PriceHelper::round(PriceHelper::toFloat($arPriceData['old_price']) * $fFactor);
+                }
+            }
+        }
+
+        // Apply factor to top-level main price/old_price if a main PriceType is configured and mapped
+        $iMainPriceTypeId = (int) XmlImportSettings::getValue('import_price_factor_main_price_type', 0);
+        if ($iMainPriceTypeId > 0 && isset($arFactorByPriceTypeId[$iMainPriceTypeId])) {
+            $fFactor = $arFactorByPriceTypeId[$iMainPriceTypeId];
+
+            $fPrice = PriceHelper::toFloat(array_get($arImportData, 'price'));
+            if (!empty($fPrice)) {
+                $arImportData['price'] = PriceHelper::round($fPrice * $fFactor);
+            }
+            $fOldPrice = PriceHelper::toFloat(array_get($arImportData, 'old_price'));
+            if (!empty($fOldPrice)) {
+                $arImportData['old_price'] = PriceHelper::round($fOldPrice * $fFactor);
+            }
+        }
+
+        return $arImportData;
+    }
+
+    /**
      * Apply currency conversion to price_list entries ONLY (not main price)
      * Used in EVENT_BEFORE_IMPORT where main price will be overwritten by the price import later
      * @param array $arImportData
@@ -318,6 +383,7 @@ class ExtendOfferImport
             $arImportData = $this->applyOldPriceToIzplatitajuPriceOffers($arImportData);
             $arImportData = $this->applyOldPriceAndApplyVatToVairumPriceOffers($arImportData);
             $arImportData = $this->applyCurrencyConversion($arImportData);
+            $arImportData = $this->applyPriceFactor($arImportData);
             return $arImportData;
         });
 
