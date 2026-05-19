@@ -775,6 +775,14 @@ class ExtendOfferImport
         $arImportData = $this->recalculateMainPriceVat($arImportData);
 
         $arImportData = $this->applyOfferDiscount($arImportData);
+
+        // Apply factor markup to main price/old_price BEFORE deriving authorized/regular
+        // discount prices, so id=4 and id=6 inherit the factor instead of staying tied to
+        // the pre-factor retail. The id=0 sentinel in applyPriceFactor() handles main only;
+        // price_list[1/2/3] is empty in this PASS 1 context (those come from XML in PASS 2),
+        // so the iteration over price_list is effectively a no-op here.
+        $arImportData = $this->applyPriceFactor($arImportData);
+
         $arImportData = $this->applyAuthorizedDiscount($iProductId, $arImportData);
         $arImportData = $this->applyRegularDiscount($iProductId, $arImportData);
 
