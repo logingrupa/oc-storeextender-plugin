@@ -194,6 +194,8 @@ class ExtendOfferImport
      * Apply per-PriceType factor markup to all prices in import data.
      * Runs as the FINAL step — AFTER currency conversion. Opt-in via XmlImportSettings.
      * Unmapped PriceTypes pass through unchanged. No fallback factor.
+     * Mapping rows with price_type_id = 0 are a sentinel for the offer's top-level
+     * price/old_price (which are not modeled as a PriceType row in the DB).
      * @param array $arImportData
      * @return array
      */
@@ -207,9 +209,12 @@ class ExtendOfferImport
         $arMapping = (array) XmlImportSettings::getValue('import_price_factor_mapping', []);
         $arFactorByPriceTypeId = [];
         foreach ($arMapping as $arRow) {
-            $iPriceTypeId = (int) array_get($arRow, 'price_type_id', 0);
             $fFactor = (float) array_get($arRow, 'factor', 0);
-            if (empty($iPriceTypeId) || empty($fFactor)) {
+            if (!array_key_exists('price_type_id', $arRow) || empty($fFactor)) {
+                continue;
+            }
+            $iPriceTypeId = (int) $arRow['price_type_id'];
+            if ($iPriceTypeId < 0) {
                 continue;
             }
             $arFactorByPriceTypeId[$iPriceTypeId] = $fFactor;
@@ -219,7 +224,7 @@ class ExtendOfferImport
             return $arImportData;
         }
 
-        // Apply factors to each matching price_list entry
+        // Apply factors to each matching price_list entry (price_list is keyed by real PriceType IDs, never 0)
         $arPriceList = array_get($arImportData, 'price_list', []);
         if (is_array($arPriceList)) {
             foreach ($arPriceList as $iPriceTypeId => $arPriceData) {
@@ -237,10 +242,9 @@ class ExtendOfferImport
             }
         }
 
-        // Apply factor to top-level main price/old_price if a main PriceType is configured and mapped
-        $iMainPriceTypeId = (int) XmlImportSettings::getValue('import_price_factor_main_price_type', 0);
-        if ($iMainPriceTypeId > 0 && isset($arFactorByPriceTypeId[$iMainPriceTypeId])) {
-            $fFactor = $arFactorByPriceTypeId[$iMainPriceTypeId];
+        // Apply factor to offer top-level price/old_price if mapping row has price_type_id = 0 (sentinel)
+        if (isset($arFactorByPriceTypeId[0])) {
+            $fFactor = $arFactorByPriceTypeId[0];
 
             $fPrice = PriceHelper::toFloat(array_get($arImportData, 'price'));
             if (!empty($fPrice)) {
