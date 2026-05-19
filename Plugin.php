@@ -394,6 +394,23 @@ class Plugin extends PluginBase
     }
 
     /**
+     * Register file-based mail partials.
+     * `bankdetails` is read from views/mail/bankdetails.htm at runtime, allowing each
+     * deployed site to render its own seller block from its own theme settings DB.
+     *
+     * Note: a DB row with code='bankdetails' in system_mail_partials takes precedence
+     * over this file. Existing sites must delete that row once to switch over.
+     *
+     * @return array
+     */
+    public function registerMailPartials()
+    {
+        return [
+            'bankdetails' => 'logingrupa.storeextender::mail.bankdetails',
+        ];
+    }
+
+    /**
      * Registers any back-end permissions used by this plugin.
      *
      * @return array
@@ -447,7 +464,15 @@ class Plugin extends PluginBase
                 // Using an inline closure
                 'helloWorld' => function () {
                     return 'Hello World!';
-                }
+                },
+                'theme_var' => function ($sKey) {
+                    $obTheme = \Cms\Classes\Theme::getActiveTheme();
+                    if (empty($obTheme)) {
+                        return null;
+                    }
+                    $obData = $obTheme->getCustomData();
+                    return $obData ? ($obData->{$sKey} ?? null) : null;
+                },
             ]
         ];
     }

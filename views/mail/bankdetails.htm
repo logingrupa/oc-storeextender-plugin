@@ -1,0 +1,37 @@
+{% if account_type == 'legal_person' %}
+    {% set seller = theme_var('secondary_print_invoice_seller') %}
+    {% set bank_swift = theme_var('secondary_print_invoice_bank_swift') %}
+    {% set bank_accont = theme_var('secondary_print_invoice_bank_accont') %}
+    {% set legal_address = theme_var('secondary_print_invoice_legal_address') %}
+    {% set reg_number = theme_var('secondary_print_invoice_reg_number') %}
+{% else %}
+    {% set seller = theme_var('print_invoice_seller') %}
+    {% set bank_swift = theme_var('print_invoice_bank_swift') %}
+    {% set bank_accont = theme_var('print_invoice_bank_accont') %}
+    {% set legal_address = theme_var('print_invoice_legal_address') %}
+    {% set reg_number = theme_var('print_invoice_reg_number') %}
+{% endif %}
+
+<ul>
+    {% if seller %}
+        <li><strong>{{ seller }}</strong></li>
+    {% endif %}
+    {% if bank_swift %}
+        <li><strong>{{ 'Bank name'|_ }}:&nbsp;</strong>{{ bank_swift }}</li>
+    {% endif %}
+    {% if bank_accont %}
+        <li><strong>{{ 'Account'|_ }}:&nbsp;</strong>{{ bank_accont }}</li>
+    {% endif %}
+    {% if reg_number %}
+        <li><strong>{{ 'Reg. No.'|_ }}:&nbsp;</strong>{{ reg_number }}</li>
+    {% endif %}
+    {% if legal_address %}
+        <li><strong>{{ 'Legal address'|_ }}:&nbsp;</strong>{{ legal_address }}</li>
+    {% endif %}
+    {% if number %}
+        <li><strong>{{ 'Payment reason'|_ }}: </strong>{{ number }}</li>
+    {% endif %}
+    {% if price %}
+        <li><strong>{{ 'Payment ammount'|_ }}: </strong>{{ symbol }}{{ price }}</li>
+    {% endif %}
+</ul>
