@@ -181,6 +181,80 @@ class ExtendOfferImport
     }
 
     /**
+     * Look up an offer by external_id and return its product_id.
+     *
+     * Needed by PASS 2 (ImportOfferPriceFromXML) because PASS 2 strips product_id from
+     * $arImportData at the top of its EXTEND_IMPORT_DATA listener. Mirrors the lookup
+     * pattern already used in recalculateMainPriceVat().
+     *
+     * @param  string|null $sExternalId
+     * @return int|null
+     */
+    protected function resolveProductIdFromExternalId($sExternalId): ?int
+    {
+        if (empty($sExternalId)) {
+            return null;
+        }
+
+        $obOffer = Offer::withTrashed()->where('external_id', $sExternalId)->first();
+        if (empty($obOffer) || empty($obOffer->product_id)) {
+            return null;
+        }
+
+        return (int) $obOffer->product_id;
+    }
+
+    /**
+     * Single owner of the offer-price transformation pipeline.
+     *
+     * Called from PASS 2 (ImportOfferPriceFromXML::EXTEND_IMPORT_DATA) only — PASS 1
+     * (ImportOfferModelFromXML) is metadata-only and never writes to
+     * lovata_shopaholic_prices.
+     *
+     * Pipeline order is authoritative — see
+     * .planning/quick/260519-til-xml-import-price-pipeline-refactor-singl/260519-til-RESEARCH.md §2.
+     * DO NOT reorder without re-verifying against the resolved bugs
+     * xml-import-double-conversion.md and xml-import-s3-price-flicker.md.
+     *
+     * Steps:
+     *   1. recalculateMainPriceVat              (main: EUR, target-VAT applied)
+     *   2. applyOfferDiscount                   (main: EUR, offer discount applied)
+     *   3. applyVatToSalonaPriceOffers          (price_list[2]: EUR)
+     *   4. applyOldPriceToIzplatitajuPriceOffers (price_list[3]: EUR)
+     *   5. applyOldPriceAndApplyVatToVairumPriceOffers (price_list[1]: EUR)
+     *   6. applyPriceFactor                     (main + price_list factor markup, still EUR)
+     *   7. applyAuthorizedDiscount              (derives price_list[4] — needs product_id)
+     *   8. applyRegularDiscount                 (derives price_list[6] — needs product_id)
+     *   9. applyCurrencyConversion              (main only — EUR → NOK)
+     *
+     * Per-PriceType (price_list[*]) currency conversion is handled by
+     * convertPriceListOnly() in PASS 2's EVENT_BEFORE_IMPORT — NOT here.
+     *
+     * @param  array $arImportData
+     * @return array
+     */
+    protected function applyOfferPricePipeline(array $arImportData): array
+    {
+        $iProductId = $this->resolveProductIdFromExternalId(array_get($arImportData, 'external_id'));
+
+        $arImportData = $this->recalculateMainPriceVat($arImportData);
+        $arImportData = $this->applyOfferDiscount($arImportData);
+        $arImportData = $this->applyVatToSalonaPriceOffers($arImportData);
+        $arImportData = $this->applyOldPriceToIzplatitajuPriceOffers($arImportData);
+        $arImportData = $this->applyOldPriceAndApplyVatToVairumPriceOffers($arImportData);
+        $arImportData = $this->applyPriceFactor($arImportData);
+
+        if (!empty($iProductId)) {
+            $arImportData = $this->applyAuthorizedDiscount($iProductId, $arImportData);
+            $arImportData = $this->applyRegularDiscount($iProductId, $arImportData);
+        }
+
+        $arImportData = $this->applyCurrencyConversion($arImportData);
+
+        return $arImportData;
+    }
+
+    /**
      * Apply per-PriceType factor markup to all prices in import data.
      * Runs as the FINAL step — AFTER currency conversion. Opt-in via XmlImportSettings.
      * Unmapped PriceTypes pass through unchanged. No fallback factor.
@@ -371,13 +445,7 @@ class ExtendOfferImport
         $obEvent->listen(ImportOfferPriceFromXML::EXTEND_IMPORT_DATA, function ($arImportData, $obParseNode) {
             $arImportData = $this->fixExternalID($arImportData);
             array_forget($arImportData, 'product_id');
-            $arImportData = $this->recalculateMainPriceVat($arImportData);
-            $arImportData = $this->applyOfferDiscount($arImportData);
-            $arImportData = $this->applyVatToSalonaPriceOffers($arImportData);
-            $arImportData = $this->applyOldPriceToIzplatitajuPriceOffers($arImportData);
-            $arImportData = $this->applyOldPriceAndApplyVatToVairumPriceOffers($arImportData);
-            $arImportData = $this->applyCurrencyConversion($arImportData);
-            $arImportData = $this->applyPriceFactor($arImportData);
+            $arImportData = $this->applyOfferPricePipeline($arImportData);
             return $arImportData;
         });
 
