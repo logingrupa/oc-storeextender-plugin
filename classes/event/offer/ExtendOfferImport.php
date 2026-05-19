@@ -148,8 +148,12 @@ class ExtendOfferImport
     }
 
     /**
-     * Apply currency conversion to all prices in import data
-     * Runs as the LAST step — after all calculations in the source currency
+     * Apply currency conversion to the offer's main price/old_price only.
+     * Per-PriceType (price_list) entries are converted later by convertPriceListOnly()
+     * inside the EVENT_BEFORE_IMPORT listener — converting them here too would
+     * double-apply the rate (and after applyPriceFactor, multiply it by the factor
+     * as well). Keep main here so PASS 2 (price XML import) gets its NOK main value
+     * applied in this same hook.
      * @param array $arImportData
      * @return array
      */
@@ -171,20 +175,6 @@ class ExtendOfferImport
         $fOldPrice = PriceHelper::toFloat(array_get($arImportData, 'old_price'));
         if (!empty($fOldPrice)) {
             $arImportData['old_price'] = PriceHelper::round($fOldPrice * $fConversionRate);
-        }
-
-        // Convert all price_list entries
-        $arPriceList = array_get($arImportData, 'price_list', []);
-        foreach ($arPriceList as $iPriceTypeId => $arPriceData) {
-            $fTypePrice = PriceHelper::toFloat(array_get($arPriceData, 'price'));
-            if (!empty($fTypePrice)) {
-                array_set($arImportData, 'price_list.' . $iPriceTypeId . '.price', PriceHelper::round($fTypePrice * $fConversionRate));
-            }
-
-            $fTypeOldPrice = PriceHelper::toFloat(array_get($arPriceData, 'old_price'));
-            if (!empty($fTypeOldPrice)) {
-                array_set($arImportData, 'price_list.' . $iPriceTypeId . '.old_price', PriceHelper::round($fTypeOldPrice * $fConversionRate));
-            }
         }
 
         return $arImportData;
