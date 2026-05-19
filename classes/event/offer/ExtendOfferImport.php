@@ -429,7 +429,7 @@ class ExtendOfferImport
     protected function fixQuantity($arImportData)
     {
         $sQuantity = array_pull($arImportData, 'quantity');
-        $arImportData['quantity'] = preg_replace("/ /", "", $sQuantity);
+        $arImportData['quantity'] = preg_replace("/ /", "", (string) ($sQuantity ?? ''));
         return $arImportData;
     }
 
@@ -442,7 +442,7 @@ class ExtendOfferImport
     {
         $sOldVariation = array_pull($arImportData, 'variation');
         $matches = null;
-        $sNewVariation = preg_match('/\((.*?)\)/', $sOldVariation, $matches);
+        $sNewVariation = preg_match('/\((.*?)\)/', (string) ($sOldVariation ?? ''), $matches);
         $arImportData['variation'] = (empty($matches)) ? null : $matches[1];
         return $arImportData;
     }
