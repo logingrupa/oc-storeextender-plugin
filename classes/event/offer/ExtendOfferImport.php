@@ -438,7 +438,20 @@ class ExtendOfferImport
             $arImportData = $this->fixHeight($arImportData);
             $arImportData = $this->fixLength($arImportData);
             $arImportData = $this->fixWidth($arImportData);
-            // dd($arImportData);
+
+            // PASS 1 is metadata-only — strip all price-related fields so they cannot reach
+            // Offer::setPriceAttribute (and therefore the lovata_shopaholic_prices main row).
+            // Every price-related write happens in PASS 2 via applyOfferPricePipeline().
+            // See .planning/debug/xml-import-s3-price-flicker.md root cause and
+            // .planning/quick/260519-til-xml-import-price-pipeline-refactor-singl/260519-til-RESEARCH.md §1
+            // strip-PASS-1 verdict.
+            array_forget($arImportData, 'price');
+            array_forget($arImportData, 'old_price');
+            array_forget($arImportData, 'price_list');
+            array_forget($arImportData, 'discount_id');
+            array_forget($arImportData, 'discount_value');
+            array_forget($arImportData, 'discount_type');
+
             return $arImportData;
         });
 
@@ -449,18 +462,17 @@ class ExtendOfferImport
             return $arImportData;
         });
 
-        $obEvent->listen(ImportOfferModelFromXML::EVENT_BEFORE_IMPORT, function ($sModelClass, $arImportData) {
+        $obEvent->listen(ImportOfferPriceFromXML::EVENT_BEFORE_IMPORT, function ($sModelClass, $arImportData) {
             if ($sModelClass != Offer::class) {
                 return null;
             }
 
-            $arImportData = $this->calculatePrices($arImportData);
             $arImportData = $this->convertPriceListOnly($arImportData);
 
             return $arImportData;
         });
 
-        $obEvent->listen(ImportOfferModelFromXML::EVENT_AFTER_IMPORT, function ($obOffer, $arImportData) {
+        $obEvent->listen(ImportOfferPriceFromXML::EVENT_AFTER_IMPORT, function ($obOffer, $arImportData) {
             $this->updateDiscountSync($obOffer, $arImportData);
         });
     }
@@ -810,40 +822,6 @@ class ExtendOfferImport
 
         array_set($arImportData, 'price_list.' . $obVairumPriceType->id, $arPriceData);
         // dd($arImportData);
-        return $arImportData;
-    }
-
-    /**
-     * @param array $arImportData
-     * @return array
-     */
-    protected function calculatePrices($arImportData)
-    {
-        $fOldPrice = (float)array_get($arImportData, 'old_price');
-        $arImportData['old_price'] = $fOldPrice;
-
-        $iProductId = array_get($arImportData, 'product_id');
-
-        if (empty($iProductId)) {
-            return $arImportData;
-        }
-
-        // Recalculate VAT on the base price before applying discounts
-        // so regular/authorized price types use the correct VAT-adjusted price
-        $arImportData = $this->recalculateMainPriceVat($arImportData);
-
-        $arImportData = $this->applyOfferDiscount($arImportData);
-
-        // Apply factor markup to main price/old_price BEFORE deriving authorized/regular
-        // discount prices, so id=4 and id=6 inherit the factor instead of staying tied to
-        // the pre-factor retail. The id=0 sentinel in applyPriceFactor() handles main only;
-        // price_list[1/2/3] is empty in this PASS 1 context (those come from XML in PASS 2),
-        // so the iteration over price_list is effectively a no-op here.
-        $arImportData = $this->applyPriceFactor($arImportData);
-
-        $arImportData = $this->applyAuthorizedDiscount($iProductId, $arImportData);
-        $arImportData = $this->applyRegularDiscount($iProductId, $arImportData);
-
         return $arImportData;
     }
 
