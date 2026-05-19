@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit backupGlobals="false"
          backupStaticAttributes="false"
+         bootstrap="../../../modules/system/tests/bootstrap.php"
          colors="true"
          convertErrorsToExceptions="true"
          convertNoticesToExceptions="true"
@@ -12,5 +13,17 @@
         <testsuite name="StoreExtender Unit Tests">
             <directory>./tests/unit</directory>
         </testsuite>
+        <testsuite name="StoreExtender Integration Tests">
+            <directory>./tests/integration</directory>
+        </testsuite>
     </testsuites>
+    <php>
+        <env name="APP_ENV" value="testing" />
+        <env name="CACHE_DRIVER" value="array" />
+        <env name="SESSION_DRIVER" value="array" />
+        <env name="CMS_TWIG_CACHE" value="false" />
+        <env name="ENABLE_CSRF" value="false" />
+        <env name="DB_CONNECTION" value="sqlite" />
+        <env name="DB_DATABASE" value=":memory:" />
+    </php>
 </phpunit>
