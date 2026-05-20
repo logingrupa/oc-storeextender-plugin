@@ -439,18 +439,14 @@ class ExtendOfferImport
             $arImportData = $this->fixLength($arImportData);
             $arImportData = $this->fixWidth($arImportData);
 
-            // PASS 1 is metadata-only — strip all price-related fields so they cannot reach
-            // Offer::setPriceAttribute (and therefore the lovata_shopaholic_prices main row).
-            // Every price-related write happens in PASS 2 via applyOfferPricePipeline().
-            // See .planning/debug/xml-import-s3-price-flicker.md root cause and
-            // .planning/quick/260519-til-xml-import-price-pipeline-refactor-singl/260519-til-RESEARCH.md §1
-            // strip-PASS-1 verdict.
-            array_forget($arImportData, 'price');
-            array_forget($arImportData, 'old_price');
-            array_forget($arImportData, 'price_list');
-            array_forget($arImportData, 'discount_id');
-            array_forget($arImportData, 'discount_value');
-            array_forget($arImportData, 'discount_type');
+            // PASS 1 is metadata-only — every price-related write happens in PASS 2 via
+            // applyOfferPricePipeline(). The actual strip of price/old_price/price_list/
+            // discount_* from PASS 1's import data is done in
+            // LoginGrupa\ExtendShopaholic\Classes\Import\ImportOfferModelFromXML::prepareImportDataBeforeSave()
+            // — NOT here. Stripping in an EXTEND_IMPORT_DATA listener is a no-op because
+            // upstream Lovata.Toolbox merges the listener return value with array_merge,
+            // which cannot delete keys (only add/override). See the override's docblock
+            // and .planning/debug/xml-import-s3-price-flicker.md "Continuation (2026-05-20)".
 
             return $arImportData;
         });
