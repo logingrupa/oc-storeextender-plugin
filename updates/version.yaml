@@ -26,6 +26,9 @@
   - 'Redirect to order page instead of homepage after payment gateway cancel/return'
 2.0.4:
   - 'Guard null in RoundedCurrencyHelper::convert to fix PHP 8.4 round(null) deprecation'
+2.0.5:
+  - 'Update lovata_shopaholic_products table by adding manufacturer and ingredients fields'
+  - update_table_lovata_shopaholic_products_add_manufacturer_and_ingredients.php
 2.0.6:
   - 'Convert rainlab_translate_attributes.model_id to INT UNSIGNED and add composite (model_type, model_id) index - fixes per-model translate lookups scanning all rows of a model_type'
   - update_table_rainlab_translate_attributes_model_id_type.php

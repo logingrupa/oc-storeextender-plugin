@@ -1,4 +1,9 @@
 <?php return [
+    'field' => [
+        'manufacturer' => 'Manufacturer',
+        'ingredients' => 'Ingredients',
+        'warning' => 'Warning',
+    ],
     'menu' => [
         'group' => 'Groups',
     ],

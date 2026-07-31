@@ -50,6 +50,11 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
 //Order position
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
+//Product events
+use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductFieldsHandler as StoreExtenderExtendProductFieldsHandler;
+use Logingrupa\StoreExtender\Classes\Event\Product\ProductModelHandler as StoreExtenderProductModelHandler;
+use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductImport as StoreExtenderExtendProductImport;
+
 //Currency rounding
 use Logingrupa\StoreExtender\Classes\Event\Currency\ExtendCurrencyConversion;
 
@@ -143,6 +148,11 @@ class Plugin extends PluginBase
         Event::subscribe(OrderPositionItemHandler::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
+
+        //Product events: extend backend fields and model
+        Event::subscribe(StoreExtenderExtendProductFieldsHandler::class);
+        Event::subscribe(StoreExtenderProductModelHandler::class);
+        Event::subscribe(StoreExtenderExtendProductImport::class);
 
         //Currency rounding for NOK, SEK, DKK
         ExtendCurrencyConversion::swapCurrencyHelper();

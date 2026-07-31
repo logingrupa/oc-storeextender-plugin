@@ -1,4 +1,9 @@
 <?php return [
+    'field' => [
+        'manufacturer' => 'Ražotājs',
+        'ingredients' => 'Sastāvdaļas',
+        'warning' => 'Brīdinājums',
+    ],
     'menu' => [
         'group' => 'Groups',
     ],
