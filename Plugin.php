@@ -18,6 +18,9 @@ use Lovata\Shopaholic\Controllers\Products as ShopaholicProductsController;
 use Lovata\Shopaholic\Controllers\Offers as ShopaholicOffersController;
 use Lovata\Shopaholic\Models\Tax as ShopaholicTaxModel;
 use Lovata\Shopaholic\Models\XmlImportSettings;
+use Lovata\Shopaholic\Classes\Item\ProductItem;
+use Lovata\Shopaholic\Classes\Item\OfferItem;
+use Lovata\Shopaholic\Classes\Item\CategoryItem;
 use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
 use Lovata\Shopaholic\Classes\Import\ImportProductModelFromXML;
 use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
@@ -47,7 +50,6 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
 //Order position
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
-
 //Currency rounding
 use Logingrupa\StoreExtender\Classes\Event\Currency\ExtendCurrencyConversion;
 
@@ -120,6 +122,7 @@ class Plugin extends PluginBase
         $this->extendShopaholicOffersController();
         $this->extendShopaholicProductModel();
         $this->extendShopaholicOfferModel();
+        $this->extendItemEagerLoading();
         $this->extendXMLImporter();
         $this->extendShopaholicOrderModel();
         Event::subscribe(ExtendPaymentGateway::class);
@@ -247,15 +250,56 @@ class Plugin extends PluginBase
         });
     }
 
+    /**
+     * Eager load RainLab Translate 'translations' morphMany during Toolbox item
+     * priming. Without this every Product/Offer/Category model AND every attached
+     * MLFile image lazy-loads rainlab_translate_attributes one query per instance
+     * (350+ queries on a cold home page). 'translations' is defined by the
+     * TranslatableModel behavior constructor, so with() resolves it on models and
+     * on MLFile attachments alike. Warm path unaffected - cache hits never reach
+     * the query. Note: nested '<image>.translations' relies on preview_image and
+     * images NOT being listed in $translatable on the parent model (RainLab swaps
+     * the attachment class to MLFile only in that case).
+     */
+    public function extendItemEagerLoading()
+    {
+        ProductItem::$arQueryWith = array_merge(ProductItem::$arQueryWith, [
+            'translations',
+            'preview_image.translations',
+            'images.translations',
+            'offer.translations',
+            'offer.preview_image.translations',
+            'offer.images.translations',
+        ]);
+
+        OfferItem::$arQueryWith = array_merge(OfferItem::$arQueryWith, [
+            'translations',
+            'preview_image.translations',
+            'images.translations',
+        ]);
+
+        CategoryItem::$arQueryWith = array_merge(CategoryItem::$arQueryWith, [
+            'translations',
+            'preview_image.translations',
+            'icon.translations',
+            'images.translations',
+        ]);
+    }
+
     public function extendShopaholicProductModel()
     {
         ShopaholicProductModel::extend(function ($obModel) {
-            $obModel->translatable[] = 'how_to';
-            $obModel->translatable[] = 'video_link';
+            $translatable = ['how_to', 'video_link', 'warning', 'ingredients'];
+            foreach ($translatable as $field) {
+                $obModel->translatable[] = $field;
+            }
+
             $obModel->addCachedField(['how_to', 'video_link', 'hide_dropdown']);
-            $obModel->fillable[] = 'how_to';
-            $obModel->fillable[] = 'video_link';
-            $obModel->fillable[] = 'hide_dropdown';
+
+            $fillable = ['how_to', 'video_link', 'hide_dropdown'];
+            foreach ($fillable as $field) {
+                $obModel->fillable[] = $field;
+            }
         });
     }
 
@@ -264,7 +308,8 @@ class Plugin extends PluginBase
         ShopaholicOfferModel::extend(function ($obModel) {
             $obModel->fillable[] = 'variation';
             $obModel->fillable[] = 'preview_video';
-            $obModel->addCachedField(['variation', 'preview_video']);
+            // external_id feeds OfferColorGrouper (color-lab API join on 1C UUID)
+            $obModel->addCachedField(['variation', 'preview_video', 'external_id']);
         });
     }
 
