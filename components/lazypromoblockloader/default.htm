@@ -39,7 +39,8 @@
         <div class="row">
             <div class="col-lg-12"
                  data-control="lazy-tab"
-                 data-lazy-tab-handler="{{ __SELF__ ~ '::onLoadPromoTab' }}">
+                 data-lazy-tab-handler="{{ __SELF__ ~ '::onLoadPromoTab' }}"
+                 data-lazy-tab-preloaded-id="{{ iFirstPromoBlockId }}">
                 <!--=======  tab product navigation  =======-->
                 <div class="tab-product-navigation mb-50">
                     <div class="nav nav-tabs justify-content-center" id="nav-tab2" role="tablist">
@@ -65,8 +66,12 @@
                              id="product-series-{{ loop.index }}"
                              role="tabpanel"
                              aria-labelledby="product-tab-{{ loop.index }}">
-                            <div class="row" id="lazy-tab-content-{{ obPromoBlock.id }}">
-                                {% partial __SELF__ ~ '::skeleton' %}
+                            <div class="row js-product-rail" id="lazy-tab-content-{{ obPromoBlock.id }}">
+                                {% if loop.first and obFirstTabProductList is not empty %}
+                                    {% partial __SELF__ ~ '::tab-content' obProductList=obFirstTabProductList obPromoBlock=obPromoBlock iLimit=iProductsPerTab %}
+                                {% else %}
+                                    {% partial __SELF__ ~ '::skeleton' %}
+                                {% endif %}
                             </div>
                             <div class="col-lg-12 text-center mb-50">
                                 <a class="btn btn-light" href="{{ 'promo-block-page'|page({slug:obPromoBlock.slug}) }}" role="button">{{ 'Show all'|_ }}</a>

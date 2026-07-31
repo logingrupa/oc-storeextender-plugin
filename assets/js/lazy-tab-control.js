@@ -1,13 +1,15 @@
 /**
- * Lazy Tab Control — loads promo block product content via AJAX on tab switch.
+ * Lazy Tab Control - loads promo block product content via AJAX on tab switch.
  *
- * On connect, automatically loads the first (active) tab.
- * On subsequent tab clicks, loads content only once per tab.
+ * The first (active) tab is server-rendered by the component; its promo block
+ * ID arrives via data-lazy-tab-preloaded-id so it is never re-fetched.
+ * On tab clicks, content is loaded via AJAX once per tab.
  * Replaces skeleton placeholders with real product cards.
  *
  * Configured via data attributes on the tab-content container:
  *   data-control="lazy-tab"
  *   data-lazy-tab-handler="LazyPromoBlockLoader::onLoadPromoTab"
+ *   data-lazy-tab-preloaded-id="{id}"
  *
  * Tab links must have:
  *   data-promo-block-id="{id}"
@@ -16,7 +18,8 @@
  * @example
  * <div class="tab-content"
  *      data-control="lazy-tab"
- *      data-lazy-tab-handler="LazyPromoBlockLoader::onLoadPromoTab">
+ *      data-lazy-tab-handler="LazyPromoBlockLoader::onLoadPromoTab"
+ *      data-lazy-tab-preloaded-id="15">
  */
 jax.registerControl('lazy-tab', class extends jax.ControlBase {
     /**
@@ -28,30 +31,18 @@ jax.registerControl('lazy-tab', class extends jax.ControlBase {
 
         /** @type {string} AJAX handler name from component */
         this.handler = this.config.lazyTabHandler;
+
+        const iPreloadedId = parseInt(this.config.lazyTabPreloadedId, 10);
+        if (!Number.isNaN(iPreloadedId)) {
+            this.loadedTabIds.add(iPreloadedId);
+        }
     }
 
     /**
-     * Bind tab click listener and auto-load the first active tab.
+     * Bind tab click listener. First tab needs no fetch: it is server-rendered.
      */
     connect() {
         this.listen('click', '[data-toggle="tab"]', this.onTabClick);
-        this.loadActiveTab();
-    }
-
-    /**
-     * Load the currently active tab's content on initial page render.
-     */
-    loadActiveTab() {
-        /** @type {HTMLAnchorElement|null} */
-        const activeTabLink = document.querySelector('#nav-tab2 .nav-link.active');
-        if (!activeTabLink) {
-            return;
-        }
-
-        const iPromoBlockId = parseInt(activeTabLink.dataset.promoBlockId, 10);
-        const sPromoBlockCode = activeTabLink.dataset.promoBlockCode || '';
-
-        this.loadTabContent(iPromoBlockId, sPromoBlockCode);
     }
 
     /**

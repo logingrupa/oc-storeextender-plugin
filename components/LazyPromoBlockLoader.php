@@ -54,6 +54,8 @@ class LazyPromoBlockLoader extends \Cms\Classes\ComponentBase
 
     /**
      * Prepare component data for rendering.
+     * First tab renders server-side (SEO, LCP, one less full-stack AJAX boot);
+     * remaining tabs stay lazy behind tab clicks.
      */
     public function onRun()
     {
@@ -64,6 +66,21 @@ class LazyPromoBlockLoader extends \Cms\Classes\ComponentBase
         );
 
         $this->page['obPromoBlockList'] = $obPromoBlockCollection;
+
+        $obFirstPromoBlock = $obPromoBlockCollection->first();
+        if (empty($obFirstPromoBlock) || $obFirstPromoBlock->isEmpty()) {
+            return;
+        }
+
+        $iLimit = (int) $this->property('productsPerTab', 10);
+
+        $this->page['obFirstTabProductList'] = $this->getProductListByPromoBlock(
+            $obFirstPromoBlock,
+            (string) $obFirstPromoBlock->code,
+            $iLimit
+        );
+        $this->page['iFirstPromoBlockId'] = (int) $obFirstPromoBlock->id;
+        $this->page['iProductsPerTab'] = $iLimit;
     }
 
     /**
