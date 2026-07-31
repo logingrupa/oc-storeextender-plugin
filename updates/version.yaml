@@ -34,3 +34,6 @@
   - update_table_rainlab_translate_attributes_model_id_type.php
 2.0.7:
   - 'Fall back to primary site Shopaholic settings on sites without own record - fixes empty search settings on /en and /ru'
+2.0.8:
+  - 'Toolbox settings join the site fallback (fixes 0-decimal prices on /en and /ru); local offer color table + storeextender:sync-offer-colors command + OfferSheet component'
+  - create_table_offer_colors.php

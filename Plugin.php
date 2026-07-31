@@ -91,6 +91,7 @@ class Plugin extends PluginBase
     public function register()
     {
         $this->registerConsoleCommand('storeextender.sqlimport', 'Logingrupa\StoreExtender\Console\SqlImportCommand');
+        $this->registerConsoleCommand('storeextender.syncoffercolors', 'Logingrupa\StoreExtender\Console\SyncOfferColors');
 
         // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
         // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
@@ -451,7 +452,19 @@ class Plugin extends PluginBase
         return [
             'Logingrupa\Storeextender\Components\CustomProductPage' => 'CustomProductPage',
             'Logingrupa\Storeextender\Components\LazyPromoBlockLoader' => 'LazyPromoBlockLoader',
+            'Logingrupa\Storeextender\Components\OfferSheet' => 'OfferSheet',
         ];
+    }
+
+    /**
+     * Register scheduled tasks
+     * @param \Illuminate\Console\Scheduling\Schedule $obSchedule
+     */
+    public function registerSchedule($obSchedule)
+    {
+        // Color data changes only when curated in nailolab; the client sends
+        // If-None-Match, so an unchanged hour costs one 304 round trip
+        $obSchedule->command('storeextender:sync-offer-colors')->hourly();
     }
 
     /**
