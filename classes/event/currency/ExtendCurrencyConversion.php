@@ -17,11 +17,17 @@ use Logingrupa\StoreExtender\Classes\Helper\CurrencyHelperSwapper;
 class ExtendCurrencyConversion
 {
     /**
-     * Register a deferred swap that runs after middleware has processed cookies
+     * Register a deferred swap that runs after middleware has processed cookies.
+     * Must fire on cms.page.beforeDisplay: it precedes layout onInit, so the
+     * layout's CurrencyHelper::instance() call already gets the swapped
+     * RoundedCurrencyHelper. cms.page.init fired AFTER layout onInit - the
+     * vendor singleton got built first, then forgetInstance() discarded it,
+     * costing a duplicate currency query and a stale activeCurrencyCode on
+     * first visit (no cookie) for theme-default-currency sites.
      */
     public static function swapCurrencyHelper()
     {
-        Event::listen('cms.page.init', function () {
+        Event::listen('cms.page.beforeDisplay', function () {
             static $bSwapped = false;
             if ($bSwapped) {
                 return;
