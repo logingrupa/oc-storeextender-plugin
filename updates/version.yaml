@@ -37,3 +37,5 @@
 2.0.8:
   - 'Toolbox settings join the site fallback (fixes 0-decimal prices on /en and /ru); local offer color table + storeextender:sync-offer-colors command + OfferSheet component'
   - create_table_offer_colors.php
+2.0.9:
+  - 'OfferSheet select mode + inline swatch data; locale and currency aware sheet cache epoch; getSelectedOfferItem on CustomProductPage'
