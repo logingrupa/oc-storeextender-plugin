@@ -58,6 +58,9 @@ use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductImport as StoreE
 //Currency rounding
 use Logingrupa\StoreExtender\Classes\Event\Currency\ExtendCurrencyConversion;
 
+//Settings multisite fallback
+use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
+
 /**
  * StoreExtender Plugin Information File
  */
@@ -148,6 +151,9 @@ class Plugin extends PluginBase
         Event::subscribe(OrderPositionItemHandler::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
+
+        //Shopaholic settings fallback to primary site values on sites without own record
+        Event::subscribe(SettingsSiteFallbackHandler::class);
 
         //Product events: extend backend fields and model
         Event::subscribe(StoreExtenderExtendProductFieldsHandler::class);
