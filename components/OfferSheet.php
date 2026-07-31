@@ -76,9 +76,17 @@ class OfferSheet extends ComponentBase
      */
     public function onRun()
     {
-        $this->page['sHrCacheEpoch'] = (string) Cache::rememberForever(self::CACHE_KEY_EPOCH, function () {
+        $sEpoch = (string) Cache::rememberForever(self::CACHE_KEY_EPOCH, function () {
             return (string) microtime(true);
         });
+        // hr-ui.js keys its localStorage store by this token and purges on
+        // mismatch. Locale + currency ride along, otherwise a cached sheet
+        // body from another locale/currency survives the switch.
+        $this->page['sHrCacheEpoch'] = implode('.', [
+            $sEpoch,
+            app()->getLocale(),
+            (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
+        ]);
         $this->page['sHrSheetMode'] = $this->getMode();
     }
 
