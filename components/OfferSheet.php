@@ -45,6 +45,9 @@ class OfferSheet extends ComponentBase
         ];
     }
 
+    const MODE_NAVIGATE = 'navigate';
+    const MODE_SELECT = 'select';
+
     public function defineProperties()
     {
         return [
@@ -53,7 +56,17 @@ class OfferSheet extends ComponentBase
                 'default'           => 40,
                 'validationPattern' => '^[0-9]+$',
             ],
+            'mode' => [
+                'title'       => 'Row tap behavior',
+                'description' => 'navigate: CTA opens the product page (home pages). select: selection drives the current product page state.',
+                'default'     => self::MODE_NAVIGATE,
+            ],
         ];
+    }
+
+    public function getMode(): string
+    {
+        return $this->property('mode') === self::MODE_SELECT ? self::MODE_SELECT : self::MODE_NAVIGATE;
     }
 
     /**
@@ -66,6 +79,7 @@ class OfferSheet extends ComponentBase
         $this->page['sHrCacheEpoch'] = (string) Cache::rememberForever(self::CACHE_KEY_EPOCH, function () {
             return (string) microtime(true);
         });
+        $this->page['sHrSheetMode'] = $this->getMode();
     }
 
     public function getPageSize(): int
@@ -101,6 +115,7 @@ class OfferSheet extends ComponentBase
             ]),
             '#hr-sheet-footer' => $this->controller->renderPartial('home-redesign/shared/offers-sheet-footer', [
                 'obProduct' => $obProductItem,
+                'bSelectMode' => $this->getMode() === self::MODE_SELECT,
             ]),
             'arCartOfferIdList' => $this->getCartOfferIdList(),
         ];
@@ -288,6 +303,43 @@ class OfferSheet extends ComponentBase
         CCache::put($arCacheTagList, $sCacheKey, $sRowListHtml, self::CACHE_TTL_MINUTES);
 
         return $sRowListHtml;
+    }
+
+    /**
+     * Data for the inline swatch row on the product page: first N offers in
+     * color-family order + family chips + sheet flag. Products with few
+     * shades show everything inline and get no sheet trigger.
+     *
+     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, bUseSheet: bool, arFamilyChipList: array}
+     */
+    public function getInlineSwatchData(ProductItem $obProductItem, bool $bHideOutOfStock = false, int $iInlineLimit = 12): array
+    {
+        $arOrderedRowList = $this->getOrderedRowList($obProductItem);
+
+        $arOfferItemList = [];
+        $iVisibleCount = 0;
+        foreach ($arOrderedRowList as $arRow) {
+            $obOfferItem = OfferItem::make($arRow['iOfferId']);
+            if ($obOfferItem->isEmpty()) {
+                continue;
+            }
+            if ($bHideOutOfStock && (int) $obOfferItem->quantity === 0) {
+                continue;
+            }
+            $iVisibleCount++;
+            if (count($arOfferItemList) < $iInlineLimit) {
+                $arOfferItemList[] = $obOfferItem;
+            }
+        }
+
+        $bUseSheet = $iVisibleCount > $iInlineLimit;
+
+        return [
+            'arOfferItemList' => $arOfferItemList,
+            'iTotalCount' => $iVisibleCount,
+            'bUseSheet' => $bUseSheet,
+            'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($obProductItem) : [],
+        ];
     }
 
     /**
