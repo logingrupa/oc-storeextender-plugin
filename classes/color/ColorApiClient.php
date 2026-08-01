@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -13,8 +14,10 @@ use Illuminate\Support\Facades\Log;
  * extends TTL on 304, and on network error / non-200 / malformed JSON
  * returns the last cached payload (or an empty map). Never throws.
  *
- * Host comes from COLOR_LAB_API_HOST env (production), defaults to the
- * local dev host. Grouping is done by OfferColorGrouper - not here.
+ * Host comes from services.color_lab.host app config (COLOR_LAB_API_HOST
+ * env behind it - read via config so a cached production config still
+ * resolves it; runtime env() is empty once config:cache has run).
+ * Defaults to the local dev host. Grouping is done by OfferColorGrouper.
  *
  * @package Logingrupa\StoreExtender\Classes\Color
  */
@@ -150,7 +153,7 @@ class ColorApiClient
      */
     protected function sendRequest(): Response
     {
-        $sHost = rtrim((string) env('COLOR_LAB_API_HOST', self::DEFAULT_API_HOST), '/');
+        $sHost = rtrim((string) Config::get('services.color_lab.host', self::DEFAULT_API_HOST), '/');
         $obRequest = Http::timeout(self::REQUEST_TIMEOUT_SECONDS)->acceptJson();
         if (str_ends_with($sHost, '.test')) {
             // local dev hosts use self-signed certificates

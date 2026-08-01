@@ -41,3 +41,5 @@
   - 'OfferSheet select mode + inline swatch data; locale and currency aware sheet cache epoch; getSelectedOfferItem on CustomProductPage'
 2.0.10:
   - 'Offer color sync schedule relaxed from hourly to twice daily at 09:00 and 13:00'
+2.0.11:
+  - 'Color API host read via services.color_lab.host app config so cached production config resolves it (runtime env() is empty after config:cache)'
