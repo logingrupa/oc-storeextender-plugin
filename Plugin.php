@@ -92,6 +92,7 @@ class Plugin extends PluginBase
     {
         $this->registerConsoleCommand('storeextender.sqlimport', 'Logingrupa\StoreExtender\Console\SqlImportCommand');
         $this->registerConsoleCommand('storeextender.syncoffercolors', 'Logingrupa\StoreExtender\Console\SyncOfferColors');
+        $this->registerConsoleCommand('storeextender.importthememessages', 'Logingrupa\StoreExtender\Console\ImportThemeMessages');
 
         // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
         // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
