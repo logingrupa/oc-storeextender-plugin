@@ -462,9 +462,10 @@ class Plugin extends PluginBase
      */
     public function registerSchedule($obSchedule)
     {
-        // Color data changes only when curated in nailolab; the client sends
-        // If-None-Match, so an unchanged hour costs one 304 round trip
-        $obSchedule->command('storeextender:sync-offer-colors')->hourly();
+        // Color data changes only when curated in nailolab - twice a day
+        // covers it; the client sends If-None-Match, so an unchanged run
+        // costs one 304 round trip
+        $obSchedule->command('storeextender:sync-offer-colors')->twiceDaily(9, 13);
     }
 
     /**
