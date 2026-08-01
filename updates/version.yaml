@@ -45,3 +45,5 @@
   - 'Color API host read via services.color_lab.host app config so cached production config resolves it (runtime env() is empty after config:cache)'
 2.0.12:
   - 'storeextender:import-theme-messages command - imports active theme configs/lang.yaml into RainLab Translate messages and clears sheet HTML cache (deploy step)'
+2.0.13:
+  - 'getInlineSwatchData: family filter (all family shades inline), 12-shade window around the selected offer, explicit-offer-wins conflict rule, sActiveFamily in the payload'

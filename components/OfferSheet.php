@@ -314,19 +314,53 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Data for the inline swatch row on the product page: first N offers in
-     * color-family order + family chips + sheet flag. Products with few
-     * shades show everything inline and get no sheet trigger.
+     * Data for the inline swatch row on the product page in color-family
+     * order. Family filter active: ALL of that family's shades inline.
+     * No filter: a window of N shades centered on the selected offer
+     * (5 before, 6 after). Products with few shades show everything inline
+     * and get no sheet trigger.
      *
-     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, bUseSheet: bool, arFamilyChipList: array}
+     * Conflict rule for shared URLs: an EXPLICIT offer segment wins over the
+     * family query param - the filter snaps to the offer's family.
+     *
+     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, bUseSheet: bool, arFamilyChipList: array, sActiveFamily: string}
      */
-    public function getInlineSwatchData(ProductItem $obProductItem, bool $bHideOutOfStock = false, int $iInlineLimit = 12): array
-    {
-        $arOrderedRowList = $this->getOrderedRowList($obProductItem);
+    public function getInlineSwatchData(
+        ProductItem $obProductItem,
+        bool $bHideOutOfStock = false,
+        int $iInlineLimit = 12,
+        string $sFamilyFilter = '',
+        int $iSelectedOfferId = 0,
+        bool $bOfferIsExplicit = false
+    ): array {
+        $arVisibleList = $this->getVisibleSwatchList($obProductItem, $bHideOutOfStock);
+        $iTotalCount = count($arVisibleList);
+        $bUseSheet = $iTotalCount > $iInlineLimit;
 
-        $arOfferItemList = [];
-        $iVisibleCount = 0;
-        foreach ($arOrderedRowList as $arRow) {
+        $sActiveFamily = $bUseSheet
+            ? $this->resolveActiveFamily($arVisibleList, $sFamilyFilter, $bOfferIsExplicit ? $iSelectedOfferId : 0)
+            : '';
+        $arOfferItemList = $sActiveFamily !== ''
+            ? $this->getFamilyOfferList($arVisibleList, $sActiveFamily)
+            : $this->getWindowedOfferList($arVisibleList, $iSelectedOfferId, $iInlineLimit);
+
+        return [
+            'arOfferItemList' => $arOfferItemList,
+            'iTotalCount' => $iTotalCount,
+            'bUseSheet' => $bUseSheet,
+            'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($obProductItem) : [],
+            'sActiveFamily' => $sActiveFamily,
+        ];
+    }
+
+    /**
+     * Sellable swatch list in color-family order
+     * @return array [['obOffer' => OfferItem, 'sFamily' => string|null]]
+     */
+    protected function getVisibleSwatchList(ProductItem $obProductItem, bool $bHideOutOfStock): array
+    {
+        $arVisibleList = [];
+        foreach ($this->getOrderedRowList($obProductItem) as $arRow) {
             $obOfferItem = OfferItem::make($arRow['iOfferId']);
             if ($obOfferItem->isEmpty()) {
                 continue;
@@ -334,20 +368,74 @@ class OfferSheet extends ComponentBase
             if ($bHideOutOfStock && (int) $obOfferItem->quantity === 0) {
                 continue;
             }
-            $iVisibleCount++;
-            if (count($arOfferItemList) < $iInlineLimit) {
-                $arOfferItemList[] = $obOfferItem;
+            $arVisibleList[] = ['obOffer' => $obOfferItem, 'sFamily' => $arRow['sFamily']];
+        }
+
+        return $arVisibleList;
+    }
+
+    /**
+     * Family filter for the inline strip. Explicit offer id wins over the
+     * requested family; an unknown family falls back to no filter.
+     */
+    protected function resolveActiveFamily(array $arVisibleList, string $sFamilyFilter, int $iExplicitOfferId): string
+    {
+        if ($iExplicitOfferId > 0 && $sFamilyFilter !== '') {
+            foreach ($arVisibleList as $arEntry) {
+                if ((int) $arEntry['obOffer']->id === $iExplicitOfferId) {
+                    return (string) $arEntry['sFamily'];
+                }
+            }
+        }
+        if ($sFamilyFilter === '') {
+            return '';
+        }
+        foreach ($arVisibleList as $arEntry) {
+            if ($arEntry['sFamily'] === $sFamilyFilter) {
+                return $sFamilyFilter;
             }
         }
 
-        $bUseSheet = $iVisibleCount > $iInlineLimit;
+        return '';
+    }
 
-        return [
-            'arOfferItemList' => $arOfferItemList,
-            'iTotalCount' => $iVisibleCount,
-            'bUseSheet' => $bUseSheet,
-            'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($obProductItem) : [],
-        ];
+    /**
+     * Every visible shade of one family
+     * @return \Lovata\Shopaholic\Classes\Item\OfferItem[]
+     */
+    protected function getFamilyOfferList(array $arVisibleList, string $sFamily): array
+    {
+        $arOfferItemList = [];
+        foreach ($arVisibleList as $arEntry) {
+            if ($arEntry['sFamily'] === $sFamily) {
+                $arOfferItemList[] = $arEntry['obOffer'];
+            }
+        }
+
+        return $arOfferItemList;
+    }
+
+    /**
+     * Window of N shades around the selected offer (5 before, 6 after),
+     * clamped to the list bounds; first N when nothing is selected
+     * @return \Lovata\Shopaholic\Classes\Item\OfferItem[]
+     */
+    protected function getWindowedOfferList(array $arVisibleList, int $iSelectedOfferId, int $iLimit): array
+    {
+        $iSelectedIndex = 0;
+        foreach ($arVisibleList as $iIndex => $arEntry) {
+            if ((int) $arEntry['obOffer']->id === $iSelectedOfferId) {
+                $iSelectedIndex = $iIndex;
+                break;
+            }
+        }
+
+        $iStart = max(0, min($iSelectedIndex - 5, count($arVisibleList) - $iLimit));
+        $arWindowList = array_slice($arVisibleList, $iStart, $iLimit);
+
+        return array_map(function (array $arEntry) {
+            return $arEntry['obOffer'];
+        }, $arWindowList);
     }
 
     /**
