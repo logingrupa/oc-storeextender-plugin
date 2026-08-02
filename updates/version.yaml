@@ -47,3 +47,5 @@
   - 'storeextender:import-theme-messages command - imports active theme configs/lang.yaml into RainLab Translate messages and clears sheet HTML cache (deploy step)'
 2.0.13:
   - 'getInlineSwatchData: family filter (all family shades inline), 12-shade window around the selected offer, explicit-offer-wins conflict rule, sActiveFamily in the payload'
+2.0.14:
+  - 'vite_entry() Twig helper - renders script/style/modulepreload tags for a theme Vite entry from its build manifest, or from the Vite dev server while the hot file exists'
