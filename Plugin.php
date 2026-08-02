@@ -61,6 +61,9 @@ use Logingrupa\StoreExtender\Classes\Event\Currency\ExtendCurrencyConversion;
 //Settings multisite fallback
 use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 
+//Vite asset pipeline for migrated theme pages
+use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
+
 /**
  * StoreExtender Plugin Information File
  */
@@ -541,6 +544,8 @@ class Plugin extends PluginBase
                 'helloWorld' => function () {
                     return 'Hello World!';
                 },
+                // Script/style tags for a Vite entry built into the active theme
+                'vite_entry' => [ViteAssetHelper::class, 'renderEntry'],
                 'theme_var' => function ($sKey) {
                     $obTheme = \Cms\Classes\Theme::getActiveTheme();
                     if (empty($obTheme)) {
