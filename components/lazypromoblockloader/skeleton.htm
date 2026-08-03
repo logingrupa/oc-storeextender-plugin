@@ -15,15 +15,19 @@
         <div class="single-product__image">
             <div class="skeleton-pulse skeleton-image"></div>
         </div>
-        <div class="single-product__content">
-            <div class="title">
-                <div class="skeleton-pulse skeleton-title"></div>
-                <div class="skeleton-pulse skeleton-link"></div>
+        {# product-card.htm wraps its content block in a form; without it the
+           placeholder came out 14px shorter than the card it stands in for #}
+        <form>
+            <div class="single-product__content">
+                <div class="title">
+                    <div class="skeleton-pulse skeleton-title"></div>
+                    <div class="skeleton-pulse skeleton-link"></div>
+                </div>
+                <div class="price">
+                    <div class="skeleton-pulse skeleton-price"></div>
+                </div>
             </div>
-            <div class="price">
-                <div class="skeleton-pulse skeleton-price"></div>
-            </div>
-        </div>
+        </form>
     </div>
 </div>
 {% endfor %}

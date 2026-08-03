@@ -53,3 +53,5 @@
   - 'LazyPromoBlockLoader: every promo tab is lazy, including the first, which is requested as soon as the control connects rather than built in onRun(); tab panes are switched by the control itself, because data-toggle="tab" had no Bootstrap JS behind it on migrated layouts; skeleton CSS moved out of the inline style into the theme bundle'
 2.0.16:
   - 'LazyPromoBlockLoader: the skeleton reserves one placeholder per card the handler will actually return instead of a fixed five, removing 0.20 of cumulative layout shift on the home page'
+2.0.17:
+  - 'LazyPromoBlockLoader: the skeleton card now matches a loaded card exactly - the form wrapper product-card.htm uses, so the placeholder column and the real column are the same height and the tab does not move when the response lands'
