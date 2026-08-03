@@ -49,3 +49,5 @@
   - 'getInlineSwatchData: family filter (all family shades inline), 12-shade window around the selected offer, explicit-offer-wins conflict rule, sActiveFamily in the payload'
 2.0.14:
   - 'vite_entry() Twig helper - renders script/style/modulepreload tags for a theme Vite entry from its build manifest, or from the Vite dev server while the hot file exists'
+2.0.15:
+  - 'LazyPromoBlockLoader: every promo tab is lazy, including the first, which is requested as soon as the control connects rather than built in onRun(); tab panes are switched by the control itself, because data-toggle="tab" had no Bootstrap JS behind it on migrated layouts; skeleton CSS moved out of the inline style into the theme bundle'

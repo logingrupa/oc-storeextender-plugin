@@ -54,37 +54,26 @@ class LazyPromoBlockLoader extends \Cms\Classes\ComponentBase
 
     /**
      * Prepare component data for rendering.
-     * First tab renders server-side (SEO, LCP, one less full-stack AJAX boot);
-     * remaining tabs stay lazy behind tab clicks.
+     *
+     * Every tab is lazy, including the first. Building the first tab's product
+     * list in onRun() put ten fully hydrated products - offers, prices, images,
+     * labels - on the critical path of a page that renders nothing else from
+     * them, and the markup it produced was the page's largest block. The tab now
+     * ships a skeleton like the others and its content arrives over the same
+     * handler, fired the moment the control connects rather than on a tab click,
+     * so it is still requested immediately and never waits for a scroll.
      */
     public function onRun()
     {
         $this->addJs('/plugins/logingrupa/storeextender/assets/js/lazy-tab-control.js');
 
-        $obPromoBlockCollection = PromoBlockCollection::make()->active()->sort(
+        $this->page['obPromoBlockList'] = PromoBlockCollection::make()->active()->sort(
             $this->property('sorting', 'default')
         );
-
-        $this->page['obPromoBlockList'] = $obPromoBlockCollection;
-
-        $obFirstPromoBlock = $obPromoBlockCollection->first();
-        if (empty($obFirstPromoBlock) || $obFirstPromoBlock->isEmpty()) {
-            return;
-        }
-
-        $iLimit = (int) $this->property('productsPerTab', 10);
-
-        $this->page['obFirstTabProductList'] = $this->getProductListByPromoBlock(
-            $obFirstPromoBlock,
-            (string) $obFirstPromoBlock->code,
-            $iLimit
-        );
-        $this->page['iFirstPromoBlockId'] = (int) $obFirstPromoBlock->id;
-        $this->page['iProductsPerTab'] = $iLimit;
     }
 
     /**
-     * AJAX handler — loads product cards for a single promo block tab.
+     * AJAX handler - loads product cards for a single promo block tab.
      *
      * @return array
      */

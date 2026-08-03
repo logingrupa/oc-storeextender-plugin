@@ -1,46 +1,18 @@
 {##}
-{# LazyPromoBlockLoader — Tab navigation with lazy-loaded product content #}
-{# Products are fetched via AJAX when a tab becomes active #}
+{# LazyPromoBlockLoader - tab navigation with lazy-loaded product content. #}
+{# Every tab ships a skeleton and fetches its cards over onLoadPromoTab. The
+   first tab is requested as soon as the control connects, so it is not waiting
+   on a click or a scroll; the rest are requested when they are opened.
+   The skeleton styling lives in the theme bundle (src/css/partials/_promo-skeleton),
+   imported by every entry that renders this component. #}
 
 {% if obPromoBlockList is not empty %}
-<style>
-.skeleton-product .skeleton-pulse {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-    background-size: 200% 100%;
-    animation: skeleton-shimmer 1.5s ease-in-out infinite;
-    border-radius: 4px;
-}
-.skeleton-product .skeleton-image {
-    width: 100%;
-    padding-bottom: 137%;
-    background-color: #f0f0f0;
-}
-.skeleton-product .skeleton-title {
-    height: 18px;
-    width: 80%;
-    margin: 12px 0 8px;
-}
-.skeleton-product .skeleton-link {
-    height: 14px;
-    width: 50%;
-    margin-bottom: 8px;
-}
-.skeleton-product .skeleton-price {
-    height: 18px;
-    width: 35%;
-}
-@keyframes skeleton-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-</style>
 <div class="tab-product-list-area mb-25 mb-md-5 mb-sm-5">
     <div class="container">
         <div class="row">
             <div class="col-lg-12"
                  data-control="lazy-tab"
-                 data-lazy-tab-handler="{{ __SELF__ ~ '::onLoadPromoTab' }}"
-                 data-lazy-tab-preloaded-id="{{ iFirstPromoBlockId }}">
+                 data-lazy-tab-handler="{{ __SELF__ ~ '::onLoadPromoTab' }}">
                 <!--=======  tab product navigation  =======-->
                 <div class="tab-product-navigation mb-50">
                     <div class="nav nav-tabs justify-content-center" id="nav-tab2" role="tablist">
@@ -67,11 +39,7 @@
                              role="tabpanel"
                              aria-labelledby="product-tab-{{ loop.index }}">
                             <div class="row js-product-rail" id="lazy-tab-content-{{ obPromoBlock.id }}">
-                                {% if loop.first and obFirstTabProductList is not empty %}
-                                    {% partial __SELF__ ~ '::tab-content' obProductList=obFirstTabProductList obPromoBlock=obPromoBlock iLimit=iProductsPerTab %}
-                                {% else %}
-                                    {% partial __SELF__ ~ '::skeleton' %}
-                                {% endif %}
+                                {% partial __SELF__ ~ '::skeleton' %}
                             </div>
                             <div class="col-lg-12 text-center mb-50">
                                 <a class="btn btn-light" href="{{ 'promo-block-page'|page({slug:obPromoBlock.slug}) }}" role="button">{{ 'Show all'|_ }}</a>
