@@ -70,6 +70,12 @@ class LazyPromoBlockLoader extends \Cms\Classes\ComponentBase
         $this->page['obPromoBlockList'] = PromoBlockCollection::make()->active()->sort(
             $this->property('sorting', 'default')
         );
+
+        // The skeleton has to reserve room for as many cards as the handler will
+        // return. Rendering a fixed five while the handler sent ten made the tab
+        // double in height when the response landed - 0.18 of cumulative layout
+        // shift on the home page, all of it from this one block.
+        $this->page['iProductsPerTab'] = (int) $this->property('productsPerTab', 10);
     }
 
     /**

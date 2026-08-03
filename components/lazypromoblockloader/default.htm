@@ -39,7 +39,7 @@
                              role="tabpanel"
                              aria-labelledby="product-tab-{{ loop.index }}">
                             <div class="row js-product-rail" id="lazy-tab-content-{{ obPromoBlock.id }}">
-                                {% partial __SELF__ ~ '::skeleton' %}
+                                {% partial __SELF__ ~ '::skeleton' iCardCount=iProductsPerTab %}
                             </div>
                             <div class="col-lg-12 text-center mb-50">
                                 <a class="btn btn-light" href="{{ 'promo-block-page'|page({slug:obPromoBlock.slug}) }}" role="button">{{ 'Show all'|_ }}</a>

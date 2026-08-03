@@ -1,7 +1,15 @@
 {##}
-{# Skeleton placeholder — 5 product card placeholders matching the product-card grid #}
+{# Loading placeholder for one promo tab.
 
-{% for i in 1..5 %}
+   iCardCount MUST match what onLoadPromoTab will return. A fixed five against a
+   handler returning ten made the tab double in height the moment the response
+   landed, which was the whole of the home page's cumulative layout shift.
+
+   The wrapper classes are the ones product-card.htm renders, so the placeholder
+   grid and the real grid break at the same points. #}
+
+{% set iCardCount = iCardCount|default(10) %}
+{% for i in 1..iCardCount %}
 <div class="col-6 col-md-4 col-sm-6 mb-45 col-lg-is-5">
     <div class="single-product skeleton-product">
         <div class="single-product__image">
