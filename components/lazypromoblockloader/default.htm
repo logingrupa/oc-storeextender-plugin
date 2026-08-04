@@ -38,6 +38,13 @@
                              id="product-series-{{ loop.index }}"
                              role="tabpanel"
                              aria-labelledby="product-tab-{{ loop.index }}">
+                            {# Empty host for the rail's paging arrows. rail-nav.js adopts an
+                               existing .hr-rail-tools rather than creating one, so rendering it
+                               here means the arrows drop into a box that already has its height
+                               instead of inserting a new row above the rail and pushing the whole
+                               tab down 40px. Phone only: above the breakpoint the rail does not
+                               scroll, no arrows are armed and this span collapses to nothing. #}
+                            <span class="hr-rail-tools hr-rail-tools--standalone"></span>
                             <div class="row js-product-rail" id="lazy-tab-content-{{ obPromoBlock.id }}">
                                 {% partial __SELF__ ~ '::skeleton' iCardCount=iProductsPerTab %}
                             </div>
