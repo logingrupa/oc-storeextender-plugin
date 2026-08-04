@@ -55,3 +55,5 @@
   - 'LazyPromoBlockLoader: the skeleton reserves one placeholder per card the handler will actually return instead of a fixed five, removing 0.20 of cumulative layout shift on the home page'
 2.0.17:
   - 'LazyPromoBlockLoader: the skeleton card now matches a loaded card exactly - the form wrapper product-card.htm uses, so the placeholder column and the real column are the same height and the tab does not move when the response lands'
+2.0.18:
+  - 'Slug-keyed pagefinder types shop-product-slug and shop-promo-block-slug. The id-keyed shop-product type loads the whole ProductItem only to read its slug - 140 queries for the home page banners on a cold cache against 0 - and stores an id that differs between environments. Promo blocks had no pagefinder type at all.'
