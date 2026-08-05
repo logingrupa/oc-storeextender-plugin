@@ -16,6 +16,14 @@
  * own record. Saving settings under a non-primary site still creates an explicit
  * per-site override, which then takes precedence.
  *
+ * XmlImportSettings needs this for a different reason than the storefront pair,
+ * and it stayed hidden for longer. On nailscosmetics.no the only settings row
+ * belongs to site 1 while the PRIMARY site is 2, so a console command - which
+ * resolves the primary site and never a request's one - read null for every
+ * field: no file list, no XPaths, no field maps. The 1C import therefore could
+ * not run from CLI at all on that deployment. It never showed on .lv, where
+ * site 1 happens to be the primary one and the lookup finds its row directly.
+ *
  * @package Logingrupa\StoreExtender\Classes\Event\Settings
  */
 class SettingsSiteFallbackHandler
@@ -27,6 +35,7 @@ class SettingsSiteFallbackHandler
     const AR_SETTINGS_MODEL_LIST = [
         \Lovata\Shopaholic\Models\Settings::class,
         \Lovata\Toolbox\Models\Settings::class,
+        \Lovata\Shopaholic\Models\XmlImportSettings::class,
     ];
 
     /**
