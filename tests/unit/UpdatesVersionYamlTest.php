@@ -59,4 +59,49 @@ class UpdatesVersionYamlTest extends TestCase
             }
         }
     }
+
+    /**
+     * The same guard, for every OTHER logingrupa plugin in this deployment.
+     *
+     * The failure mode is not local to one plugin: october:migrate parses each
+     * of these files, so one malformed line anywhere kills a deploy or, worse,
+     * lets it report success while system_plugin_versions silently stops
+     * following the code. Duplicating this test into fourteen plugins - most of
+     * which have no test suite at all - would be fourteen copies of one rule,
+     * so it is asserted once, here, across all of them.
+     *
+     * A plugin with no updates/version.yaml is not a failure; several have no
+     * migrations to declare.
+     */
+    public function testEverySiblingPluginVersionFileIsValid()
+    {
+        $arPathList = glob(__DIR__.'/../../../*/updates/version.yaml');
+        $this->assertNotEmpty($arPathList, 'No logingrupa plugin version files found at all');
+
+        foreach ($arPathList as $sPath) {
+            $sPluginName = basename(dirname(dirname($sPath)));
+
+            try {
+                $arVersionList = Yaml::parseFile($sPath);
+            } catch (\Throwable $obException) {
+                $this->fail(sprintf(
+                    '%s/updates/version.yaml is not valid YAML: %s'
+                        . ' (prose containing ": " has to be quoted)',
+                    $sPluginName,
+                    $obException->getMessage()
+                ));
+            }
+
+            $this->assertIsArray($arVersionList, $sPluginName.' version.yaml is not a mapping');
+            $this->assertNotEmpty($arVersionList, $sPluginName.' version.yaml is empty');
+
+            foreach ($arVersionList as $sVersion => $mNote) {
+                $this->assertMatchesRegularExpression(
+                    '/^\d+\.\d+\.\d+$/',
+                    (string) $sVersion,
+                    sprintf('%s: "%s" is not a version number', $sPluginName, $sVersion)
+                );
+            }
+        }
+    }
 }
