@@ -28,7 +28,25 @@ class ColorApiClient
 
     const CACHE_TTL_SECONDS = 3600;
     const CACHE_TTL_ERROR_SECONDS = 300;
-    const REQUEST_TIMEOUT_SECONDS = 3;
+
+    /**
+     * Slowest cold-path response measured against nailolab.com, taken from the
+     * nailscosmetics.no box on 2026-08-05: 11.1s while the exporter rebuilt its
+     * hourly cache, against a 0.26s steady state over the next five requests.
+     */
+    const OBSERVED_COLD_EXPORT_SECONDS = 12;
+
+    /**
+     * Only the hourly CLI sync holds this client - the storefront reads the
+     * local table through ColorMapRepository and never opens a socket - so a
+     * generous timeout costs at worst one cron run, never a page render.
+     *
+     * It MUST stay above OBSERVED_COLD_EXPORT_SECONDS. The sync period and the
+     * export's own Cache-Control max-age are both one hour, so runs land on the
+     * regenerating cold path often rather than rarely. At the previous 3s this
+     * timed out at 3002ms every time and nailscosmetics.no never synced once.
+     */
+    const REQUEST_TIMEOUT_SECONDS = 30;
 
     const CACHE_KEY_BODY = 'storeextender.color_api.body';
     const CACHE_KEY_ETAG = 'storeextender.color_api.etag';
