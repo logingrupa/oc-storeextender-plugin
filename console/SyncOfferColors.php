@@ -22,7 +22,9 @@ class SyncOfferColors extends Command
     const UPSERT_CHUNK_SIZE = 500;
 
     /** @var string */
-    protected $signature = 'storeextender:sync-offer-colors';
+    protected $signature = 'storeextender:sync-offer-colors
+        {--force : Re-import even when the export has not changed}
+        {--status : Report sync state and exit without writing anything}';
 
     /** @var string */
     protected $description = 'Sync offer color families from the color-lab API into the local table';
@@ -30,6 +32,31 @@ class SyncOfferColors extends Command
     public function handle(): int
     {
         $obApiClient = new ColorApiClient();
+        $obRepository = new ColorMapRepository();
+
+        // Go to the network every run. Inside the client's freshness window a
+        // cached payload answers "nothing changed" for up to an hour after a
+        // real change, which is precisely the blind spot a scheduled check
+        // exists to close. If-None-Match keeps an unchanged export at one 304.
+        $obApiClient->fetchFresh();
+        $sRemoteVersion = $obApiClient->getVersion();
+        $sRemoteUpdatedAt = $obApiClient->getLastUpdatedAt();
+        $bReachable = in_array($obApiClient->getLastFetchStatus(), [200, 304], true);
+
+        if ($this->option('status')) {
+            return $this->reportStatus($obApiClient, $obRepository, $sRemoteVersion, $sRemoteUpdatedAt, $bReachable);
+        }
+
+        if (!$this->option('force') && $this->isUpToDate($obRepository, $sRemoteVersion, $bReachable)) {
+            $this->info(sprintf(
+                'Already in sync: export %s unchanged since our import at %s.',
+                $sRemoteUpdatedAt !== '' ? $sRemoteUpdatedAt : '(no timestamp)',
+                $obRepository->getSyncedAt() !== '' ? $obRepository->getSyncedAt() : '(unknown)'
+            ));
+
+            return self::SUCCESS;
+        }
+
         $arColorMap = $obApiClient->getColorMap();
 
         // Fail-safe: an unreachable API or empty payload must never wipe the
@@ -58,11 +85,90 @@ class SyncOfferColors extends Command
                 ->delete();
         });
 
-        (new ColorMapRepository())->markSynced($obApiClient->getVersion());
+        $obRepository->markSynced($sRemoteVersion, $sRemoteUpdatedAt);
 
-        $this->info(sprintf('Synced %d offer colors (%d removed).', count($arRowList), $iDeletedCount));
+        $this->info(sprintf(
+            'Synced %d offer colors (%d removed), export updated %s.',
+            count($arRowList),
+            $iDeletedCount,
+            $sRemoteUpdatedAt !== '' ? $sRemoteUpdatedAt : '(no timestamp)'
+        ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Whether the local table already holds this export.
+     *
+     * The version stamp is the authority on WHETHER anything changed; the
+     * export timestamp only says WHEN, and moves on a re-export that changed
+     * nothing. Two cases deliberately report "not up to date": an API we could
+     * not reach proves nothing, and a table that has been emptied has to be
+     * refilled even when the stamps agree.
+     *
+     * @param ColorMapRepository $obRepository
+     * @param string             $sRemoteVersion
+     * @param bool               $bReachable
+     * @return bool
+     */
+    protected function isUpToDate(ColorMapRepository $obRepository, string $sRemoteVersion, bool $bReachable): bool
+    {
+        if (!$bReachable || $sRemoteVersion === '') {
+            return false;
+        }
+
+        if ($sRemoteVersion !== $obRepository->getVersion()) {
+            return false;
+        }
+
+        return OfferColor::query()->exists();
+    }
+
+    /**
+     * Print what the export says against what we last imported, and exit
+     * non-zero on drift so a cron or monitor can alert on it. Writes nothing.
+     *
+     * @param ColorApiClient     $obApiClient
+     * @param ColorMapRepository $obRepository
+     * @param string             $sRemoteVersion
+     * @param string             $sRemoteUpdatedAt
+     * @param bool               $bReachable
+     * @return int
+     */
+    protected function reportStatus(
+        ColorApiClient $obApiClient,
+        ColorMapRepository $obRepository,
+        string $sRemoteVersion,
+        string $sRemoteUpdatedAt,
+        bool $bReachable
+    ): int {
+        $iRowCount = OfferColor::query()->count();
+        $sLocalVersion = $obRepository->getVersion();
+
+        $this->line('Offer color sync status');
+        $this->line(sprintf('  api                  %s (HTTP %d)', $obApiClient->getHost(), $obApiClient->getLastFetchStatus()));
+        $this->line(sprintf('  export version       %s', $sRemoteVersion !== '' ? $sRemoteVersion : '(none)'));
+        $this->line(sprintf('  export last updated  %s', $sRemoteUpdatedAt !== '' ? $sRemoteUpdatedAt : '(none)'));
+        $this->line(sprintf('  imported version     %s', $sLocalVersion !== '' ? $sLocalVersion : '(never synced)'));
+        $this->line(sprintf('  imported export from %s', $obRepository->getExportUpdatedAt() !== '' ? $obRepository->getExportUpdatedAt() : '(unknown)'));
+        $this->line(sprintf('  imported at          %s', $obRepository->getSyncedAt() !== '' ? $obRepository->getSyncedAt() : '(never)'));
+        $this->line(sprintf('  rows in local table  %d', $iRowCount));
+
+        if (!$bReachable) {
+            $this->error('  VERDICT              api unreachable, cannot tell whether we are in sync');
+
+            return self::FAILURE;
+        }
+
+        if ($this->isUpToDate($obRepository, $sRemoteVersion, $bReachable)) {
+            $this->info('  VERDICT              in sync');
+
+            return self::SUCCESS;
+        }
+
+        $this->warn('  VERDICT              STALE, the export has moved since our last import');
+
+        return self::FAILURE;
     }
 
     /**

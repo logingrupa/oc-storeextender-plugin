@@ -34,6 +34,9 @@ class ColorApiClient
     const CACHE_KEY_ETAG = 'storeextender.color_api.etag';
     const CACHE_KEY_FRESH = 'storeextender.color_api.fresh';
 
+    /** @var int HTTP status of the last fetch; -1 until one is attempted */
+    protected $iLastFetchStatus = -1;
+
     /**
      * Get color map keyed by bare offer UUID
      *
@@ -60,6 +63,66 @@ class ColorApiClient
         $arPayload = $this->getPayload();
 
         return isset($arPayload['version']) ? (string) $arPayload['version'] : '';
+    }
+
+    /**
+     * When the color data upstream last changed, as the API reports it
+     * (Y-m-d H:i:s in the exporting server's own time).
+     *
+     * ONE global stamp for the whole payload - there are deliberately no
+     * per-offer timestamps. Use it to say WHEN the data changed; use the
+     * version stamp to decide WHETHER it changed, since a re-export with no
+     * content change moves this and leaves the version alone.
+     *
+     * @return string empty when the API does not send the field
+     */
+    public function getLastUpdatedAt(): string
+    {
+        $arPayload = $this->getPayload();
+
+        return isset($arPayload['last_updated_at']) ? (string) $arPayload['last_updated_at'] : '';
+    }
+
+    /**
+     * Ask the API now, ignoring the freshness window.
+     *
+     * getPayload() answers from cache for CACHE_TTL_SECONDS, so a scheduled
+     * check running on that same period would keep reporting "nothing
+     * changed" for up to an hour after a real change. The request still
+     * carries If-None-Match, so an unchanged export costs one 304.
+     *
+     * @return array
+     */
+    public function fetchFresh(): array
+    {
+        return $this->refreshPayload();
+    }
+
+    /**
+     * HTTP status of the most recent fetch: 200 fresh body, 304 unchanged,
+     * 0 network error, -1 nothing fetched yet, otherwise the server's status.
+     *
+     * Callers need this to tell "the export has not changed" apart from "we
+     * could not reach the API", because every failure path here falls back to
+     * the last cached body and would otherwise look identical to no change.
+     *
+     * @return int
+     */
+    public function getLastFetchStatus(): int
+    {
+        return $this->iLastFetchStatus;
+    }
+
+    /**
+     * API host in use, without a trailing slash. Public so a status report can
+     * name the environment it just questioned without re-reading the config
+     * itself and drifting from what the request actually used.
+     *
+     * @return string
+     */
+    public function getHost(): string
+    {
+        return rtrim((string) Config::get('services.color_lab.host', self::DEFAULT_API_HOST), '/');
     }
 
     /**
@@ -96,11 +159,14 @@ class ColorApiClient
             $obResponse = $this->sendRequest();
         } catch (\Throwable $obException) {
             // silent to caller: offer sheet must render without colors, never 500
+            $this->iLastFetchStatus = 0;
             Log::warning('ColorApiClient: request failed - '.$obException->getMessage());
             Cache::put(self::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
 
             return $arStaleBody;
         }
+
+        $this->iLastFetchStatus = $obResponse->status();
 
         if ($obResponse->status() === 304) {
             Cache::put(self::CACHE_KEY_FRESH, true, self::CACHE_TTL_SECONDS);
@@ -153,7 +219,7 @@ class ColorApiClient
      */
     protected function sendRequest(): Response
     {
-        $sHost = rtrim((string) Config::get('services.color_lab.host', self::DEFAULT_API_HOST), '/');
+        $sHost = $this->getHost();
         $obRequest = Http::timeout(self::REQUEST_TIMEOUT_SECONDS)->acceptJson();
         if (str_ends_with($sHost, '.test')) {
             // local dev hosts use self-signed certificates

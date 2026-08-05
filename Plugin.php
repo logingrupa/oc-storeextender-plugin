@@ -100,7 +100,7 @@ class Plugin extends PluginBase
 
         // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
         // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
-        // DeferrableProvider, so it registers `mail.manager` lazily on first Mail call —
+        // DeferrableProvider, so it registers `mail.manager` lazily on first Mail call -
         // AFTER plugin register(). A singleton() rebind here gets clobbered when the
         // deferred provider finally registers. extend() accumulates regardless of
         // registration order and runs on resolve, after the original binding is built.
@@ -424,7 +424,7 @@ class Plugin extends PluginBase
         $arDefaultMapping = array_first($arVatMapping);
         $fDefaultSourceRate = (float) array_get($arDefaultMapping, 'source_vat_rate', 0);
 
-        // If product has the default source VAT rate, skip — global tax handles it
+        // If product has the default source VAT rate, skip - global tax handles it
         if ($fSourceVatRate == $fDefaultSourceRate) {
             return;
         }
@@ -468,10 +468,13 @@ class Plugin extends PluginBase
      */
     public function registerSchedule($obSchedule)
     {
-        // Color data changes only when curated in nailolab - twice a day
-        // covers it; the client sends If-None-Match, so an unchanged run
-        // costs one 304 round trip
-        $obSchedule->command('storeextender:sync-offer-colors')->twiceDaily(9, 13);
+        // Hourly, matching the export's own Cache-Control: max-age=3600, so
+        // the storefront is at most an hour behind a curation change. Twice a
+        // day left a real gap: the 2026-08-05 regrouping landed at 09:49 UTC,
+        // just after the 09:00 run, and would have sat unseen until 13:00.
+        // An unchanged export costs one 304 and no write, because the command
+        // compares the payload version against the one it last imported.
+        $obSchedule->command('storeextender:sync-offer-colors')->hourly();
     }
 
     /**
@@ -644,7 +647,7 @@ class Plugin extends PluginBase
             });
         };
 
-        // Class-level extend — methods are added at construction time, before form renders
+        // Class-level extend - methods are added at construction time, before form renders
         \Cms\Models\ThemeData::extend($fnAddDropdownMethods);
 
         if (class_exists('\RainLab\Translate\Models\MLThemeData')) {
@@ -731,7 +734,7 @@ class Plugin extends PluginBase
 
             // Build URL via Page::url() because getPageUrl() fails when the
             // ProductPage component is aliased as "CustomProductPage ProductPage"
-            // — Lovata's PageHelper regex only matches keys starting with "ProductPage".
+            // - Lovata's PageHelper regex only matches keys starting with "ProductPage".
             $sPageUrl = \Cms\Classes\Page::url(
                 $obItem->cmsPage ?: 'product',
                 ['slug' => $obProductItem->slug]
@@ -746,7 +749,7 @@ class Plugin extends PluginBase
         });
 
         // Mirror Shopaholic's category/catalog types to cms.pageLookup.* events
-        // (Shopaholic only registers on pages.menuitem.* — pagefinder needs both)
+        // (Shopaholic only registers on pages.menuitem.* - pagefinder needs both)
         $arShopaholicMenuTypes = [
             \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::class,
             \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::class,

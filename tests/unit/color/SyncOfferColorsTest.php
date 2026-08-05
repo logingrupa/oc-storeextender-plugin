@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Logingrupa\StoreExtender\Classes\Color\ColorMapRepository;
 use Logingrupa\StoreExtender\Models\OfferColor;
+use System\Models\Parameter;
 
 /**
  * Integration test of the sync command + repository read side: real SQLite DB,
@@ -38,6 +39,11 @@ class SyncOfferColorsTest extends \PluginTestCase
             $this->markTestSkipped('Test bootstrap failed on this environment: '.$obException->getMessage());
         }
         Cache::flush();
+        // Parameter keeps a static cache that outlives the per-test database,
+        // so without this the sync state written by one test answers the next
+        // one's reads. Harmless in production, where every request and every
+        // console run is its own process.
+        Parameter::clearInternalCache();
     }
 
     public function testSyncImportsValidEntriesAndSkipsInvalid()
@@ -101,5 +107,154 @@ class SyncOfferColorsTest extends \PluginTestCase
     {
         $this->assertSame('', (new ColorMapRepository())->getVersion());
         $this->assertSame([], (new ColorMapRepository())->getColorMap());
+    }
+
+    public function testSyncRecordsExportTimestampAndImportTime()
+    {
+        $arBody = $this->arValidBody + ['last_updated_at' => '2026-08-05 09:49:08'];
+        Http::fake(['*' => Http::response($arBody, 200)]);
+
+        Artisan::call('storeextender:sync-offer-colors');
+
+        $obRepository = new ColorMapRepository();
+        $this->assertSame('2026-08-05 09:49:08', $obRepository->getExportUpdatedAt());
+        $this->assertNotSame('', $obRepository->getSyncedAt(), 'the import time must be recorded');
+    }
+
+    public function testSyncStateSurvivesACacheClear()
+    {
+        Http::fake(['*' => Http::response($this->arValidBody + ['last_updated_at' => '2026-08-05 09:49:08'], 200)]);
+        Artisan::call('storeextender:sync-offer-colors');
+
+        // The deploy runs cache:clear, and this state used to live only in the
+        // cache - after which nothing could say what had already been imported
+        Cache::flush();
+
+        $obRepository = new ColorMapRepository();
+        $this->assertSame('v42', $obRepository->getVersion());
+        $this->assertSame('2026-08-05 09:49:08', $obRepository->getExportUpdatedAt());
+    }
+
+    public function testLegacyCachedVersionCannotShadowThePersistedOne()
+    {
+        // Before this release the version stamp lived under this cache key. On
+        // upgrade the old entry is still there, holding the version currently
+        // live upstream, so a getVersion() that read the cache first would
+        // report "already in sync", skip the import and never persist any
+        // state - the drift check would sit at "never synced" forever.
+        Cache::forever(ColorMapRepository::CACHE_KEY_LEGACY_VERSION, 'v42');
+
+        $this->assertSame(
+            '',
+            (new ColorMapRepository())->getVersion(),
+            'a leftover cache entry must not answer for the persisted version'
+        );
+
+        Http::fake(['*' => Http::response($this->arValidBody, 200)]);
+        Artisan::call('storeextender:sync-offer-colors');
+
+        $this->assertSame(2, OfferColor::count(), 'the import must still run on upgrade');
+        $this->assertNotSame('', (new ColorMapRepository())->getSyncedAt());
+    }
+
+    public function testUnchangedExportIsNotReimported()
+    {
+        Http::fake(['*' => Http::response($this->arValidBody, 200)]);
+        Artisan::call('storeextender:sync-offer-colors');
+
+        // Same version stamp: the second run must leave the table alone rather
+        // than rewriting every row on every hourly tick
+        OfferColor::where('offer_uuid', 'uuid-pink')->update(['family' => 'SentinelValue']);
+        Artisan::call('storeextender:sync-offer-colors');
+
+        $this->assertSame(
+            'SentinelValue',
+            OfferColor::where('offer_uuid', 'uuid-pink')->first()->family,
+            'an unchanged export must not trigger a write'
+        );
+    }
+
+    public function testChangedExportIsReimported()
+    {
+        // A sequence, not two fake() calls: a second fake() ADDS a stub rather
+        // than replacing one, so the original '*' would keep answering and the
+        // new version would never arrive. Each run makes exactly one request.
+        $arNextBody = $this->arValidBody;
+        $arNextBody['version'] = 'v43';
+        Http::fakeSequence()
+            ->push($this->arValidBody, 200)
+            ->push($arNextBody, 200);
+
+        Artisan::call('storeextender:sync-offer-colors');
+        OfferColor::where('offer_uuid', 'uuid-pink')->update(['family' => 'SentinelValue']);
+        Artisan::call('storeextender:sync-offer-colors');
+
+        $this->assertSame('Pink', OfferColor::where('offer_uuid', 'uuid-pink')->first()->family);
+        $this->assertSame('v43', (new ColorMapRepository())->getVersion());
+    }
+
+    public function testForceReimportsAnUnchangedExport()
+    {
+        Http::fake(['*' => Http::response($this->arValidBody, 200)]);
+        Artisan::call('storeextender:sync-offer-colors');
+        OfferColor::where('offer_uuid', 'uuid-pink')->update(['family' => 'SentinelValue']);
+
+        Artisan::call('storeextender:sync-offer-colors', ['--force' => true]);
+
+        $this->assertSame('Pink', OfferColor::where('offer_uuid', 'uuid-pink')->first()->family);
+    }
+
+    public function testEmptiedTableIsRefilledEvenWhenTheVersionMatches()
+    {
+        Http::fake(['*' => Http::response($this->arValidBody, 200)]);
+        Artisan::call('storeextender:sync-offer-colors');
+        OfferColor::query()->delete();
+
+        Artisan::call('storeextender:sync-offer-colors');
+
+        $this->assertSame(2, OfferColor::count(), 'a wiped table must refill even on a matching version');
+    }
+
+    public function testStatusReportsInSyncAndWritesNothing()
+    {
+        Http::fake(['*' => Http::response($this->arValidBody, 200)]);
+        Artisan::call('storeextender:sync-offer-colors');
+        OfferColor::where('offer_uuid', 'uuid-pink')->update(['family' => 'SentinelValue']);
+
+        $iExitCode = Artisan::call('storeextender:sync-offer-colors', ['--status' => true]);
+
+        $this->assertSame(0, $iExitCode);
+        $this->assertSame(
+            'SentinelValue',
+            OfferColor::where('offer_uuid', 'uuid-pink')->first()->family,
+            '--status must not import'
+        );
+    }
+
+    public function testStatusExitsNonZeroWhenTheExportHasMoved()
+    {
+        $arNextBody = $this->arValidBody;
+        $arNextBody['version'] = 'v43';
+        Http::fakeSequence()
+            ->push($this->arValidBody, 200)
+            ->push($arNextBody, 200);
+
+        Artisan::call('storeextender:sync-offer-colors');
+
+        $this->assertSame(1, Artisan::call('storeextender:sync-offer-colors', ['--status' => true]));
+    }
+
+    public function testStatusExitsNonZeroWhenTheApiIsUnreachable()
+    {
+        Http::fake(['*' => Http::response($this->arValidBody, 200)]);
+        Artisan::call('storeextender:sync-offer-colors');
+
+        // An API we cannot reach proves nothing, so it must never read as
+        // "in sync" just because the last cached body still matches
+        Http::fake(function () {
+            throw new \Illuminate\Http\Client\ConnectionException('refused');
+        });
+
+        $this->assertSame(1, Artisan::call('storeextender:sync-offer-colors', ['--status' => true]));
     }
 }
