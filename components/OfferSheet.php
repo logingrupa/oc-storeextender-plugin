@@ -121,10 +121,12 @@ class OfferSheet extends ComponentBase
                 'bHasMore' => $iNextOffset < $iTotalCount,
                 'arFamilyChipList' => $this->getFamilyChipList($obProductItem),
             ]),
-            '#hr-sheet-footer' => $this->controller->renderPartial('home-redesign/shared/offers-sheet-footer', [
+            // trimmed: select mode renders no CTA and only a whitespace-free
+            // footer matches the :empty rule that collapses it
+            '#hr-sheet-footer' => trim((string) $this->controller->renderPartial('home-redesign/shared/offers-sheet-footer', [
                 'obProduct' => $obProductItem,
                 'bSelectMode' => $this->getMode() === self::MODE_SELECT,
-            ]),
+            ])),
             'arCartOfferIdList' => $this->getCartOfferIdList(),
         ];
     }
