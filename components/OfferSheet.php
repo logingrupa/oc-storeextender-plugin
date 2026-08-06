@@ -20,22 +20,25 @@ use Logingrupa\StoreExtender\Classes\Color\OfferColorGrouper;
  * AJAX handler surface for the slide-over offer/shade sheet (home redesign
  * pages + product page). Attach to a page, render the
  * 'home-redesign/shared/sheet' partial, and put [data-hr-sheet="onShowOffers"]
- * triggers in the markup - hr-ui.js does the rest. Handlers resolve
- * unprefixed through the component, so pages need no PHP of their own.
+ * triggers in the markup - themes/logingrupa-naisstore/src/modules/offer-sheet
+ * does the rest. Handlers resolve unprefixed through the component, so pages
+ * need no PHP of their own.
  *
  * Row HTML is cart-agnostic and cached per product+site+locale+currency+price
  * type (see getRowListHtml); cart marks ride along as arCartOfferIdList and
  * are applied client-side.
- *
- * @method array|null onShowOffers()
- * @method array|null onShowOffersPage()
- * @method array|null onGetOfferImages()
  */
 class OfferSheet extends ComponentBase
 {
     const CACHE_TAG_SHEET = 'hr-sheet';
     const CACHE_KEY_EPOCH = 'hr.sheet.epoch';
     const CACHE_TTL_MINUTES = 10;
+
+    /** Shades the product page shows inline before the sheet takes over */
+    const INLINE_LIMIT = 12;
+
+    /** Shades kept before the selected one when the strip is windowed */
+    const WINDOW_BEFORE = 5;
 
     public function componentDetails()
     {
@@ -71,15 +74,15 @@ class OfferSheet extends ComponentBase
 
     /**
      * Expose the localStorage epoch token to the page. cache:clear wipes the
-     * key, the next request mints a new value, hr-ui.js drops its store on
-     * mismatch (XML import workflow).
+     * key, the next request mints a new value, sheet-cache.js drops its store
+     * on mismatch (XML import workflow).
      */
     public function onRun()
     {
         $sEpoch = (string) Cache::rememberForever(self::CACHE_KEY_EPOCH, function () {
             return (string) microtime(true);
         });
-        // hr-ui.js keys its localStorage store by this token and purges on
+        // sheet-cache.js keys its localStorage store by this token and purges on
         // mismatch. Locale + currency ride along, otherwise a cached sheet
         // body from another locale/currency survives the switch.
         $this->page['sHrCacheEpoch'] = implode('.', [
@@ -90,7 +93,7 @@ class OfferSheet extends ComponentBase
         $this->page['sHrSheetMode'] = $this->getMode();
     }
 
-    public function getPageSize(): int
+    protected function getPageSize(): int
     {
         $iPageSize = (int) $this->property('page_size');
 
@@ -198,11 +201,94 @@ class OfferSheet extends ComponentBase
     }
 
     /**
+     * The product page's swatch strip, re-rendered.
+     *
+     * The page filters its own shade circles instead of opening the sheet,
+     * and follows a shade picked inside the sheet, so both need the strip
+     * rebuilt: filtered to a family, or windowed around one shade. This is
+     * the ONLY renderer of that markup - it hands back the same partial the
+     * page renders on load, so no client-side copy of it can drift.
+     *
+     * Selection is applied client-side, which keeps the HTML free of
+     * per-visitor state and therefore cacheable.
+     *
+     * @return array|null
+     */
+    public function onGetSwatchStrip()
+    {
+        $obProductItem = $this->getProductItemFromRequest();
+        if ($obProductItem === null) {
+            return null;
+        }
+        $sFamily = trim((string) input('family'));
+        // Bounded on purpose: the offer rides the cache key, so an id from
+        // another product - or from nowhere - would mint an unbounded number
+        // of entries holding the same head window
+        $iOfferId = (int) input('offer_id');
+        if ($iOfferId > 0 && (int) OfferItem::make($iOfferId)->product_id !== (int) $obProductItem->id) {
+            $iOfferId = 0;
+        }
+        // Display preference only (sold-out shades), mirrored from the
+        // rendered strip: the theme owns the setting, the plugin must not
+        // reach into theme config to re-derive it
+        $bHideSoldOut = (bool) input('hide_oos');
+
+        $sStripHtml = $this->getSwatchStripHtml($obProductItem, $sFamily, $iOfferId, $bHideSoldOut);
+        if ($sStripHtml === '') {
+            return null; // unknown family for this product
+        }
+
+        return [
+            'sFamily' => $sFamily,
+            'sStripHtml' => $sStripHtml,
+        ];
+    }
+
+    /**
+     * Rendered swatch strip, cached like the sheet rows. A family strip holds
+     * every shade of that family whatever is selected, so its key carries no
+     * offer; a windowed strip is centred on one shade and keys on it.
+     */
+    protected function getSwatchStripHtml(
+        ProductItem $obProductItem,
+        string $sFamily,
+        int $iOfferId,
+        bool $bHideSoldOut
+    ): string {
+        $sCacheKey = $this->buildCacheKey([
+            'hr.strip',
+            $obProductItem->id,
+            $sFamily !== '' ? $sFamily : 'window.'.$iOfferId,
+            (int) $bHideSoldOut,
+        ]);
+        $sStripHtml = CCache::get([self::CACHE_TAG_SHEET], $sCacheKey);
+        if (!empty($sStripHtml)) {
+            return $sStripHtml;
+        }
+
+        $arSwatchData = $this->getInlineSwatchData($obProductItem, $bHideSoldOut, $sFamily, $iOfferId);
+        if ($arSwatchData['sActiveFamily'] !== $sFamily) {
+            return ''; // fail fast: the product has no such family
+        }
+
+        $sStripHtml = (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
+            'obProduct' => $obProductItem,
+            'arInlineOfferList' => $arSwatchData['arOfferItemList'],
+            'iTotalCount' => $arSwatchData['iTotalCount'],
+            'bUseSheet' => $arSwatchData['bUseSheet'],
+            'iSelectedOfferId' => 0,
+        ]);
+        CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
+
+        return $sStripHtml;
+    }
+
+    /**
      * Offer ids currently in the cart - applied client-side so cached row
      * HTML stays shared between visitors
      * @return array
      */
-    public function getCartOfferIdList(): array
+    protected function getCartOfferIdList(): array
     {
         $arCartOfferIdList = [];
         foreach (CartProcessor::instance()->get() as $obCartPositionItem) {
@@ -221,7 +307,7 @@ class OfferSheet extends ComponentBase
      *
      * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'bGroupStart' => bool]]
      */
-    public function getOrderedRowList(ProductItem $obProductItem): array
+    protected function getOrderedRowList(ProductItem $obProductItem): array
     {
         $arIdList = $obProductItem->offer->getIDList();
         $arColorMap = (new ColorMapRepository())->getColorMap();
@@ -254,7 +340,7 @@ class OfferSheet extends ComponentBase
      * Chip per family in group order: label + representative swatch + count
      * @return array [['sFamily' => string, 'sHex' => string|null, 'iCount' => int]]
      */
-    public function getFamilyChipList(ProductItem $obProductItem): array
+    protected function getFamilyChipList(ProductItem $obProductItem): array
     {
         $arChipList = [];
         foreach ($this->getOrderedRowList($obProductItem) as $arRow) {
@@ -274,24 +360,13 @@ class OfferSheet extends ComponentBase
      * One cached page of rendered row HTML. Cart-agnostic on purpose - see
      * class docblock. Color data version keys the grouping.
      */
-    public function getRowListHtml(ProductItem $obProductItem, int $iOffset): string
+    protected function getRowListHtml(ProductItem $obProductItem, int $iOffset): string
     {
         if ($iOffset >= $obProductItem->offer->count()) {
             return '';
         }
 
-        $sColorVersion = (new ColorMapRepository())->getVersion();
-        $obActiveSite = \Site::getActiveSite();
-        $sCacheKey = implode('.', [
-            'hr.sheet',
-            $obProductItem->id,
-            $iOffset,
-            $obActiveSite ? $obActiveSite->code : 'default',
-            app()->getLocale(),
-            (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
-            (string) (PriceTypeHelper::instance()->getActivePriceTypeCode() ?: 'base'),
-            $sColorVersion !== '' ? $sColorVersion : 'plain',
-        ]);
+        $sCacheKey = $this->buildCacheKey(['hr.sheet', $obProductItem->id, $iOffset]);
         $arCacheTagList = [self::CACHE_TAG_SHEET];
         $sRowListHtml = CCache::get($arCacheTagList, $sCacheKey);
         if (!empty($sRowListHtml)) {
@@ -330,21 +405,20 @@ class OfferSheet extends ComponentBase
     public function getInlineSwatchData(
         ProductItem $obProductItem,
         bool $bHideOutOfStock = false,
-        int $iInlineLimit = 12,
         string $sFamilyFilter = '',
         int $iSelectedOfferId = 0,
         bool $bOfferIsExplicit = false
     ): array {
         $arVisibleList = $this->getVisibleSwatchList($obProductItem, $bHideOutOfStock);
         $iTotalCount = count($arVisibleList);
-        $bUseSheet = $iTotalCount > $iInlineLimit;
+        $bUseSheet = $iTotalCount > self::INLINE_LIMIT;
 
         $sActiveFamily = $bUseSheet
             ? $this->resolveActiveFamily($arVisibleList, $sFamilyFilter, $bOfferIsExplicit ? $iSelectedOfferId : 0)
             : '';
         $arOfferItemList = $sActiveFamily !== ''
             ? $this->getFamilyOfferList($arVisibleList, $sActiveFamily)
-            : $this->getWindowedOfferList($arVisibleList, $iSelectedOfferId, $iInlineLimit);
+            : $this->getWindowedOfferList($arVisibleList, $iSelectedOfferId);
 
         return [
             'arOfferItemList' => $arOfferItemList,
@@ -418,11 +492,12 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Window of N shades around the selected offer (5 before, 6 after),
-     * clamped to the list bounds; first N when nothing is selected
+     * Window of INLINE_LIMIT shades around the selected offer (5 before, the
+     * rest after), clamped to the list bounds; the head when nothing is
+     * selected
      * @return \Lovata\Shopaholic\Classes\Item\OfferItem[]
      */
-    protected function getWindowedOfferList(array $arVisibleList, int $iSelectedOfferId, int $iLimit): array
+    protected function getWindowedOfferList(array $arVisibleList, int $iSelectedOfferId): array
     {
         $iSelectedIndex = 0;
         foreach ($arVisibleList as $iIndex => $arEntry) {
@@ -432,12 +507,31 @@ class OfferSheet extends ComponentBase
             }
         }
 
-        $iStart = max(0, min($iSelectedIndex - 5, count($arVisibleList) - $iLimit));
-        $arWindowList = array_slice($arVisibleList, $iStart, $iLimit);
+        $iStart = max(0, min($iSelectedIndex - self::WINDOW_BEFORE, count($arVisibleList) - self::INLINE_LIMIT));
+        $arWindowList = array_slice($arVisibleList, $iStart, self::INLINE_LIMIT);
 
         return array_map(function (array $arEntry) {
             return $arEntry['obOffer'];
         }, $arWindowList);
+    }
+
+    /**
+     * Cache key for rendered markup: the caller's own parts, plus everything
+     * that makes the SAME product render differently - site, locale,
+     * currency, price type and the color data version behind the grouping.
+     */
+    protected function buildCacheKey(array $arPartList): string
+    {
+        $sColorVersion = (new ColorMapRepository())->getVersion();
+        $obActiveSite = \Site::getActiveSite();
+
+        return implode('.', array_merge($arPartList, [
+            $obActiveSite ? $obActiveSite->code : 'default',
+            app()->getLocale(),
+            (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
+            (string) (PriceTypeHelper::instance()->getActivePriceTypeCode() ?: 'base'),
+            $sColorVersion !== '' ? $sColorVersion : 'plain',
+        ]));
     }
 
     /**
