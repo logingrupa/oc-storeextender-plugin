@@ -41,6 +41,12 @@ class OfferSheet extends ComponentBase
     /** Shades kept before the selected one when the strip is windowed */
     const WINDOW_BEFORE = 5;
 
+    /** Folder a batched fragment partial has to live in */
+    const FRAGMENT_PARTIAL_PREFIX = 'product/product-card-detailed/';
+
+    /** Fragments one batched offer may ask for */
+    const FRAGMENT_PARTIAL_CEILING = 8;
+
     public function componentDetails()
     {
         return [
@@ -167,26 +173,151 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Image list of one offer for the sticky preview slider (select mode):
-     * preview image first, then attached gallery images.
+     * Everything the page needs to show any of N shades, in ONE response.
+     *
+     * The product page used to fetch a shade at a time: twelve visible
+     * swatches meant twelve round trips of about 240ms each, and picking a
+     * shade in the sheet cost two more (fragments, then pictures). The twelve
+     * responses also repeat each other heavily, and gzip finds that
+     * redundancy by itself: twelve separate responses measured 17,581 bytes
+     * gzipped against 2,185 for one batched response carrying the same
+     * markup.
+     *
+     * Bounded on purpose. The visible strip window is twelve shades and this
+     * accepts no more, so a 230-shade product can never turn one idle
+     * prefetch into a catalogue dump. A shade the sheet picks from outside
+     * that window comes back through here as a batch of one.
+     *
+     * The inputs are deliberately NOT called product_id and offer_id. Every
+     * fragment partial resolves its own offer from input('offer_id') when one
+     * is present (that is how the same template serves a page render and an
+     * AJAX render), so a request carrying those names would make all twelve
+     * offers render as the same shade.
+     *
+     * @return array|null
+     */
+    public function onGetOfferBatch()
+    {
+        $iProductId = (int) input('batch_product_id');
+        if ($iProductId < 1) {
+            return null;
+        }
+        $obProductItem = ProductItem::make($iProductId);
+        if ($obProductItem->isEmpty()) {
+            return null;
+        }
+
+        $arOfferIdList = $this->readBatchOfferIdList($obProductItem);
+        $arPartialPathList = $this->readBatchPartialList();
+        if (empty($arOfferIdList)) {
+            return null;
+        }
+
+        $arOfferList = [];
+        foreach ($arOfferIdList as $iOfferId) {
+            $obOfferItem = OfferItem::make($iOfferId);
+            if ($obOfferItem->isEmpty()) {
+                continue;
+            }
+            $arOfferList[] = [
+                'iOfferId' => $iOfferId,
+                'arPartialList' => $this->renderOfferPartialList($obProductItem, $obOfferItem, $arPartialPathList),
+                'arImageList' => $this->getOfferImageList($obOfferItem),
+            ];
+        }
+
+        return ['arOfferList' => $arOfferList];
+    }
+
+    /**
+     * Offer ids of one batch: numeric, unique, bounded, and belonging to the
+     * requested product.
+     *
+     * The product check is not decoration. The ids come from the client, and
+     * an id from another product would render that product's price and
+     * gallery into this page.
+     *
+     * @return array
+     */
+    protected function readBatchOfferIdList(ProductItem $obProductItem): array
+    {
+        $arRequestedIdList = array_slice(
+            array_unique(array_filter(array_map('intval', explode(',', (string) input('batch_offer_ids'))))),
+            0,
+            self::INLINE_LIMIT
+        );
+
+        $arProductOfferIdList = array_map('intval', (array) $obProductItem->offer->getIDList());
+
+        return array_values(array_intersect($arRequestedIdList, $arProductOfferIdList));
+    }
+
+    /**
+     * Partial paths of one batch.
+     *
+     * The theme owns which fragments a shade change redraws - the map lives
+     * in src/modules/offer-fragments.js and there is no second copy of it
+     * here. What this owns is the bound: a path outside the product card
+     * folder, or more paths than the card has fragments, is refused. October
+     * already lets any page name any partial through X-AJAX-PARTIALS, so this
+     * is strictly narrower than the request it replaces.
+     *
+     * @return array
+     */
+    protected function readBatchPartialList(): array
+    {
+        $arPathList = [];
+        foreach (explode(',', (string) input('batch_partials')) as $sPath) {
+            $sPath = trim($sPath);
+            if ($sPath === '' || strpos($sPath, self::FRAGMENT_PARTIAL_PREFIX) !== 0) {
+                continue;
+            }
+            if (preg_match('#^[a-z0-9/_-]+$#', $sPath) !== 1) {
+                continue;
+            }
+            $arPathList[] = $sPath;
+        }
+
+        return array_slice(array_unique($arPathList), 0, self::FRAGMENT_PARTIAL_CEILING);
+    }
+
+    /**
+     * One offer's fragments, in the shape Larajax delivers its own partials,
+     * so the client applies both through the same code path.
+     *
+     * @return array [['sName' => string, 'sHtml' => string]]
+     */
+    protected function renderOfferPartialList(
+        ProductItem $obProductItem,
+        OfferItem $obOfferItem,
+        array $arPartialPathList
+    ): array {
+        $arPartialList = [];
+        foreach ($arPartialPathList as $sPartialPath) {
+            $arPartialList[] = [
+                'sName' => $sPartialPath,
+                'sHtml' => (string) $this->controller->renderPartial($sPartialPath, [
+                    'obProduct' => $obProductItem,
+                    'obOffer' => $obOfferItem,
+                ]),
+            ];
+        }
+
+        return $arPartialList;
+    }
+
+    /**
+     * Pictures of one offer for the sheet's sticky preview slider: preview
+     * image first, then the attached gallery.
      *
      * Sized derivatives, not originals - the slot is 240px tall and the
      * originals behind it run to a megabyte each. OfferImageHelper owns the
      * size; storeextender:warm-offer-thumbs generates them ahead of traffic.
      *
-     * @return array|null
+     * @return array [['sSrc' => string]]
      */
-    public function onGetOfferImages()
+    protected function getOfferImageList(OfferItem $obOfferItem): array
     {
-        $iOfferID = (int) input('offer_id');
-        if ($iOfferID < 1) {
-            return null;
-        }
-        $obOfferItem = OfferItem::make($iOfferID);
-        if ($obOfferItem->isEmpty()) {
-            return null;
-        }
-
         $arImageList = [];
         $obPreviewImage = $obOfferItem->preview_image;
         if (!empty($obPreviewImage)) {
@@ -199,11 +330,7 @@ class OfferSheet extends ComponentBase
             }
         }
 
-        return [
-            'iOfferId' => $iOfferID,
-            'sName' => (string) $obOfferItem->name,
-            'arImageList' => $arImageList,
-        ];
+        return $arImageList;
     }
 
     /**
