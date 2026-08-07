@@ -1,0 +1,27 @@
+{
+    "external_id": "test-ext-001",
+    "old_price": 281.52,
+    "price": 215.88,
+    "price_list": {
+        "1": {
+            "old_price": 13.45,
+            "price": 7.46
+        },
+        "2": {
+            "old_price": 13.45,
+            "price": 9.66
+        },
+        "3": {
+            "old_price": 11.5,
+            "price": 4.49
+        },
+        "4": {
+            "old_price": 23.46,
+            "price": 18.77
+        },
+        "6": {
+            "old_price": 23.46,
+            "price": 21.11
+        }
+    }
+}
