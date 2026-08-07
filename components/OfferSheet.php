@@ -47,6 +47,18 @@ class OfferSheet extends ComponentBase
     /** Fragments one batched offer may ask for */
     const FRAGMENT_PARTIAL_CEILING = 8;
 
+    /**
+     * Ordered row lists already read this request, keyed by cache key.
+     *
+     * Three call sites ask for the same list on one request and reading it
+     * back out of the file cache is not free - a 230-shade list measured
+     * 9.5ms per read. The component instance lives exactly one request, which
+     * is exactly how long this may be trusted.
+     *
+     * @var array<string, array>
+     */
+    protected array $arOrderedRowListMemo = [];
+
     public function componentDetails()
     {
         return [
@@ -438,9 +450,40 @@ class OfferSheet extends ComponentBase
      * Full offer list of the product in color-family order (local color table
      * via ColorMapRepository - no remote API at request time)
      *
+     * Cached, because it is the expensive part of every sheet and strip
+     * request and it holds nothing per-visitor: grouping a 230-shade product
+     * materializes 230 OfferItems at roughly a millisecond each, and three
+     * call sites ask for it. The rendered markup beside it already caches
+     * under the same tag and the same key builder, so one cache:clear or one
+     * colour sync drops both together.
+     *
      * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'bGroupStart' => bool]]
      */
     protected function getOrderedRowList(ProductItem $obProductItem): array
+    {
+        // The list itself does not vary by locale, currency or price type,
+        // but it keys through the same builder as everything else under this
+        // tag: one key scheme is worth more than the handful of duplicate
+        // entries it mints.
+        $sCacheKey = $this->buildCacheKey(['hr.rows', $obProductItem->id]);
+        if (isset($this->arOrderedRowListMemo[$sCacheKey])) {
+            return $this->arOrderedRowListMemo[$sCacheKey];
+        }
+
+        $arRowList = CCache::get([self::CACHE_TAG_SHEET], $sCacheKey);
+        if (empty($arRowList)) {
+            $arRowList = $this->buildOrderedRowList($obProductItem);
+            CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $arRowList, self::CACHE_TTL_MINUTES);
+        }
+        $this->arOrderedRowListMemo[$sCacheKey] = $arRowList;
+
+        return $arRowList;
+    }
+
+    /**
+     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'bGroupStart' => bool]]
+     */
+    protected function buildOrderedRowList(ProductItem $obProductItem): array
     {
         $arIdList = $obProductItem->offer->getIDList();
         $arColorMap = (new ColorMapRepository())->getColorMap();
@@ -542,19 +585,19 @@ class OfferSheet extends ComponentBase
         int $iSelectedOfferId = 0,
         bool $bOfferIsExplicit = false
     ): array {
-        $arVisibleList = $this->getVisibleSwatchList($obProductItem, $bHideOutOfStock);
+        $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideOutOfStock);
         $iTotalCount = count($arVisibleList);
         $bUseSheet = $iTotalCount > self::INLINE_LIMIT;
 
         $sActiveFamily = $bUseSheet
             ? $this->resolveActiveFamily($arVisibleList, $sFamilyFilter, $bOfferIsExplicit ? $iSelectedOfferId : 0)
             : '';
-        $arOfferItemList = $sActiveFamily !== ''
-            ? $this->getFamilyOfferList($arVisibleList, $sActiveFamily)
-            : $this->getWindowedOfferList($arVisibleList, $iSelectedOfferId);
+        $arShownRowList = $sActiveFamily !== ''
+            ? $this->getFamilyRowList($arVisibleList, $sActiveFamily)
+            : $this->getWindowedRowList($arVisibleList, $iSelectedOfferId);
 
         return [
-            'arOfferItemList' => $arOfferItemList,
+            'arOfferItemList' => $this->makeOfferItemList($arShownRowList),
             'iTotalCount' => $iTotalCount,
             'bUseSheet' => $bUseSheet,
             'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($obProductItem) : [],
@@ -563,24 +606,54 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Sellable swatch list in color-family order
-     * @return array [['obOffer' => OfferItem, 'sFamily' => string|null]]
+     * Sellable swatch rows in color-family order.
+     *
+     * Rows, not items. The strip shows twelve shades out of up to 230, and
+     * windowing needs only ids and families, so the OfferItems are made at
+     * the end for the twelve that are actually rendered.
+     *
+     * The sold-out preference is the exception and stays on the slow path:
+     * hiding a shade requires its quantity, quantity lives on the OfferItem,
+     * and it moves with every order - caching it under a ten minute TTL beside
+     * markup that does not change would sell stock the shop no longer has.
+     *
+     * @return array [['iOfferId' => int, 'sFamily' => string|null]]
      */
-    protected function getVisibleSwatchList(ProductItem $obProductItem, bool $bHideOutOfStock): array
+    protected function getVisibleRowList(ProductItem $obProductItem, bool $bHideOutOfStock): array
     {
         $arVisibleList = [];
         foreach ($this->getOrderedRowList($obProductItem) as $arRow) {
+            if ($bHideOutOfStock && (int) OfferItem::make($arRow['iOfferId'])->quantity === 0) {
+                continue;
+            }
+            $arVisibleList[] = ['iOfferId' => (int) $arRow['iOfferId'], 'sFamily' => $arRow['sFamily']];
+        }
+
+        return $arVisibleList;
+    }
+
+    /**
+     * Materialize the rows that are actually rendered.
+     *
+     * An id with no item is dropped rather than rendered blank. It cannot
+     * normally happen - the ids come from the product's own active offer list
+     * - so a window that comes back one short is a signal, not a state to
+     * design around.
+     *
+     * @return \Lovata\Shopaholic\Classes\Item\OfferItem[]
+     */
+    protected function makeOfferItemList(array $arRowList): array
+    {
+        $arOfferItemList = [];
+        foreach ($arRowList as $arRow) {
             $obOfferItem = OfferItem::make($arRow['iOfferId']);
             if ($obOfferItem->isEmpty()) {
                 continue;
             }
-            if ($bHideOutOfStock && (int) $obOfferItem->quantity === 0) {
-                continue;
-            }
-            $arVisibleList[] = ['obOffer' => $obOfferItem, 'sFamily' => $arRow['sFamily']];
+            $arOfferItemList[] = $obOfferItem;
         }
 
-        return $arVisibleList;
+        return $arOfferItemList;
     }
 
     /**
@@ -591,7 +664,7 @@ class OfferSheet extends ComponentBase
     {
         if ($iExplicitOfferId > 0 && $sFamilyFilter !== '') {
             foreach ($arVisibleList as $arEntry) {
-                if ((int) $arEntry['obOffer']->id === $iExplicitOfferId) {
+                if ($arEntry['iOfferId'] === $iExplicitOfferId) {
                     return (string) $arEntry['sFamily'];
                 }
             }
@@ -610,42 +683,39 @@ class OfferSheet extends ComponentBase
 
     /**
      * Every visible shade of one family
-     * @return \Lovata\Shopaholic\Classes\Item\OfferItem[]
+     * @return array [['iOfferId' => int, 'sFamily' => string|null]]
      */
-    protected function getFamilyOfferList(array $arVisibleList, string $sFamily): array
+    protected function getFamilyRowList(array $arVisibleList, string $sFamily): array
     {
-        $arOfferItemList = [];
+        $arRowList = [];
         foreach ($arVisibleList as $arEntry) {
             if ($arEntry['sFamily'] === $sFamily) {
-                $arOfferItemList[] = $arEntry['obOffer'];
+                $arRowList[] = $arEntry;
             }
         }
 
-        return $arOfferItemList;
+        return $arRowList;
     }
 
     /**
      * Window of INLINE_LIMIT shades around the selected offer (5 before, the
      * rest after), clamped to the list bounds; the head when nothing is
      * selected
-     * @return \Lovata\Shopaholic\Classes\Item\OfferItem[]
+     * @return array [['iOfferId' => int, 'sFamily' => string|null]]
      */
-    protected function getWindowedOfferList(array $arVisibleList, int $iSelectedOfferId): array
+    protected function getWindowedRowList(array $arVisibleList, int $iSelectedOfferId): array
     {
         $iSelectedIndex = 0;
         foreach ($arVisibleList as $iIndex => $arEntry) {
-            if ((int) $arEntry['obOffer']->id === $iSelectedOfferId) {
+            if ($arEntry['iOfferId'] === $iSelectedOfferId) {
                 $iSelectedIndex = $iIndex;
                 break;
             }
         }
 
         $iStart = max(0, min($iSelectedIndex - self::WINDOW_BEFORE, count($arVisibleList) - self::INLINE_LIMIT));
-        $arWindowList = array_slice($arVisibleList, $iStart, self::INLINE_LIMIT);
 
-        return array_map(function (array $arEntry) {
-            return $arEntry['obOffer'];
-        }, $arWindowList);
+        return array_slice($arVisibleList, $iStart, self::INLINE_LIMIT);
     }
 
     /**
