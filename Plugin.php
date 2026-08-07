@@ -62,6 +62,7 @@ use Logingrupa\StoreExtender\Classes\Event\Currency\ExtendCurrencyConversion;
 use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 
 //Vite asset pipeline for migrated theme pages
+use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 
 /**
@@ -97,6 +98,7 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.syncoffercolors', 'Logingrupa\StoreExtender\Console\SyncOfferColors');
         $this->registerConsoleCommand('storeextender.importthememessages', 'Logingrupa\StoreExtender\Console\ImportThemeMessages');
         $this->registerConsoleCommand('storeextender.verifyxmlimportsettings', 'Logingrupa\StoreExtender\Console\VerifyXmlImportSettings');
+        $this->registerConsoleCommand('storeextender.warmofferthumbs', 'Logingrupa\StoreExtender\Console\WarmOfferThumbs');
 
         // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
         // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
@@ -551,6 +553,10 @@ class Plugin extends PluginBase
                 },
                 // Script/style tags for a Vite entry built into the active theme
                 'vite_entry' => [ViteAssetHelper::class, 'renderEntry'],
+                // Sized offer image derivatives - the ONLY way a template is
+                // allowed to size an offer picture, so the sizes stay in one place
+                'offer_swatch_src' => [OfferImageHelper::class, 'swatch'],
+                'offer_preview_src' => [OfferImageHelper::class, 'preview'],
                 'theme_var' => function ($sKey) {
                     $obTheme = \Cms\Classes\Theme::getActiveTheme();
                     if (empty($obTheme)) {

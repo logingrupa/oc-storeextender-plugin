@@ -12,6 +12,7 @@ use Lovata\Shopaholic\Classes\Item\ProductItem;
 use Lovata\Shopaholic\Models\Offer;
 use Logingrupa\StoreExtender\Classes\Color\ColorMapRepository;
 use Logingrupa\StoreExtender\Classes\Color\OfferColorGrouper;
+use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 
 /**
  * Class OfferSheet
@@ -167,7 +168,12 @@ class OfferSheet extends ComponentBase
 
     /**
      * Image list of one offer for the sticky preview slider (select mode):
-     * preview image first, then attached gallery images
+     * preview image first, then attached gallery images.
+     *
+     * Sized derivatives, not originals - the slot is 240px tall and the
+     * originals behind it run to a megabyte each. OfferImageHelper owns the
+     * size; storeextender:warm-offer-thumbs generates them ahead of traffic.
+     *
      * @return array|null
      */
     public function onGetOfferImages()
@@ -184,12 +190,12 @@ class OfferSheet extends ComponentBase
         $arImageList = [];
         $obPreviewImage = $obOfferItem->preview_image;
         if (!empty($obPreviewImage)) {
-            $arImageList[] = ['sSrc' => (string) $obPreviewImage->path];
+            $arImageList[] = ['sSrc' => OfferImageHelper::preview($obPreviewImage)];
         }
         $obImageList = $obOfferItem->images;
         if (!empty($obImageList)) {
             foreach ($obImageList as $obImage) {
-                $arImageList[] = ['sSrc' => (string) $obImage->path];
+                $arImageList[] = ['sSrc' => OfferImageHelper::preview($obImage)];
             }
         }
 
