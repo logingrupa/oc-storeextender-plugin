@@ -200,11 +200,11 @@ class OfferSheet extends ComponentBase
      * prefetch into a catalogue dump. A shade the sheet picks from outside
      * that window comes back through here as a batch of one.
      *
-     * The inputs are deliberately NOT called product_id and offer_id. Every
-     * fragment partial resolves its own offer from input('offer_id') when one
-     * is present (that is how the same template serves a page render and an
-     * AJAX render), so a request carrying those names would make all twelve
-     * offers render as the same shade.
+     * The inputs are deliberately NOT called product_id and offer_id. A
+     * fragment partial falls back to input('offer_id') when no offer was handed
+     * to it (that is how the same template serves a page render, a legacy
+     * per-shade AJAX render and this one), so a request carrying those names
+     * would put a single offer id in front of all twelve renders.
      *
      * @return array|null
      */
@@ -225,6 +225,10 @@ class OfferSheet extends ComponentBase
             return null;
         }
 
+        // hoisted: the product's offer count is the same for all twelve shades,
+        // and a value that cannot vary across a loop has no business inside it
+        $iOfferTotalCount = $obProductItem->offer->count();
+
         $arOfferList = [];
         foreach ($arOfferIdList as $iOfferId) {
             $obOfferItem = OfferItem::make($iOfferId);
@@ -235,6 +239,7 @@ class OfferSheet extends ComponentBase
                 'iOfferId' => $iOfferId,
                 'arPartialList' => $this->renderOfferPartialList($obProductItem, $obOfferItem, $arPartialPathList),
                 'arImageList' => $this->getOfferImageList($obOfferItem),
+                'sSwatchHtml' => $this->renderSwatchHtml($obProductItem, $obOfferItem, $iOfferTotalCount),
             ];
         }
 
@@ -310,12 +315,54 @@ class OfferSheet extends ComponentBase
                 'sName' => $sPartialPath,
                 'sHtml' => (string) $this->controller->renderPartial($sPartialPath, [
                     'obProduct' => $obProductItem,
+                    // obRenderOffer, not obOffer: this render is PINNED to one
+                    // shade and nothing in the request may talk it out of that.
+                    // See Classes\Helper\OfferRenderContext - the page passes
+                    // obOffer on a normal render too, so only a name nothing
+                    // else uses can carry "the caller chose this shade".
+                    'obRenderOffer' => $obOfferItem,
                     'obOffer' => $obOfferItem,
                 ]),
             ];
         }
 
         return $arPartialList;
+    }
+
+    /**
+     * One shade's swatch circle, from the strip's own partial.
+     *
+     * The page strip shows twelve of up to 230 shades, so a shade picked inside
+     * the sheet is usually not on it. It used to be put there by re-rendering
+     * the whole strip windowed around the pick - one more round trip, and then
+     * twelve fresh shades whose fragments all had to be fetched again, for a
+     * strip the visitor had not asked to move.
+     *
+     * Instead the pick's own swatch rides along with the fragments it already
+     * needs, and the client drops it into the first slot. Same partial the strip
+     * is built from, so the two cannot drift; the batch is already in the cache
+     * by the time a row is tapped, so this costs no request at all.
+     *
+     * Rendered with no selection, like every other strip render: the ring is
+     * applied client-side, which is what keeps the markup free of per-visitor
+     * state.
+     *
+     * The total count is passed in rather than read here, because it is the same
+     * for every shade in the batch. The partial only uses it to decide whether
+     * SKU-<product> carries an offer suffix.
+     */
+    protected function renderSwatchHtml(
+        ProductItem $obProductItem,
+        OfferItem $obOfferItem,
+        int $iOfferTotalCount
+    ): string {
+        return trim((string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
+            'obProduct' => $obProductItem,
+            'arInlineOfferList' => [$obOfferItem],
+            'iTotalCount' => $iOfferTotalCount,
+            'bUseSheet' => false,
+            'iSelectedOfferId' => 0,
+        ]));
     }
 
     /**
@@ -348,11 +395,19 @@ class OfferSheet extends ComponentBase
     /**
      * The product page's swatch strip, re-rendered.
      *
-     * The page filters its own shade circles instead of opening the sheet,
-     * and follows a shade picked inside the sheet, so both need the strip
-     * rebuilt: filtered to a family, or windowed around one shade. This is
-     * the ONLY renderer of that markup - it hands back the same partial the
-     * page renders on load, so no client-side copy of it can drift.
+     * The page filters its own shade circles instead of opening the sheet, so a
+     * chip click rebuilds the strip: every shade of one family, or the head of
+     * the list when the filter is cleared. This is the ONLY renderer of that
+     * markup - it hands back the same partial the page renders on load, so no
+     * client-side copy of it can drift.
+     *
+     * A shade picked inside the sheet does NOT come through here. It used to:
+     * the strip was re-rendered windowed around the pick, which cost a round
+     * trip, then twelve fresh shades whose fragments all had to be fetched
+     * again, and one cache entry per shade a visitor happened to pick. The pick
+     * now brings its own swatch back with its fragments (renderSwatchHtml) and
+     * the client puts it in the first slot, so this handler answers per FAMILY
+     * only and every visitor shares the same handful of entries.
      *
      * Selection is applied client-side, which keeps the HTML free of
      * per-visitor state and therefore cacheable.
@@ -366,19 +421,12 @@ class OfferSheet extends ComponentBase
             return null;
         }
         $sFamily = trim((string) input('family'));
-        // Bounded on purpose: the offer rides the cache key, so an id from
-        // another product - or from nowhere - would mint an unbounded number
-        // of entries holding the same head window
-        $iOfferId = (int) input('offer_id');
-        if ($iOfferId > 0 && (int) OfferItem::make($iOfferId)->product_id !== (int) $obProductItem->id) {
-            $iOfferId = 0;
-        }
         // Display preference only (sold-out shades), mirrored from the
         // rendered strip: the theme owns the setting, the plugin must not
         // reach into theme config to re-derive it
         $bHideSoldOut = (bool) input('hide_oos');
 
-        $sStripHtml = $this->getSwatchStripHtml($obProductItem, $sFamily, $iOfferId, $bHideSoldOut);
+        $sStripHtml = $this->getSwatchStripHtml($obProductItem, $sFamily, $bHideSoldOut);
         if ($sStripHtml === '') {
             return null; // unknown family for this product
         }
@@ -390,20 +438,20 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Rendered swatch strip, cached like the sheet rows. A family strip holds
-     * every shade of that family whatever is selected, so its key carries no
-     * offer; a windowed strip is centred on one shade and keys on it.
+     * Rendered swatch strip, cached like the sheet rows. Two shapes, and neither
+     * depends on which shade is selected: every shade of one family, or the head
+     * of the list. So the key carries no offer id and one entry per family
+     * serves every visitor.
      */
     protected function getSwatchStripHtml(
         ProductItem $obProductItem,
         string $sFamily,
-        int $iOfferId,
         bool $bHideSoldOut
     ): string {
         $sCacheKey = $this->buildCacheKey([
             'hr.strip',
             $obProductItem->id,
-            $sFamily !== '' ? $sFamily : 'window.'.$iOfferId,
+            $sFamily !== '' ? $sFamily : 'head',
             (int) $bHideSoldOut,
         ]);
         $sStripHtml = CCache::get([self::CACHE_TAG_SHEET], $sCacheKey);
@@ -411,7 +459,7 @@ class OfferSheet extends ComponentBase
             return $sStripHtml;
         }
 
-        $arSwatchData = $this->getInlineSwatchData($obProductItem, $bHideSoldOut, $sFamily, $iOfferId);
+        $arSwatchData = $this->getInlineSwatchData($obProductItem, $bHideSoldOut, $sFamily);
         if ($arSwatchData['sActiveFamily'] !== $sFamily) {
             return ''; // fail fast: the product has no such family
         }
@@ -572,6 +620,12 @@ class OfferSheet extends ComponentBase
      * No filter: a window of N shades centered on the selected offer
      * (5 before, 6 after). Products with few shades show everything inline
      * and get no sheet trigger.
+     *
+     * Only the PAGE render passes a selected offer, and only because a shared
+     * /p/<slug>/<offer> link has to open with its shade on the strip. Every
+     * later strip render asks for the head (see onGetSwatchStrip): a shade
+     * picked in the sheet brings its own swatch back with its fragments, so the
+     * strip no longer re-windows itself once per pick.
      *
      * Conflict rule for shared URLs: an EXPLICIT offer segment wins over the
      * family query param - the filter snaps to the offer's family.

@@ -63,6 +63,7 @@ use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
+use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 
 /**
@@ -557,6 +558,10 @@ class Plugin extends PluginBase
                 // allowed to size an offer picture, so the sizes stay in one place
                 'offer_swatch_src' => [OfferImageHelper::class, 'swatch'],
                 'offer_preview_src' => [OfferImageHelper::class, 'preview'],
+                // Which offer a product-card fragment renders - decided in ONE
+                // place, because one batched response renders many offers and
+                // request state cannot answer that question for a single render
+                'offer_render_context' => [OfferRenderContext::class, 'resolve'],
                 'theme_var' => function ($sKey) {
                     $obTheme = \Cms\Classes\Theme::getActiveTheme();
                     if (empty($obTheme)) {
