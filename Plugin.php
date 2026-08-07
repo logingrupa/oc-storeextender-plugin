@@ -16,15 +16,12 @@ use Lovata\Shopaholic\Models\Currency as ShopaholicCurrencyModel;
 use Lovata\Shopaholic\Controllers\Currencies as ShopaholicCurrenciesController;
 use Lovata\Shopaholic\Controllers\Products as ShopaholicProductsController;
 use Lovata\Shopaholic\Controllers\Offers as ShopaholicOffersController;
-use Lovata\Shopaholic\Models\Tax as ShopaholicTaxModel;
-use Lovata\Shopaholic\Models\XmlImportSettings;
 use Lovata\Shopaholic\Classes\Item\ProductItem;
 use Lovata\Shopaholic\Classes\Item\OfferItem;
 use Lovata\Shopaholic\Classes\Item\CategoryItem;
 use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
 use Lovata\Shopaholic\Classes\Import\ImportProductModelFromXML;
 use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
-use Lovata\Toolbox\Classes\Helper\AbstractImportModel;
 
 //Events
 use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
@@ -32,7 +29,8 @@ use Logingrupa\StoreExtender\Classes\Event\ExtendMenuHandler;
 use Logingrupa\StoreExtender\Classes\Event\ExtendOfferHandler;
 
 //Offer events
-use Logingrupa\StoreExtender\Classes\Event\Offer\ExtendOfferImport;
+use Logingrupa\StoreExtender\Classes\Event\Offer\ExtendOfferImportMetadata;
+use Logingrupa\StoreExtender\Classes\Event\Offer\OfferDiscountImportSubscriber;
 
 //User group events
 use Logingrupa\StoreExtender\Classes\Event\UserGroup\ExtendUserGroupModel;
@@ -71,7 +69,7 @@ use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
  */
 class Plugin extends PluginBase
 {
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic'];
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing'];
 
     /**
      * Returns information about this plugin.
@@ -145,8 +143,11 @@ class Plugin extends PluginBase
         $this->extendShopaholicOrderModel();
         Event::subscribe(ExtendPaymentGateway::class);
         Event::subscribe(ExtendMenuHandler::class);
-        //Offer events
-        Event::subscribe(ExtendOfferImport::class);
+        //Offer events: PASS 1 metadata + discount steps. The PASS 2 price
+        //pipeline moved to Logingrupa.CustomXMLImportPricing; the discount
+        //steps hang on its after_vat/after_factor hooks (03-migration.md C.4).
+        Event::subscribe(ExtendOfferImportMetadata::class);
+        Event::subscribe(OfferDiscountImportSubscriber::class);
         //User group events
         Event::subscribe(ExtendUserGroupModel::class);
         Event::subscribe(ExtendUserGroupController::class);
@@ -176,12 +177,9 @@ class Plugin extends PluginBase
         //Extend currency form to allow more decimal places in rate field
         $this->extendShopaholicCurrenciesController();
 
-        //Auto-link products to target Tax entries during import based on VAT mapping
-        Event::listen(AbstractImportModel::EVENT_AFTER_IMPORT, function ($obModel, $arImportData) {
-            if ($obModel instanceof ShopaholicProductModel) {
-                $this->autoLinkProductTax($obModel, $arImportData);
-            }
-        });
+        //Auto-link products to target Tax entries during import: MOVED to
+        //Logingrupa.CustomXMLImportPricing (ProductTaxAutoLinkHandler) - it
+        //consumes exclusively moved settings keys (00-context.md Amendment 4).
 
         //Redirect to order checkout page instead of homepage after payment cancel/return
         $this->addPaymentGatewayRedirectListeners();
@@ -395,58 +393,6 @@ class Plugin extends PluginBase
                 ],
             ]);
         });
-    }
-
-    /**
-     * Auto-link product to the correct target Tax entry based on VAT mapping
-     * Runs during product import (EVENT_AFTER_IMPORT)
-     *
-     * @param ShopaholicProductModel $obProduct
-     * @param array $arImportData
-     */
-    protected function autoLinkProductTax($obProduct, $arImportData)
-    {
-        $bVatRecalculateEnabled = (bool) XmlImportSettings::getValue('import_vat_recalculate_enable', false);
-        if (!$bVatRecalculateEnabled) {
-            return;
-        }
-
-        $arVatMapping = (array) XmlImportSettings::getValue('import_vat_mapping', []);
-        if (empty($arVatMapping)) {
-            return;
-        }
-
-        $fSourceVatRate = array_get($arImportData, 'source_vat_rate');
-        if ($fSourceVatRate === null || $fSourceVatRate === '') {
-            return;
-        }
-
-        $fSourceVatRate = (float) $fSourceVatRate;
-
-        // Get the default source rate (first mapping row)
-        $arDefaultMapping = array_first($arVatMapping);
-        $fDefaultSourceRate = (float) array_get($arDefaultMapping, 'source_vat_rate', 0);
-
-        // If product has the default source VAT rate, skip - global tax handles it
-        if ($fSourceVatRate == $fDefaultSourceRate) {
-            return;
-        }
-
-        // Find the mapping row that matches this product's source VAT rate
-        foreach ($arVatMapping as $arMappingRow) {
-            $fMappingSourceRate = (float) array_get($arMappingRow, 'source_vat_rate', 0);
-            if ($fMappingSourceRate == $fSourceVatRate) {
-                $iTargetTaxId = (int) array_get($arMappingRow, 'target_tax_id', 0);
-                if (!empty($iTargetTaxId)) {
-                    $obTargetTax = ShopaholicTaxModel::find($iTargetTaxId);
-                    if (!empty($obTargetTax)) {
-                        $obTargetTax->product()->syncWithoutDetaching([$obProduct->id]);
-                    }
-                }
-
-                return;
-            }
-        }
     }
 
     /**
