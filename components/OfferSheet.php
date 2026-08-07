@@ -220,9 +220,46 @@ class OfferSheet extends ComponentBase
         }
 
         $arOfferIdList = $this->readBatchOfferIdList($obProductItem);
-        $arPartialPathList = $this->readBatchPartialList();
         if (empty($arOfferIdList)) {
             return null;
+        }
+
+        return [
+            'arOfferList' => $this->renderOfferBatchList(
+                $obProductItem,
+                array_map(fn ($iOfferId) => OfferItem::make($iOfferId), $arOfferIdList),
+                $this->readBatchPartialList()
+            ),
+        ];
+    }
+
+    /**
+     * Everything the page needs to show N shades, rendered.
+     *
+     * Shared by the two handlers that can produce it: onGetOfferBatch, where the
+     * client names the shades, and onGetSwatchStrip, where the shades are the
+     * ones the strip it just rendered is showing. One renderer, so a shade
+     * cannot arrive describing itself differently depending on which request
+     * carried it.
+     *
+     * NOT cached, and it must not be. Two of these partials carry per-visitor
+     * state: the gallery draws the wishlist heart from this visitor's list
+     * (obOffer.inWishList()), and the add-to-cart button draws the login and
+     * approval gate from this visitor's account. A shared entry would hand one
+     * shopper another shopper's wishlist and buy rights.
+     *
+     * @param OfferItem[] $arOfferItemList
+     * @param string[]    $arPartialPathList
+     *
+     * @return array
+     */
+    protected function renderOfferBatchList(
+        ProductItem $obProductItem,
+        array $arOfferItemList,
+        array $arPartialPathList
+    ): array {
+        if (empty($arOfferItemList) || empty($arPartialPathList)) {
+            return [];
         }
 
         // hoisted: the product's offer count is the same for all twelve shades,
@@ -230,20 +267,19 @@ class OfferSheet extends ComponentBase
         $iOfferTotalCount = $obProductItem->offer->count();
 
         $arOfferList = [];
-        foreach ($arOfferIdList as $iOfferId) {
-            $obOfferItem = OfferItem::make($iOfferId);
+        foreach ($arOfferItemList as $obOfferItem) {
             if ($obOfferItem->isEmpty()) {
                 continue;
             }
             $arOfferList[] = [
-                'iOfferId' => $iOfferId,
+                'iOfferId' => $obOfferItem->id,
                 'arPartialList' => $this->renderOfferPartialList($obProductItem, $obOfferItem, $arPartialPathList),
                 'arImageList' => $this->getOfferImageList($obOfferItem),
                 'sSwatchHtml' => $this->renderSwatchHtml($obProductItem, $obOfferItem, $iOfferTotalCount),
             ];
         }
 
-        return ['arOfferList' => $arOfferList];
+        return $arOfferList;
     }
 
     /**
@@ -412,6 +448,15 @@ class OfferSheet extends ComponentBase
      * Selection is applied client-side, which keeps the HTML free of
      * per-visitor state and therefore cacheable.
      *
+     * with_offers asks for the twelve shades' fragments in the SAME response.
+     * Without it a family switch is two round trips that cannot overlap: the
+     * strip has to land before anything knows which twelve shades it is showing,
+     * and only then can they be fetched. On a phone, where there is no hover to
+     * do the first one early, that chain is the whole cost of switching colour.
+     * The flag exists because the two callers want different things - a pointer
+     * merely resting on a chip wants the cheap cached strip and nothing more,
+     * while a click or a tap is a commitment and wants everything at once.
+     *
      * @return array|null
      */
     public function onGetSwatchStrip()
@@ -426,14 +471,21 @@ class OfferSheet extends ComponentBase
         // reach into theme config to re-derive it
         $bHideSoldOut = (bool) input('hide_oos');
 
-        $sStripHtml = $this->getSwatchStripHtml($obProductItem, $sFamily, $bHideSoldOut);
-        if ($sStripHtml === '') {
-            return null; // unknown family for this product
+        $arSwatchData = $this->getInlineSwatchData($obProductItem, $bHideSoldOut, $sFamily);
+        if ($arSwatchData['sActiveFamily'] !== $sFamily) {
+            return null; // fail fast: the product has no such family
         }
 
         return [
             'sFamily' => $sFamily,
-            'sStripHtml' => $sStripHtml,
+            'sStripHtml' => $this->getSwatchStripHtml($obProductItem, $sFamily, $bHideSoldOut, $arSwatchData),
+            'arOfferList' => (bool) input('with_offers')
+                ? $this->renderOfferBatchList(
+                    $obProductItem,
+                    $arSwatchData['arOfferItemList'],
+                    $this->readBatchPartialList()
+                )
+                : [],
         ];
     }
 
@@ -442,11 +494,19 @@ class OfferSheet extends ComponentBase
      * depends on which shade is selected: every shade of one family, or the head
      * of the list. So the key carries no offer id and one entry per family
      * serves every visitor.
+     *
+     * The swatch data is passed in rather than resolved here. The caller needs
+     * it anyway - it is what names the shades whose fragments ride along - and
+     * resolving the same thing twice per request to save nothing is exactly the
+     * kind of hidden work this component has already been trimmed of once.
+     *
+     * @param array $arSwatchData as getInlineSwatchData returns it
      */
     protected function getSwatchStripHtml(
         ProductItem $obProductItem,
         string $sFamily,
-        bool $bHideSoldOut
+        bool $bHideSoldOut,
+        array $arSwatchData
     ): string {
         $sCacheKey = $this->buildCacheKey([
             'hr.strip',
@@ -457,11 +517,6 @@ class OfferSheet extends ComponentBase
         $sStripHtml = CCache::get([self::CACHE_TAG_SHEET], $sCacheKey);
         if (!empty($sStripHtml)) {
             return $sStripHtml;
-        }
-
-        $arSwatchData = $this->getInlineSwatchData($obProductItem, $bHideSoldOut, $sFamily);
-        if ($arSwatchData['sActiveFamily'] !== $sFamily) {
-            return ''; // fail fast: the product has no such family
         }
 
         $sStripHtml = (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
