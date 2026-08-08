@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../StoreExtenderPluginTestCase.php';
+
 use Illuminate\Support\Facades\Event;
 use Lovata\Shopaholic\Models\Product;
 use Logingrupa\Storeextender\Components\CustomProductPage;
@@ -28,13 +30,14 @@ use Logingrupa\Storeextender\Components\CustomProductPage;
  * update_table_offers_remove_price_field migration does not run on SQLite, see
  * XmlImportPriceFlickerTest.
  */
-class ProductOpenOnAjaxTest extends PluginTestCase
+class ProductOpenOnAjaxTest extends StoreExtenderPluginTestCase
 {
     /**
      * @var bool No PLUGIN schema is needed here, and Shopaholic's does not
-     * build on SQLite anyway. setUp() still migrates the core modules, because
-     * merely constructing a Product wakes Shopaholic's model handler, which
-     * reads a setting, which reads system_settings.
+     * build on SQLite anyway. The core modules are still migrated, by
+     * StoreExtenderPluginTestCase inside createApplication(), because merely
+     * constructing a Product wakes Shopaholic's model handler, which reads a
+     * setting, which reads system_settings.
      */
     protected $autoMigrate = false;
 
@@ -47,7 +50,6 @@ class ProductOpenOnAjaxTest extends PluginTestCase
     public function setUp(): void
     {
         parent::setUp();
-        $this->migrateModules();
 
         $this->iEventFireCount = 0;
         Event::listen('shopaholic.product.open', function () {

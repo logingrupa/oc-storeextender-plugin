@@ -1,5 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Tests\Unit\Color;
 
+require_once __DIR__ . '/../../StoreExtenderPluginTestCase.php';
+
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -12,8 +14,11 @@ use System\Models\Parameter;
  * fake HTTP. Skips the full plugin migration chain (Shopaholic migrations are
  * SQLite-incompatible, see wishlistextender BaseWishlistExtenderTestCase);
  * only the offer color table is created, straight from its migration class.
+ * The core module schema comes from StoreExtenderPluginTestCase, which builds
+ * it before the first settings read so the ambient cms manifest cannot turn
+ * these tests into skips (see that class's docblock).
  */
-class SyncOfferColorsTest extends \PluginTestCase
+class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
 {
     protected $autoMigrate = false;
     /** @var array Valid payload fixture matching the upstream contract */
@@ -31,7 +36,6 @@ class SyncOfferColorsTest extends \PluginTestCase
     {
         try {
             parent::setUp();
-            $this->migrateModules();
             // migration classes are not composer-autoloaded, October loads them by path
             require_once __DIR__.'/../../../updates/create_table_offer_colors.php';
             (new \Logingrupa\StoreExtender\Updates\CreateTableOfferColors())->up();

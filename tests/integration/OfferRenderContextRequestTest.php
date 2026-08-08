@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/../StoreExtenderPluginTestCase.php';
+
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 
 /**
@@ -19,16 +21,14 @@ use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
  * SQLite anyway (see XmlImportPriceFlickerTest). The app is needed only because
  * the rule reads request input.
  */
-class OfferRenderContextRequestTest extends PluginTestCase
+class OfferRenderContextRequestTest extends StoreExtenderPluginTestCase
 {
-    /** @var bool No plugin schema is required, and Shopaholic's will not build here. */
+    /**
+     * @var bool No plugin schema is required, and Shopaholic's will not build
+     * here. The core module schema is built by StoreExtenderPluginTestCase
+     * inside createApplication(), before the first settings read.
+     */
     protected $autoMigrate = false;
-
-    public function setUp(): void
-    {
-        parent::setUp();
-        $this->migrateModules();
-    }
 
     /**
      * A canonical product URL: no shade was asked for, so the page keeps its own
