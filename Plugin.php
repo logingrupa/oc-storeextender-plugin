@@ -504,6 +504,7 @@ class Plugin extends PluginBase
                 // allowed to size an offer picture, so the sizes stay in one place
                 'offer_swatch_src' => [OfferImageHelper::class, 'swatch'],
                 'offer_preview_src' => [OfferImageHelper::class, 'preview'],
+                'offer_hero_src' => [OfferImageHelper::class, 'hero'],
                 // Which offer a product-card fragment renders - decided in ONE
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render

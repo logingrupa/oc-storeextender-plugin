@@ -409,20 +409,34 @@ class OfferSheet extends ComponentBase
      * originals behind it run to a megabyte each. OfferImageHelper owns the
      * size; storeextender:warm-offer-thumbs generates them ahead of traffic.
      *
+     * Deduped by original file name and byte size: the import routinely
+     * attaches the same photograph as preview_image AND as the only gallery
+     * entry, under two File records with two URLs, so without this the
+     * slider showed the picture twice and the client downloaded both.
+     *
      * @return array [['sSrc' => string]]
      */
     protected function getOfferImageList(OfferItem $obOfferItem): array
     {
         $arImageList = [];
+        $arSeenFileList = [];
+
         $obPreviewImage = $obOfferItem->preview_image;
-        if (!empty($obPreviewImage)) {
-            $arImageList[] = ['sSrc' => OfferImageHelper::preview($obPreviewImage)];
-        }
-        $obImageList = $obOfferItem->images;
-        if (!empty($obImageList)) {
-            foreach ($obImageList as $obImage) {
-                $arImageList[] = ['sSrc' => OfferImageHelper::preview($obImage)];
+        $arCandidateList = !empty($obPreviewImage) ? [$obPreviewImage] : [];
+        $obGalleryList = $obOfferItem->images;
+        if (!empty($obGalleryList)) {
+            foreach ($obGalleryList as $obImage) {
+                $arCandidateList[] = $obImage;
             }
+        }
+
+        foreach ($arCandidateList as $obImage) {
+            $sFileKey = $obImage->file_name.'|'.$obImage->file_size;
+            if (isset($arSeenFileList[$sFileKey])) {
+                continue;
+            }
+            $arSeenFileList[$sFileKey] = true;
+            $arImageList[] = ['sSrc' => OfferImageHelper::preview($obImage)];
         }
 
         return $arImageList;
@@ -479,10 +493,15 @@ class OfferSheet extends ComponentBase
         return [
             'sFamily' => $sFamily,
             'sStripHtml' => $this->getSwatchStripHtml($obProductItem, $sFamily, $bHideSoldOut, $arSwatchData),
+            // Bounded to the same window the client primes and can HOLD: its
+            // offer cache caps at 24 entries, so shipping a 44-shade family
+            // whole evicted the first-seeded shades - including the very one
+            // the family switch auto-picks - and the "merged" response ended
+            // up buying nothing on any family larger than the cache.
             'arOfferList' => (bool) input('with_offers')
                 ? $this->renderOfferBatchList(
                     $obProductItem,
-                    $arSwatchData['arOfferItemList'],
+                    array_slice($arSwatchData['arOfferItemList'], 0, self::INLINE_LIMIT),
                     $this->readBatchPartialList()
                 )
                 : [],

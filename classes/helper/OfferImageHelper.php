@@ -47,6 +47,19 @@ class OfferImageHelper
     const SLOT_PREVIEW = 'preview';
     const SIZE_PREVIEW = 600;
 
+    /**
+     * Product page main gallery image. Not a square slot like the other two:
+     * the box is the gallery column, fitted. A source shorter than
+     * HERO_MIN_SOURCE_HEIGHT is served at HERO_SMALL_WIDTH instead, because
+     * upscaling a small source to 1000px buys bytes and no pixels.
+     */
+    const SLOT_HERO = 'hero';
+    const HERO_WIDTH = 1000;
+    const HERO_HEIGHT = 821;
+    const HERO_QUALITY = 95;
+    const HERO_MIN_SOURCE_HEIGHT = 300;
+    const HERO_SMALL_WIDTH = 300;
+
     const THUMB_QUALITY = 80;
     const THUMB_EXTENSION = 'webp';
 
@@ -68,6 +81,30 @@ class OfferImageHelper
     public static function preview(?File $obImage): string
     {
         return self::renderThumb($obImage, self::SLOT_PREVIEW);
+    }
+
+    /**
+     * Fitted picture for the product page's main gallery. The size rule lived
+     * inline in the gallery partial, which meant the warm command could not
+     * pre-generate the derivative and the first visitor per shade paid the
+     * resize inside their request.
+     */
+    public static function hero(?File $obImage): string
+    {
+        if ($obImage === null) {
+            return '';
+        }
+
+        $arOptions = [
+            'mode'      => 'auto',
+            'quality'   => self::HERO_QUALITY,
+            'extension' => self::THUMB_EXTENSION,
+        ];
+        if ((int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT) {
+            return (string) $obImage->getThumb(self::HERO_SMALL_WIDTH, 'auto', $arOptions);
+        }
+
+        return (string) $obImage->getThumb(self::HERO_WIDTH, self::HERO_HEIGHT, $arOptions);
     }
 
     /**

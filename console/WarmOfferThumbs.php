@@ -73,11 +73,12 @@ class WarmOfferThumbs extends Command
 
         $bDryRun = (bool) $this->option('dry-run');
         $this->line(sprintf(
-            'Warming offer thumbs: swatch %dpx, preview %dpx, %s q%d%s',
+            'Warming offer thumbs: swatch %dpx, preview %dpx, hero %dx%d, %s%s',
             OfferImageHelper::SIZE_SWATCH,
             OfferImageHelper::SIZE_PREVIEW,
+            OfferImageHelper::HERO_WIDTH,
+            OfferImageHelper::HERO_HEIGHT,
             OfferImageHelper::THUMB_EXTENSION,
-            OfferImageHelper::THUMB_QUALITY,
             $bDryRun ? ' (dry run)' : ''
         ));
 
@@ -142,9 +143,12 @@ class WarmOfferThumbs extends Command
     protected function warmOffer($obOffer, bool $bDryRun): void
     {
         $obPreviewImage = $obOffer->preview_image;
+        $sPreviewFileKey = '';
         if ($obPreviewImage !== null) {
+            $sPreviewFileKey = $obPreviewImage->file_name.'|'.$obPreviewImage->file_size;
             $this->warmImage($obPreviewImage, OfferImageHelper::SLOT_SWATCH, $bDryRun, (int) $obOffer->id);
             $this->warmImage($obPreviewImage, OfferImageHelper::SLOT_PREVIEW, $bDryRun, (int) $obOffer->id);
+            $this->warmImage($obPreviewImage, OfferImageHelper::SLOT_HERO, $bDryRun, (int) $obOffer->id);
         }
 
         $iGalleryIndex = 0;
@@ -152,6 +156,12 @@ class WarmOfferThumbs extends Command
             if ($iGalleryIndex >= self::GALLERY_IMAGE_CEILING) {
                 $this->iTruncatedGalleryCount++;
                 break;
+            }
+            // the import routinely re-attaches the preview photograph as a
+            // gallery entry; the sheet dedupes it away, so its derivative
+            // would be generated for nothing
+            if ($obImage->file_name.'|'.$obImage->file_size === $sPreviewFileKey) {
+                continue;
             }
             $this->warmImage($obImage, OfferImageHelper::SLOT_PREVIEW, $bDryRun, (int) $obOffer->id);
             $iGalleryIndex++;
@@ -174,9 +184,11 @@ class WarmOfferThumbs extends Command
         }
 
         try {
-            $sUrl = $sSlot === OfferImageHelper::SLOT_SWATCH
-                ? OfferImageHelper::swatch($obImage)
-                : OfferImageHelper::preview($obImage);
+            $sUrl = match ($sSlot) {
+                OfferImageHelper::SLOT_SWATCH => OfferImageHelper::swatch($obImage),
+                OfferImageHelper::SLOT_HERO => OfferImageHelper::hero($obImage),
+                default => OfferImageHelper::preview($obImage),
+            };
             if ($sUrl === '') {
                 throw new \RuntimeException('resizer returned an empty URL');
             }

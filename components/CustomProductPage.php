@@ -140,22 +140,19 @@ class CustomProductPage extends ElementPage
     }
 
     /**
-     * Resolve the offer shown on page load: the :offer URL param when it
-     * belongs to this product, otherwise the cheapest active offer. One
-     * resolution point for the whole page - partials receive the result
-     * instead of re-running offer.find() each.
+     * The offer the :offer URL segment names, when it belongs to this
+     * product. Null on a canonical URL: the page then selects the first
+     * shade of the strip it renders. The old fallback here - cheapest active
+     * offer - picked a shade by price while the strip orders by colour
+     * family, so the checked circle sat mid-strip instead of first.
      */
     public function getSelectedOfferItem(ProductItem $obProductItem): ?OfferItem
     {
         $iOfferID = (int) $this->param('offer');
-        if ($iOfferID > 0) {
-            $obOfferItem = $obProductItem->offer->find($iOfferID);
-            if (!empty($obOfferItem) && $obOfferItem->isNotEmpty()) {
-                return $obOfferItem;
-            }
+        if ($iOfferID < 1) {
+            return null;
         }
-
-        $obOfferItem = $obProductItem->offer->active()->sort('price|asc')->first();
+        $obOfferItem = $obProductItem->offer->find($iOfferID);
 
         return !empty($obOfferItem) && $obOfferItem->isNotEmpty() ? $obOfferItem : null;
     }
