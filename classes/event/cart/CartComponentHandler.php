@@ -2,12 +2,14 @@
 
 use Event;
 use Input;
+use Kharanenka\Helper\Result;
 use Lovata\Shopaholic\Models\Offer;
 use Lovata\Shopaholic\Models\Product;
 use Lovata\Shopaholic\Classes\Helper\CurrencyHelper;
 use Lovata\Toolbox\Classes\Helper\PriceHelper;
 use Lovata\OrdersShopaholic\Components\Cart;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
+use Lovata\OrdersShopaholic\Classes\Processor\OfferCartPositionProcessor;
 
 /**
  * Class CartComponentHandler
@@ -30,6 +32,7 @@ class CartComponentHandler
      */
     private const HANDLERS = [
         'Cart::onGetPixelPurchaseData' => 'getPixelPurchaseData',
+        'Cart::onAdd'                  => 'addToCartVerified',
     ];
 
     /**
@@ -42,6 +45,88 @@ class CartComponentHandler
 
             return $sMethod !== null ? $this->{$sMethod}() : null;
         });
+    }
+
+    /**
+     * Cart::onAdd with an honest status.
+     *
+     * The stock Lovata handler discards every per-position result and always
+     * answers status:true - a rejected row (bad offer id, empty or zero
+     * quantity from a cleared spinner) is a silent no-op behind a success
+     * toast. This replacement coerces the payload, runs the same
+     * CartProcessor add, and then PROVES the add by finding every requested
+     * offer among the cart's positions. status:false carries no message on
+     * purpose: clients show their own translated error, a server string
+     * would surface in English.
+     *
+     * @return array
+     */
+    protected function addToCartVerified()
+    {
+        $arRequestData = $this->normalizeCartPayload(Input::get('cart'));
+        if (empty($arRequestData)) {
+            Result::setFalse();
+
+            return Result::get();
+        }
+
+        CartProcessor::instance()->add($arRequestData, OfferCartPositionProcessor::class);
+        $arCartData = (array) CartProcessor::instance()->getCartData();
+
+        $this->allOffersInCart($arRequestData, $arCartData) ? Result::setTrue() : Result::setFalse();
+        Result::setData($arCartData);
+
+        return Result::get();
+    }
+
+    /**
+     * Keep only rows that can possibly become a position: a numeric offer id
+     * and an integer quantity of at least one. The quantity arrives as a raw
+     * form string ("" from a cleared spinner) - coerced here once, for every
+     * client.
+     * @param mixed $arRequestData
+     * @return array
+     */
+    public function normalizeCartPayload($arRequestData): array
+    {
+        if (empty($arRequestData) || !is_array($arRequestData)) {
+            return [];
+        }
+
+        $arNormalizedList = [];
+        foreach ($arRequestData as $arRow) {
+            $iOfferId = is_array($arRow) ? (int) ($arRow['offer_id'] ?? 0) : 0;
+            $iQuantity = is_array($arRow) ? (int) ($arRow['quantity'] ?? 0) : 0;
+            if ($iOfferId < 1 || $iQuantity < 1) {
+                return []; // a row that cannot be added must fail loudly, not vanish
+            }
+            $arNormalizedList[] = array_merge($arRow, ['offer_id' => $iOfferId, 'quantity' => $iQuantity]);
+        }
+
+        return $arNormalizedList;
+    }
+
+    /**
+     * The proof of an add: every requested offer is among the cart's
+     * positions. Pure, so the rule is unit-testable.
+     * @param array $arRequestData normalized rows with offer_id
+     * @param array $arCartData    CartProcessor::getCartData()
+     * @return bool
+     */
+    public function allOffersInCart(array $arRequestData, array $arCartData): bool
+    {
+        $arCartOfferIdList = [];
+        foreach ((array) ($arCartData['position'] ?? []) as $arPosition) {
+            $arCartOfferIdList[(int) ($arPosition['item_id'] ?? 0)] = true;
+        }
+
+        foreach ($arRequestData as $arRow) {
+            if (empty($arCartOfferIdList[(int) $arRow['offer_id']])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

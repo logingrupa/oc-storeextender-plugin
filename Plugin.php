@@ -59,6 +59,9 @@ use Logingrupa\StoreExtender\Classes\Event\Currency\ExtendCurrencyConversion;
 //Settings multisite fallback
 use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 
+//Cart cookie identity
+use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
+
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
@@ -118,6 +121,14 @@ class Plugin extends PluginBase
      */
     public function boot()
     {
+        // A duplicate shopaholic_cart_id cookie (stale longer-path shadow)
+        // makes CartProcessor mint a fresh cart per request: adds succeed
+        // into throwaway carts while the header/sidebar read empty ones.
+        // Frontend only - the backend never resolves a guest cart.
+        \Cms\Classes\CmsController::extend(function ($obController) {
+            $obController->middleware(ClearShadowCartCookie::class);
+        });
+
         $factory = Omnipay::getFactory();
         $factory->register('PayPal_Express');
         // Register ServiceProviders
