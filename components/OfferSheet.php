@@ -101,14 +101,18 @@ class OfferSheet extends ComponentBase
         $sEpoch = (string) Cache::rememberForever(self::CACHE_KEY_EPOCH, function () {
             return (string) microtime(true);
         });
-        // sheet-cache.js keys its localStorage store by this token and purges on
-        // mismatch. Locale + currency ride along, otherwise a cached sheet
-        // body from another locale/currency survives the switch.
-        $this->page['sHrCacheEpoch'] = implode('.', [
-            $sEpoch,
-            app()->getLocale(),
-            (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
-        ]);
+        // sheet-cache.js keys its localStorage store by this token and purges
+        // on mismatch. EVERY dimension of the server-side cache key rides
+        // along (site, locale, currency, price type, color version) - the
+        // epoch once carried only locale + currency, so a guest's retail rows
+        // survived a wholesale login (same locale, same currency, different
+        // price type) and the sheet showed the wrong tier's prices for up to
+        // an hour; the reverse leaked wholesale prices to the next guest on a
+        // shared machine.
+        $this->page['sHrCacheEpoch'] = implode('.', array_merge(
+            [$sEpoch],
+            $this->getRenderContextKeyParts()
+        ));
         $this->page['sHrSheetMode'] = $this->getMode();
     }
 
@@ -847,22 +851,35 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Cache key for rendered markup: the caller's own parts, plus everything
-     * that makes the SAME product render differently - site, locale,
-     * currency, price type and the color data version behind the grouping.
+     * Everything that makes the SAME markup render differently for another
+     * visitor or another release: site, locale, currency, price type and the
+     * color data version behind the grouping. ONE list, shared by the server
+     * cache key and the client cache epoch (onRun), so the two stores can
+     * never disagree about what is reusable.
+     *
+     * @return string[]
      */
-    protected function buildCacheKey(array $arPartList): string
+    protected function getRenderContextKeyParts(): array
     {
         $sColorVersion = (new ColorMapRepository())->getVersion();
         $obActiveSite = \Site::getActiveSite();
 
-        return implode('.', array_merge($arPartList, [
+        return [
             $obActiveSite ? $obActiveSite->code : 'default',
             app()->getLocale(),
             (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
             (string) (PriceTypeHelper::instance()->getActivePriceTypeCode() ?: 'base'),
             $sColorVersion !== '' ? $sColorVersion : 'plain',
-        ]));
+        ];
+    }
+
+    /**
+     * Cache key for rendered markup: the caller's own parts, plus the shared
+     * render context dimensions above.
+     */
+    protected function buildCacheKey(array $arPartList): string
+    {
+        return implode('.', array_merge($arPartList, $this->getRenderContextKeyParts()));
     }
 
     /**
