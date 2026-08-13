@@ -59,6 +59,14 @@ class OfferSheet extends ComponentBase
      */
     protected array $arOrderedRowListMemo = [];
 
+    /**
+     * Request-scoped memo of the epoch value: getRenderContextKeyParts() runs
+     * on every cache read and the epoch behind it is itself a cache read.
+     *
+     * @var string|null
+     */
+    protected ?string $sSheetCacheEpochMemo = null;
+
     public function componentDetails()
     {
         return [
@@ -92,15 +100,18 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Expose the localStorage epoch token to the page. cache:clear wipes the
-     * key, the next request mints a new value, sheet-cache.js drops its store
-     * on mismatch (XML import workflow).
+     * Expose the client cache epoch token to the page.
+     *
+     * The token is the render context key parts whole - epoch value included,
+     * see getRenderContextKeyParts() - so the client store and the server
+     * cache can never disagree about what is reusable. The catalog import
+     * commands (shopaholic:import_from_xml_s3 / _serverless), the
+     * goods-received stock apply and storeextender:import-theme-messages
+     * rotate the epoch via Cache::forget(CACHE_KEY_EPOCH) when their data
+     * changes; php artisan cache:clear wipes the key as well.
      */
     public function onRun()
     {
-        $sEpoch = (string) Cache::rememberForever(self::CACHE_KEY_EPOCH, function () {
-            return (string) microtime(true);
-        });
         // sheet-cache.js keys its localStorage store by this token and purges
         // on mismatch. EVERY dimension of the server-side cache key rides
         // along (site, locale, currency, price type, color version) - the
@@ -109,10 +120,7 @@ class OfferSheet extends ComponentBase
         // price type) and the sheet showed the wrong tier's prices for up to
         // an hour; the reverse leaked wholesale prices to the next guest on a
         // shared machine.
-        $this->page['sHrCacheEpoch'] = implode('.', array_merge(
-            [$sEpoch],
-            $this->getRenderContextKeyParts()
-        ));
+        $this->page['sHrCacheEpoch'] = $this->getClientCacheEpochToken();
         $this->page['sHrSheetMode'] = $this->getMode();
     }
 
@@ -154,6 +162,7 @@ class OfferSheet extends ComponentBase
                 'bSelectMode' => $this->getMode() === self::MODE_SELECT,
             ])),
             'arCartOfferIdList' => $this->getCartOfferIdList(),
+            'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
     }
 
@@ -176,7 +185,12 @@ class OfferSheet extends ComponentBase
 
         $iTotalCount = $obProductItem->offer->count();
         if ($iOffset >= $iTotalCount) {
-            return ['sRowListHtml' => '', 'iNextOffset' => $iTotalCount, 'bHasMore' => false];
+            return [
+                'sRowListHtml' => '',
+                'iNextOffset' => $iTotalCount,
+                'bHasMore' => false,
+                'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
+            ];
         }
         $iNextOffset = min($iOffset + $iPageSize, $iTotalCount);
 
@@ -185,6 +199,7 @@ class OfferSheet extends ComponentBase
             'iNextOffset' => $iNextOffset,
             'bHasMore' => $iNextOffset < $iTotalCount,
             'arCartOfferIdList' => $this->getCartOfferIdList(),
+            'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
     }
 
@@ -234,6 +249,7 @@ class OfferSheet extends ComponentBase
                 array_map(fn ($iOfferId) => OfferItem::make($iOfferId), $arOfferIdList),
                 $this->readBatchPartialList()
             ),
+            'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
     }
 
@@ -509,6 +525,7 @@ class OfferSheet extends ComponentBase
                     $this->readBatchPartialList()
                 )
                 : [],
+            'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
     }
 
@@ -851,11 +868,33 @@ class OfferSheet extends ComponentBase
     }
 
     /**
+     * The epoch value, minted once and held until something rotates it.
+     *
+     * Folded into every render context key part list below, which is what
+     * makes Cache::forget(CACHE_KEY_EPOCH) the ONE invalidation for both
+     * stores: the next request mints a new value, every server row re-keys
+     * under it, and every client drops its stores on token mismatch. Reads
+     * the remembered value - it must never re-derive it from the context
+     * parts, or minting would recurse.
+     */
+    protected function getSheetCacheEpoch(): string
+    {
+        if ($this->sSheetCacheEpochMemo === null) {
+            $this->sSheetCacheEpochMemo = (string) Cache::rememberForever(self::CACHE_KEY_EPOCH, function () {
+                return (string) microtime(true);
+            });
+        }
+
+        return $this->sSheetCacheEpochMemo;
+    }
+
+    /**
      * Everything that makes the SAME markup render differently for another
-     * visitor or another release: site, locale, currency, price type and the
-     * color data version behind the grouping. ONE list, shared by the server
-     * cache key and the client cache epoch (onRun), so the two stores can
-     * never disagree about what is reusable.
+     * visitor or another release: the cache epoch, site, locale, currency,
+     * price type and the color data version behind the grouping. ONE list,
+     * shared by the server cache key and the client cache epoch token, so the
+     * two stores can never disagree about what is reusable. A new render
+     * dimension goes in this list, nowhere else.
      *
      * @return string[]
      */
@@ -865,12 +904,24 @@ class OfferSheet extends ComponentBase
         $obActiveSite = \Site::getActiveSite();
 
         return [
+            $this->getSheetCacheEpoch(),
             $obActiveSite ? $obActiveSite->code : 'default',
             app()->getLocale(),
             (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
             (string) (PriceTypeHelper::instance()->getActivePriceTypeCode() ?: 'base'),
             $sColorVersion !== '' ? $sColorVersion : 'plain',
         ];
+    }
+
+    /**
+     * The token every client cache keys itself by: the render context parts,
+     * whole. Echoed by every AJAX handler on top of the page render, so an
+     * open tab learns about an auth, currency or import change from the FIRST
+     * response it receives, not only at page load.
+     */
+    protected function getClientCacheEpochToken(): string
+    {
+        return implode('.', $this->getRenderContextKeyParts());
     }
 
     /**

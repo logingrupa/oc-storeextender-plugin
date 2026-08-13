@@ -3,7 +3,6 @@
 use Cms\Classes\Theme;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
-use Kharanenka\Helper\CCache;
 use Logingrupa\StoreExtender\Components\OfferSheet;
 use RainLab\Translate\Models\Message;
 use Symfony\Component\Yaml\Yaml;
@@ -62,10 +61,14 @@ class ImportThemeMessages extends Command
             $this->info("{$sLocale}: ".count($arMessageList).' messages imported');
         }
 
-        // Cached sheet rows carry rendered labels: force a rebuild
-        CCache::clear([OfferSheet::CACHE_TAG_SHEET]);
+        // Cached sheet rows carry rendered labels: rotate the epoch. Its value
+        // is folded into every server cache key AND the client cache token
+        // (OfferSheet::getRenderContextKeyParts), so one Cache::forget re-keys
+        // the server rows and drops every client store together. Never reach
+        // for CCache::clear by tag here - it is a silent no-op on the file
+        // cache driver.
         Cache::forget(OfferSheet::CACHE_KEY_EPOCH);
-        $this->info('Sheet HTML cache cleared.');
+        $this->info('Sheet cache epoch rotated: server rows re-key, clients drop their stores.');
 
         return self::SUCCESS;
     }
