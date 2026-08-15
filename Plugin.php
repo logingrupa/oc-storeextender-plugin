@@ -45,6 +45,8 @@ use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
 
 use Logingrupa\StoreExtender\Classes\Event\Metapixel\PurchaseMarginValueHandler;
 
+use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
+
 //CartPosition events
 use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
@@ -172,6 +174,9 @@ class Plugin extends PluginBase
         //Meta Purchase value = margin (order total minus izpl cost), via
         //Metapixel's before_dispatch payload hook - restores the v1 rule
         Event::subscribe(PurchaseMarginValueHandler::class);
+        //1C import must never write or delete property links again: freezes
+        //the element's links against PropertiesShopaholic's beforeImport wipe
+        Event::subscribe(PropertyImportGuardHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
         //Order position
