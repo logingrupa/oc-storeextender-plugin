@@ -114,4 +114,15 @@ class ColorFamilyMatcherNormalizationTest extends TestCase
         $this->assertSame('Sarkans', $arResolved['red']['name'], 'missing locale falls back to the default locale');
         $this->assertSame('Gold', $arResolved['gold']['name'], 'no names at all falls back to the raw family name');
     }
+
+    public function testResolveEntriesPrefersEnglishOverDefaultForUnknownLocale()
+    {
+        $arIndex = [
+            'red' => ['names' => ['en' => 'Red', 'lv' => 'Sarkans', 'ru' => 'Красный'], 'family' => 'red', 'hex' => null],
+        ];
+
+        $arResolved = ColorFamilyMatcher::resolveEntries($arIndex, 'nb-no');
+
+        $this->assertSame('Red', $arResolved['red']['name'], 'a locale outside the export reads English before Latvian');
+    }
 }

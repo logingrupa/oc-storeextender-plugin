@@ -33,6 +33,11 @@ class ColorFamilyMatcher
 
     const LOCALE_DEFAULT = 'lv';
 
+    /** Locale tried before LOCALE_DEFAULT when the active locale has no
+     * name - a locale outside the export (nb-no on the .no store) reads
+     * better in English than in Latvian */
+    const LOCALE_NAME_FALLBACK = 'en';
+
     /** @var array|null per-request memo of the built term index */
     protected static $arIndexMemo = null;
 
@@ -68,7 +73,8 @@ class ColorFamilyMatcher
 
     /**
      * Collapse raw index entries to display data for one locale: requested
-     * locale name, else the default locale, else the raw family name.
+     * locale name, else English, else the default locale, else the raw
+     * family name.
      *
      * @param array  $arEntryList index entries keyed by value slug
      * @param string $sLocale
@@ -80,6 +86,9 @@ class ColorFamilyMatcher
         foreach ($arEntryList as $sSlug => $arEntry) {
             $arNames = (array) ($arEntry['names'] ?? []);
             $sName = (string) ($arNames[$sLocale] ?? '');
+            if ($sName === '') {
+                $sName = (string) ($arNames[self::LOCALE_NAME_FALLBACK] ?? '');
+            }
             if ($sName === '') {
                 $sName = (string) ($arNames[self::LOCALE_DEFAULT] ?? '');
             }
