@@ -47,6 +47,9 @@ use Logingrupa\StoreExtender\Classes\Event\Metapixel\PurchaseMarginValueHandler;
 
 use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 
+//Color Family property slug pinning
+use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
+
 //CartPosition events
 use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
@@ -177,6 +180,9 @@ class Plugin extends PluginBase
         //1C import must never write or delete property links again: freezes
         //the element's links against PropertiesShopaholic's beforeImport wipe
         Event::subscribe(PropertyImportGuardHandler::class);
+        //Color Family values keep the stable family slug from families.json,
+        //so a display-name rename never moves URLs or filter cache keys
+        Event::subscribe(ColorFamilySlugHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
         //Order position

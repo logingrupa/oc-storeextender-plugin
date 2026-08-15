@@ -56,18 +56,41 @@ class ColorApiClient
     protected $iLastFetchStatus = -1;
 
     /**
+     * Root key of the payload map this client consumes. Subclasses covering
+     * other color-lab endpoints override it (families.json uses 'families').
+     *
+     * @return string
+     */
+    protected function payloadRootKey(): string
+    {
+        return 'offers';
+    }
+
+    /**
+     * Get the payload map under the root key (offers keyed by bare UUID for
+     * this client; families keyed by slug for FamilyApiClient).
+     *
+     * @return array
+     */
+    public function getMap(): array
+    {
+        $arPayload = $this->getPayload();
+        $sRootKey = $this->payloadRootKey();
+        if (empty($arPayload[$sRootKey]) || !is_array($arPayload[$sRootKey])) {
+            return [];
+        }
+
+        return $arPayload[$sRootKey];
+    }
+
+    /**
      * Get color map keyed by bare offer UUID
      *
      * @return array ['<offerUuid>' => ['family' => string, 'hex' => string, 'hue' => float, 'lightness' => float]]
      */
     public function getColorMap(): array
     {
-        $arPayload = $this->getPayload();
-        if (empty($arPayload['offers']) || !is_array($arPayload['offers'])) {
-            return [];
-        }
-
-        return $arPayload['offers'];
+        return $this->getMap();
     }
 
     /**
@@ -150,8 +173,8 @@ class ColorApiClient
      */
     protected function getPayload(): array
     {
-        if (Cache::has(self::CACHE_KEY_FRESH)) {
-            $arBody = Cache::get(self::CACHE_KEY_BODY);
+        if (Cache::has(static::CACHE_KEY_FRESH)) {
+            $arBody = Cache::get(static::CACHE_KEY_BODY);
 
             // empty body inside the window = recent failure with cold cache;
             // do NOT refetch per request, wait the retry window out
@@ -170,7 +193,7 @@ class ColorApiClient
      */
     protected function refreshPayload(): array
     {
-        $arStaleBody = Cache::get(self::CACHE_KEY_BODY);
+        $arStaleBody = Cache::get(static::CACHE_KEY_BODY);
         $arStaleBody = is_array($arStaleBody) ? $arStaleBody : [];
 
         try {
@@ -179,7 +202,7 @@ class ColorApiClient
             // silent to caller: offer sheet must render without colors, never 500
             $this->iLastFetchStatus = 0;
             Log::warning('ColorApiClient: request failed - '.$obException->getMessage());
-            Cache::put(self::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
+            Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
 
             return $arStaleBody;
         }
@@ -187,7 +210,7 @@ class ColorApiClient
         $this->iLastFetchStatus = $obResponse->status();
 
         if ($obResponse->status() === 304) {
-            Cache::put(self::CACHE_KEY_FRESH, true, self::CACHE_TTL_SECONDS);
+            Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_SECONDS);
             Log::info('ColorApiClient: 304 Not Modified, TTL extended');
 
             return $arStaleBody;
@@ -195,7 +218,7 @@ class ColorApiClient
 
         if (!$obResponse->ok()) {
             Log::warning('ColorApiClient: unexpected status '.$obResponse->status());
-            Cache::put(self::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
+            Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
 
             return $arStaleBody;
         }
@@ -213,19 +236,20 @@ class ColorApiClient
     protected function storePayload(Response $obResponse, array $arStaleBody): array
     {
         $arBody = $obResponse->json();
-        if (!is_array($arBody) || !isset($arBody['offers']) || !is_array($arBody['offers'])) {
+        $sRootKey = $this->payloadRootKey();
+        if (!is_array($arBody) || !isset($arBody[$sRootKey]) || !is_array($arBody[$sRootKey])) {
             Log::warning('ColorApiClient: malformed JSON payload, keeping last cached body');
-            Cache::put(self::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
+            Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
 
             return $arStaleBody;
         }
 
-        Cache::forever(self::CACHE_KEY_BODY, $arBody);
+        Cache::forever(static::CACHE_KEY_BODY, $arBody);
         $sEtag = (string) $obResponse->header('ETag');
         if ($sEtag !== '') {
-            Cache::forever(self::CACHE_KEY_ETAG, $sEtag);
+            Cache::forever(static::CACHE_KEY_ETAG, $sEtag);
         }
-        Cache::put(self::CACHE_KEY_FRESH, true, self::CACHE_TTL_SECONDS);
+        Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_SECONDS);
 
         return $arBody;
     }
@@ -244,11 +268,11 @@ class ColorApiClient
             $obRequest = $obRequest->withoutVerifying();
         }
 
-        $sEtag = (string) Cache::get(self::CACHE_KEY_ETAG, '');
+        $sEtag = (string) Cache::get(static::CACHE_KEY_ETAG, '');
         if ($sEtag !== '') {
             $obRequest = $obRequest->withHeaders(['If-None-Match' => $sEtag]);
         }
 
-        return $obRequest->get($sHost.self::API_PATH);
+        return $obRequest->get($sHost.static::API_PATH);
     }
 }

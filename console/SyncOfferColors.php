@@ -2,8 +2,12 @@
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Logingrupa\StoreExtender\Classes\Color\ColorApiClient;
 use Logingrupa\StoreExtender\Classes\Color\ColorMapRepository;
+use Logingrupa\StoreExtender\Classes\Color\FamilyApiClient;
+use Logingrupa\StoreExtender\Classes\Color\FamilyPropertySync;
+use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
 use Logingrupa\StoreExtender\Models\OfferColor;
 
 /**
@@ -54,6 +58,9 @@ class SyncOfferColors extends Command
                 $obRepository->getSyncedAt() !== '' ? $obRepository->getSyncedAt() : '(unknown)'
             ));
 
+            // the FAMILY taxonomy can move without the offer export moving
+            $this->syncFamilyProperty();
+
             return self::SUCCESS;
         }
 
@@ -94,7 +101,48 @@ class SyncOfferColors extends Command
             $sRemoteUpdatedAt !== '' ? $sRemoteUpdatedAt : '(no timestamp)'
         ));
 
+        $this->syncFamilyProperty();
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Property-side sync: project the family taxonomy onto the Color Family
+     * Shopaholic property from the CURRENT OfferColor table content (never
+     * the possibly-stale API payload). Runs only after the offer color sync
+     * succeeded; a families API that returns nothing skips the property sync
+     * with a warning and never fails the command - the offer sync result
+     * stands, and FamilyPropertySync itself deletes nothing on empty input.
+     *
+     * @return void
+     */
+    protected function syncFamilyProperty(): void
+    {
+        $obFamilyClient = new FamilyApiClient();
+        $obFamilyClient->fetchFresh();
+        $arFamilyMap = $obFamilyClient->getFamilyMap();
+
+        if (empty($arFamilyMap)) {
+            $this->warn('Families API returned no data - property sync skipped.');
+
+            return;
+        }
+
+        $arOfferColorMap = [];
+        foreach (OfferColor::query()->get() as $obOfferColor) {
+            $arOfferColorMap[$obOfferColor->offer_uuid] = ['family' => $obOfferColor->family];
+        }
+
+        $arStats = (new FamilyPropertySync())->sync($arFamilyMap, $arOfferColorMap);
+
+        $this->info(sprintf(
+            'Family property sync: %d meta rows, %d values, %d links created, %d updated, %d deleted.',
+            $arStats['meta'],
+            $arStats['values'],
+            $arStats['links_created'],
+            $arStats['links_updated'],
+            $arStats['links_deleted']
+        ));
     }
 
     /**
@@ -153,6 +201,9 @@ class SyncOfferColors extends Command
         $this->line(sprintf('  imported export from %s', $obRepository->getExportUpdatedAt() !== '' ? $obRepository->getExportUpdatedAt() : '(unknown)'));
         $this->line(sprintf('  imported at          %s', $obRepository->getSyncedAt() !== '' ? $obRepository->getSyncedAt() : '(never)'));
         $this->line(sprintf('  rows in local table  %d', $iRowCount));
+        if (Schema::hasTable('logingrupa_storeextender_color_family_meta')) {
+            $this->line(sprintf('  family meta rows     %d', ColorFamilyMeta::query()->count()));
+        }
 
         if (!$bReachable) {
             $this->error('  VERDICT              api unreachable, cannot tell whether we are in sync');

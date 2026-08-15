@@ -182,12 +182,16 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
     {
         // A sequence, not two fake() calls: a second fake() ADDS a stub rather
         // than replacing one, so the original '*' would keep answering and the
-        // new version would never arrive. Each run makes exactly one request.
+        // new version would never arrive. Each successful run makes exactly
+        // two requests: the offer export, then the family taxonomy (empty
+        // here, so the property sync skips itself).
         $arNextBody = $this->arValidBody;
         $arNextBody['version'] = 'v43';
         Http::fakeSequence()
             ->push($this->arValidBody, 200)
-            ->push($arNextBody, 200);
+            ->push(['families' => []], 200)
+            ->push($arNextBody, 200)
+            ->push(['families' => []], 200);
 
         Artisan::call('storeextender:sync-offer-colors');
         OfferColor::where('offer_uuid', 'uuid-pink')->update(['family' => 'SentinelValue']);
@@ -239,8 +243,10 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
     {
         $arNextBody = $this->arValidBody;
         $arNextBody['version'] = 'v43';
+        // sync run = offer export + family taxonomy; --status run = offer only
         Http::fakeSequence()
             ->push($this->arValidBody, 200)
+            ->push(['families' => []], 200)
             ->push($arNextBody, 200);
 
         Artisan::call('storeextender:sync-offer-colors');
