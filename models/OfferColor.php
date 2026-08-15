@@ -16,6 +16,7 @@ use Model;
  * @property string|null $hex strict #RRGGBB or null
  * @property float  $hue
  * @property float  $lightness
+ * @property float|null $confidence classification certainty (in-family shade order, highest first); null = unscored
  */
 class OfferColor extends Model
 {
@@ -27,5 +28,6 @@ class OfferColor extends Model
         'hex',
         'hue',
         'lightness',
+        'confidence',
     ];
 }

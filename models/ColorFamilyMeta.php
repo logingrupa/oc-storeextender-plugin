@@ -19,6 +19,7 @@ use Model;
  * @property string|null $hex strict #RRGGBB or null
  * @property array  $names  ['lv' => 'Sarkans', 'en' => 'Red', ...]
  * @property array  $synonyms ['lv' => ['sarkana', ...], ...]
+ * @property int|null $sort_order position in the families.json export (the pill/chip order contract); null = never synced
  */
 class ColorFamilyMeta extends Model
 {
@@ -30,6 +31,7 @@ class ColorFamilyMeta extends Model
         'hex',
         'names',
         'synonyms',
+        'sort_order',
     ];
 
     protected $jsonable = [

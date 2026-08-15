@@ -1,9 +1,11 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Helper;
 
+use Illuminate\Support\Facades\Schema;
 use Lovata\Shopaholic\Models\Offer;
 use Lovata\Shopaholic\Models\Product;
 use Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher;
 use Logingrupa\StoreExtender\Classes\Color\FamilyPropertySync;
+use Logingrupa\StoreExtender\Models\OfferColor;
 
 /**
  * Class ColorFamilyHelper
@@ -47,15 +49,99 @@ class ColorFamilyHelper
 
     /**
      * Offer ids carrying the family value - the catalog's offer-card grid
-     * for ?color= renders each shade as its own card. Same null/[] contract
-     * as filterProductIds.
+     * for ?color= renders each shade as its own card, ordered by
+     * classification confidence (most certainly-that-color first). Same
+     * null/[] contract as filterProductIds.
      *
      * @param mixed $sSlug value slug from ?color=
      * @return array|null
      */
     public static function filterOfferIds($sSlug): ?array
     {
-        return static::filterIds($sSlug, Offer::class);
+        $arOfferIdList = static::filterIds($sSlug, Offer::class);
+        if (empty($arOfferIdList)) {
+            return $arOfferIdList;
+        }
+
+        return static::orderOfferIdsByConfidence($arOfferIdList);
+    }
+
+    /**
+     * Order offer ids by their synced color confidence, highest first:
+     * inside one family the score says how certainly a shade IS that color,
+     * so the reddest reds open the red page. Unscored offers sink to the
+     * tail; ties and the tail keep the incoming order. Fail-safe: a missing
+     * column (undeployed migration) or no scores at all returns the list
+     * untouched.
+     *
+     * @param array $arOfferIdList
+     * @return array
+     */
+    public static function orderOfferIdsByConfidence(array $arOfferIdList): array
+    {
+        if (count($arOfferIdList) < 2) {
+            return $arOfferIdList;
+        }
+        if (!Schema::hasColumn('logingrupa_storeextender_offer_colors', 'confidence')) {
+            return $arOfferIdList;
+        }
+
+        $arUuidByOfferId = Offer::query()
+            ->whereIn('id', $arOfferIdList)
+            ->pluck('external_id', 'id')
+            ->all();
+        if (empty($arUuidByOfferId)) {
+            return $arOfferIdList;
+        }
+
+        $arConfidenceByUuid = OfferColor::query()
+            ->whereIn('offer_uuid', array_values($arUuidByOfferId))
+            ->whereNotNull('confidence')
+            ->pluck('confidence', 'offer_uuid')
+            ->all();
+        if (empty($arConfidenceByUuid)) {
+            return $arOfferIdList;
+        }
+
+        $arOfferIdList = array_values($arOfferIdList);
+        $arPositionByOfferId = array_flip($arOfferIdList);
+        usort(
+            $arOfferIdList,
+            function ($iFirstId, $iSecondId) use ($arUuidByOfferId, $arConfidenceByUuid, $arPositionByOfferId): int {
+                $fFirst = static::resolveConfidence($iFirstId, $arUuidByOfferId, $arConfidenceByUuid);
+                $fSecond = static::resolveConfidence($iSecondId, $arUuidByOfferId, $arConfidenceByUuid);
+
+                if (($fFirst === null) !== ($fSecond === null)) {
+                    return $fFirst === null ? 1 : -1;
+                }
+                if ($fFirst !== null && $fFirst !== $fSecond) {
+                    return $fSecond <=> $fFirst;
+                }
+
+                return $arPositionByOfferId[$iFirstId] <=> $arPositionByOfferId[$iSecondId];
+            }
+        );
+
+        return $arOfferIdList;
+    }
+
+    /**
+     * The synced confidence for one offer id, or null when the offer or its
+     * score is unknown.
+     *
+     * @param mixed $iOfferId
+     * @param array $arUuidByOfferId
+     * @param array $arConfidenceByUuid
+     * @return float|null
+     */
+    protected static function resolveConfidence($iOfferId, array $arUuidByOfferId, array $arConfidenceByUuid): ?float
+    {
+        $sUuid = $arUuidByOfferId[$iOfferId] ?? null;
+        if ($sUuid === null || !isset($arConfidenceByUuid[$sUuid])) {
+            return null;
+        }
+
+        return (float) $arConfidenceByUuid[$sUuid];
     }
 
     /**

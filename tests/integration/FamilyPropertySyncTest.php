@@ -54,8 +54,12 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
 
         require_once __DIR__.'/../../updates/create_table_offer_colors.php';
         require_once __DIR__.'/../../updates/create_table_color_family_meta.php';
+        require_once __DIR__.'/../../updates/update_table_color_family_meta_add_sort_order.php';
+        require_once __DIR__.'/../../updates/update_table_offer_colors_add_confidence.php';
         (new \Logingrupa\StoreExtender\Updates\CreateTableOfferColors())->up();
         (new \Logingrupa\StoreExtender\Updates\CreateTableColorFamilyMeta())->up();
+        (new \Logingrupa\StoreExtender\Updates\UpdateTableColorFamilyMetaAddSortOrder())->up();
+        (new \Logingrupa\StoreExtender\Updates\UpdateTableOfferColorsAddConfidence())->up();
 
         $this->createStubTable('lovata_shopaholic_products', function (Blueprint $obTable) {
             $obTable->increments('id');
@@ -306,6 +310,111 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
         $this->assertSame(2, ColorFamilyMeta::query()->count(), 'empty payload must never wipe meta');
         $this->assertNotNull($this->findOfferLink($this->iOfferOneId), 'empty payload must never delete links');
         $this->assertNotNull($this->findOfferLink($this->iOfferTwoId), 'empty payload must never delete links');
+    }
+
+    /**
+     * The matcher memoizes its index per process and caches it against the
+     * meta content stamp - both must go before asserting a fresh read order.
+     *
+     * @return void
+     */
+    protected function resetMatcherIndex(): void
+    {
+        $obMemoProperty = new \ReflectionProperty(\Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher::class, 'arIndexMemo');
+        $obMemoProperty->setAccessible(true);
+        $obMemoProperty->setValue(null, null);
+        \Illuminate\Support\Facades\Cache::flush();
+    }
+
+    public function testSyncPersistsExportPositionAsSortOrder()
+    {
+        (new FamilyPropertySync())->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());
+
+        $obRedMeta = ColorFamilyMeta::query()->where('value_slug', 'red')->first();
+        $obBlueMeta = ColorFamilyMeta::query()->where('value_slug', 'blue')->first();
+        $this->assertSame(0, (int) $obRedMeta->sort_order, 'sort_order must be the family map position');
+        $this->assertSame(1, (int) $obBlueMeta->sort_order, 'sort_order must be the family map position');
+    }
+
+    public function testReorderedExportRewritesSortOrderOnStableRows()
+    {
+        $obSync = new FamilyPropertySync();
+        $obSync->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());
+
+        $iRedMetaId = ColorFamilyMeta::query()->where('value_slug', 'red')->value('id');
+        $iBlueMetaId = ColorFamilyMeta::query()->where('value_slug', 'blue')->value('id');
+
+        // upstream reordered the export: blue now leads
+        $arFamilyMap = $this->getFamilyMap();
+        $arFamilyMap = ['blue' => $arFamilyMap['blue'], 'red' => $arFamilyMap['red']];
+        $obSync->sync($arFamilyMap, $this->getOfferColorMapFromTable());
+
+        $obRedMeta = ColorFamilyMeta::query()->where('value_slug', 'red')->first();
+        $obBlueMeta = ColorFamilyMeta::query()->where('value_slug', 'blue')->first();
+        $this->assertSame($iRedMetaId, $obRedMeta->id, 'reorder must move positions, not recreate rows');
+        $this->assertSame($iBlueMetaId, $obBlueMeta->id, 'reorder must move positions, not recreate rows');
+        $this->assertSame(0, (int) $obBlueMeta->sort_order);
+        $this->assertSame(1, (int) $obRedMeta->sort_order);
+    }
+
+    public function testMatcherFamiliesFollowSortOrderAndFallBackToIdOrder()
+    {
+        $obSync = new FamilyPropertySync();
+        $obSync->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());
+
+        // export order red, blue - insertion order agrees on first sync
+        $this->resetMatcherIndex();
+        $arSlugList = array_keys((new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families());
+        $this->assertSame(['red', 'blue'], $arSlugList);
+
+        // upstream reorder reaches the matcher without new rows
+        $arFamilyMap = $this->getFamilyMap();
+        $obSync->sync(['blue' => $arFamilyMap['blue'], 'red' => $arFamilyMap['red']], $this->getOfferColorMapFromTable());
+        $this->resetMatcherIndex();
+        $arSlugList = array_keys((new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families());
+        $this->assertSame(['blue', 'red'], $arSlugList);
+
+        // NULL positions (pre-contract data) keep the old id-order behavior
+        ColorFamilyMeta::query()->update(['sort_order' => null]);
+        $this->resetMatcherIndex();
+        $arSlugList = array_keys((new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families());
+        $this->assertSame(['red', 'blue'], $arSlugList);
+    }
+
+    public function testOfferIdsOrderByConfidenceHighestFirstUnscoredLast()
+    {
+        // a third offer with no synced color row at all (never scored)
+        $iOfferThreeId = DB::table('lovata_shopaholic_offers')->insertGetId([
+            'product_id'  => $this->iProductId,
+            'name'        => 'Shade 03',
+            'external_id' => 'uuid-offer-3',
+            'active'      => true,
+        ]);
+        OfferColor::query()->where('offer_uuid', 'uuid-offer-1')->update(['confidence' => 0.40]);
+        OfferColor::query()->where('offer_uuid', 'uuid-offer-2')->update(['confidence' => 0.90]);
+
+        $arOrderedList = \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::orderOfferIdsByConfidence([
+            $this->iOfferOneId,
+            $iOfferThreeId,
+            $this->iOfferTwoId,
+        ]);
+
+        $this->assertSame(
+            [$this->iOfferTwoId, $this->iOfferOneId, $iOfferThreeId],
+            $arOrderedList,
+            'highest confidence first, unscored offers sink to the tail'
+        );
+    }
+
+    public function testOfferIdsKeepIncomingOrderWithoutAnyScores()
+    {
+        $arIncomingList = [$this->iOfferTwoId, $this->iOfferOneId];
+
+        $this->assertSame(
+            $arIncomingList,
+            \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::orderOfferIdsByConfidence($arIncomingList),
+            'no scores at all must leave the list untouched'
+        );
     }
 
     public function testUnknownFamilyKeepsTheExistingLink()

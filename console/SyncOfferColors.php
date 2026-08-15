@@ -81,10 +81,15 @@ class SyncOfferColors extends Command
             return self::FAILURE;
         }
 
+        $arUpdateColumnList = ['family', 'hex', 'hue', 'lightness', 'updated_at'];
+        if ($this->hasConfidenceColumn()) {
+            $arUpdateColumnList[] = 'confidence';
+        }
+
         $iDeletedCount = 0;
-        DB::transaction(function () use ($arRowList, &$iDeletedCount) {
+        DB::transaction(function () use ($arRowList, $arUpdateColumnList, &$iDeletedCount) {
             foreach (array_chunk($arRowList, self::UPSERT_CHUNK_SIZE) as $arChunk) {
-                OfferColor::upsert($arChunk, ['offer_uuid'], ['family', 'hex', 'hue', 'lightness', 'updated_at']);
+                OfferColor::upsert($arChunk, ['offer_uuid'], $arUpdateColumnList);
             }
 
             $iDeletedCount = OfferColor::query()
@@ -223,14 +228,29 @@ class SyncOfferColors extends Command
     }
 
     /**
-     * Validate + normalize API entries into upsert rows. Invalid entries are
-     * skipped and counted, never imported half-broken.
+     * Whether the confidence column is migrated yet. Fail-safe: an undeployed
+     * migration must not fail the sync, the score simply is not stored.
      *
-     * @param array $arColorMap ['<offerUuid>' => ['family' => string, 'hex' => string, 'hue' => float, 'lightness' => float]]
+     * @return bool
+     */
+    protected function hasConfidenceColumn(): bool
+    {
+        return Schema::hasColumn('logingrupa_storeextender_offer_colors', 'confidence');
+    }
+
+    /**
+     * Validate + normalize API entries into upsert rows. Invalid entries are
+     * skipped and counted, never imported half-broken. confidence is an
+     * optional field (null = unscored, in-family order signal absent) and is
+     * only carried while its column exists.
+     *
+     * @param array $arColorMap ['<offerUuid>' => ['family' => string, 'hex' => string, 'hue' => float, 'lightness' => float, 'confidence' => float|null]]
      * @return array
      */
     protected function buildRowList(array $arColorMap): array
     {
+        $bHasConfidenceColumn = $this->hasConfidenceColumn();
+
         $arRowList = [];
         $iSkippedCount = 0;
         foreach ($arColorMap as $sOfferUuid => $arColor) {
@@ -252,13 +272,19 @@ class SyncOfferColors extends Command
                 ? $arColor['hex']
                 : null;
 
-            $arRowList[] = [
+            $arRow = [
                 'offer_uuid' => $sOfferUuid,
                 'family'     => mb_substr($arColor['family'], 0, 64),
                 'hex'        => $sHex,
                 'hue'        => round((float) $arColor['hue'], 2),
                 'lightness'  => round((float) $arColor['lightness'], 4),
             ];
+            if ($bHasConfidenceColumn) {
+                $arRow['confidence'] = isset($arColor['confidence']) && is_numeric($arColor['confidence'])
+                    ? round((float) $arColor['confidence'], 2)
+                    : null;
+            }
+            $arRowList[] = $arRow;
         }
 
         if ($iSkippedCount > 0) {

@@ -1,6 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Color;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Lovata\Shopaholic\Models\Offer;
 use Lovata\PropertiesShopaholic\Models\Property;
 use Lovata\PropertiesShopaholic\Models\PropertyValue;
@@ -77,11 +78,20 @@ class FamilyPropertySync
      * delete rows whose slug left the taxonomy, then reset the slug
      * handler's memo so the value saves that follow see the fresh names.
      *
+     * The family map's key order IS the families.json export order - the
+     * pill/chip order contract - and is persisted as sort_order on every
+     * upsert, because the by-slug upserts keep row ids stable and id order
+     * would otherwise freeze the first sync's order forever. Skipped while
+     * the column is not migrated yet (fail-safe: readers fall back to id
+     * order).
+     *
      * @param array $arFamilyMap
      * @return int
      */
     protected function syncMetaList(array $arFamilyMap): int
     {
+        $bHasSortOrder = Schema::hasColumn('logingrupa_storeextender_color_family_meta', 'sort_order');
+
         $iMetaCount = 0;
         $arSlugList = [];
         foreach ($arFamilyMap as $sSlug => $arFamily) {
@@ -99,6 +109,9 @@ class FamilyPropertySync
             $obMeta->hex = $this->normalizeHex($arFamily['hex'] ?? null);
             $obMeta->names = (array) ($arFamily['names'] ?? []);
             $obMeta->synonyms = (array) ($arFamily['synonyms'] ?? []);
+            if ($bHasSortOrder) {
+                $obMeta->sort_order = $iMetaCount;
+            }
             $obMeta->save();
 
             $arSlugList[] = $sSlug;

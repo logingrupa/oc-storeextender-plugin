@@ -26,7 +26,7 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
         'version' => 'v42',
         'count'   => 2,
         'offers'  => [
-            'uuid-pink'  => ['family' => 'Pink', 'hex' => '#EC407A', 'hue' => 354.2, 'lightness' => 0.64],
+            'uuid-pink'  => ['family' => 'Pink', 'hex' => '#EC407A', 'hue' => 354.2, 'lightness' => 0.64, 'confidence' => 0.85],
             'uuid-red'   => ['family' => 'Red', 'hex' => '#C62828', 'hue' => 2.1, 'lightness' => 0.45],
             'uuid-junk'  => ['family' => '', 'hex' => 'nope', 'hue' => 'x', 'lightness' => null],
         ],
@@ -38,7 +38,9 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
             parent::setUp();
             // migration classes are not composer-autoloaded, October loads them by path
             require_once __DIR__.'/../../../updates/create_table_offer_colors.php';
+            require_once __DIR__.'/../../../updates/update_table_offer_colors_add_confidence.php';
             (new \Logingrupa\StoreExtender\Updates\CreateTableOfferColors())->up();
+            (new \Logingrupa\StoreExtender\Updates\UpdateTableOfferColorsAddConfidence())->up();
         } catch (\Throwable $obException) {
             $this->markTestSkipped('Test bootstrap failed on this environment: '.$obException->getMessage());
         }
@@ -63,6 +65,11 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
         $this->assertNotNull($obPink);
         $this->assertSame('Pink', $obPink->family);
         $this->assertSame('#EC407A', $obPink->hex);
+        $this->assertSame(0.85, (float) $obPink->confidence, 'the confidence score must import');
+        $this->assertNull(
+            OfferColor::where('offer_uuid', 'uuid-red')->first()->confidence,
+            'an export without a score must store null, not zero'
+        );
 
         $obRepository = new ColorMapRepository();
         $this->assertSame('v42', $obRepository->getVersion());

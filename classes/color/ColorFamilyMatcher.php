@@ -189,13 +189,20 @@ class ColorFamilyMatcher
 
     /**
      * Build the term index from ColorFamilyMeta + the current PropertyValue
-     * base values.
+     * base values. Index order follows sort_order - the families.json export
+     * position the sync persists - so pills and chips render in the order
+     * the color-lab decided; NULL positions (pre-migration data) and a
+     * missing column fall back to id order, the pre-contract behavior.
      *
      * @return array ['<valueSlug>' => ['terms' => array, 'names' => array, 'family' => string, 'hex' => string|null]]
      */
     protected function buildIndex(): array
     {
-        $obMetaList = ColorFamilyMeta::query()->get();
+        $obMetaQuery = ColorFamilyMeta::query();
+        if (Schema::hasColumn('logingrupa_storeextender_color_family_meta', 'sort_order')) {
+            $obMetaQuery->orderByRaw('sort_order IS NULL')->orderBy('sort_order')->orderBy('id');
+        }
+        $obMetaList = $obMetaQuery->get();
         if ($obMetaList->isEmpty()) {
             return [];
         }
