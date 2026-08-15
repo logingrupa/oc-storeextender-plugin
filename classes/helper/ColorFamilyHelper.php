@@ -209,10 +209,12 @@ class ColorFamilyHelper
      * Resolve display entries to rendered chips: offer (shade) count from
      * the filter store and the ?color= catalog URL. Families whose filter
      * would land on an empty catalog page are dropped - a chip is a promise
-     * of results.
+     * of results. terms is the space-joined match vocabulary (all locales,
+     * raw + transliterated) the theme's client-side pill filter reads from
+     * data-terms.
      *
-     * @param array $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null]]
-     * @return array [['slug','name','hex','count','url'], ...]
+     * @param array $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array]]
+     * @return array [['slug','name','hex','count','url','terms'], ...]
      */
     protected static function buildChipList(array $arFamilyMap): array
     {
@@ -246,6 +248,7 @@ class ColorFamilyHelper
                 'hex'   => $arFamily['hex'],
                 'count' => count($arOfferIdList),
                 'url'   => $sCatalogUrl.'?color='.urlencode($sSlug),
+                'terms' => implode(' ', (array) ($arFamily['terms'] ?? [])),
             ];
         }
 

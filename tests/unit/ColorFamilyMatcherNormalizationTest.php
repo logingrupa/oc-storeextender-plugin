@@ -102,6 +102,16 @@ class ColorFamilyMatcherNormalizationTest extends TestCase
         $this->assertSame('#d32f2f', $arResolved['red']['hex']);
     }
 
+    public function testResolveEntriesCarriesTheTermListForTheClientFilter()
+    {
+        $arResolved = ColorFamilyMatcher::resolveEntries($this->makeIndex(), 'lv');
+
+        $this->assertContains('sarkans', $arResolved['red']['terms'], 'the pill filter vocabulary must ride along');
+        $this->assertSame([], ColorFamilyMatcher::resolveEntries([
+            'red' => ['names' => ['lv' => 'Sarkans'], 'family' => 'Red', 'hex' => null],
+        ], 'lv')['red']['terms'], 'entries without terms resolve to an empty list, never an error');
+    }
+
     public function testResolveEntriesFallsBackToDefaultLocaleThenFamily()
     {
         $arIndex = [

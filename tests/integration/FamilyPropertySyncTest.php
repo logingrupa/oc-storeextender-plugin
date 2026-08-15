@@ -364,8 +364,11 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
 
         // export order red, blue - insertion order agrees on first sync
         $this->resetMatcherIndex();
-        $arSlugList = array_keys((new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families());
-        $this->assertSame(['red', 'blue'], $arSlugList);
+        $arFamilyMap = (new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families();
+        $this->assertSame(['red', 'blue'], array_keys($arFamilyMap));
+        // the client pill filter needs BOTH alphabets in the vocabulary
+        $this->assertContains('красный', $arFamilyMap['red']['terms'], 'raw Cyrillic term must survive for the client filter');
+        $this->assertContains('krasnyj', $arFamilyMap['red']['terms'], 'transliterated term must stay for the server matcher');
 
         // upstream reorder reaches the matcher without new rows
         $arFamilyMap = $this->getFamilyMap();

@@ -74,11 +74,12 @@ class ColorFamilyMatcher
     /**
      * Collapse raw index entries to display data for one locale: requested
      * locale name, else English, else the default locale, else the raw
-     * family name.
+     * family name. The full term list rides along for the storefront's
+     * client-side pill filter (per-keystroke, no round trip).
      *
      * @param array  $arEntryList index entries keyed by value slug
      * @param string $sLocale
-     * @return array ['<valueSlug>' => ['name' => string, 'hex' => string|null]]
+     * @return array ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array]]
      */
     public static function resolveEntries(array $arEntryList, string $sLocale): array
     {
@@ -97,8 +98,9 @@ class ColorFamilyMatcher
             }
 
             $arResult[$sSlug] = [
-                'name' => $sName,
-                'hex'  => $arEntry['hex'] ?? null,
+                'name'  => $sName,
+                'hex'   => $arEntry['hex'] ?? null,
+                'terms' => (array) ($arEntry['terms'] ?? []),
             ];
         }
 
@@ -228,6 +230,14 @@ class ColorFamilyMatcher
             foreach ($arRawTermList as $sTerm) {
                 if (!is_string($sTerm)) {
                     continue;
+                }
+                // the raw lowercase form keeps the original alphabet for the
+                // storefront's client-side pill filter (a Cyrillic query must
+                // meet 'красный' - JS cannot transliterate); match() itself
+                // only ever meets the normalized form
+                $sRawLowercase = mb_strtolower($sTerm);
+                if ($sRawLowercase !== '') {
+                    $arTermList[$sRawLowercase] = true;
                 }
                 $sNormalized = static::normalizeTerm($sTerm);
                 if ($sNormalized !== '') {
