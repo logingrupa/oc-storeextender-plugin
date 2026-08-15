@@ -43,6 +43,8 @@ use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserController;
 //Cart component events
 use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
 
+use Logingrupa\StoreExtender\Classes\Event\Metapixel\PurchaseMarginValueHandler;
+
 //CartPosition events
 use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
@@ -167,6 +169,9 @@ class Plugin extends PluginBase
         Event::subscribe(ExtendUserController::class);
         //Cart component events
         Event::subscribe(CartComponentHandler::class);
+        //Meta Purchase value = margin (order total minus izpl cost), via
+        //Metapixel's before_dispatch payload hook - restores the v1 rule
+        Event::subscribe(PurchaseMarginValueHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
         //Order position
