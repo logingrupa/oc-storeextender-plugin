@@ -70,6 +70,7 @@ use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
 
 //Vite asset pipeline for migrated theme pages
+use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
@@ -536,6 +537,10 @@ class Plugin extends PluginBase
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render
                 'offer_render_context' => [OfferRenderContext::class, 'resolve'],
+                // Color Family storefront queries: ?color= product filter and
+                // the search-sheet family chips
+                'color_family_filter' => [ColorFamilyHelper::class, 'filterProductIds'],
+                'color_family_chips' => [ColorFamilyHelper::class, 'chips'],
                 'theme_var' => function ($sKey) {
                     $obTheme = \Cms\Classes\Theme::getActiveTheme();
                     if (empty($obTheme)) {
