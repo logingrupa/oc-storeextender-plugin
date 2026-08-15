@@ -43,7 +43,7 @@ use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserController;
 //Cart component events
 use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
 
-use Logingrupa\StoreExtender\Classes\Event\Metapixel\PurchaseMarginValueHandler;
+use Logingrupa\StoreExtender\Classes\Event\Metapixel\MarginValueHandler;
 
 use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 
@@ -73,6 +73,7 @@ use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
+use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 
 /**
@@ -177,7 +178,7 @@ class Plugin extends PluginBase
         Event::subscribe(CartComponentHandler::class);
         //Meta Purchase value = margin (order total minus izpl cost), via
         //Metapixel's before_dispatch payload hook - restores the v1 rule
-        Event::subscribe(PurchaseMarginValueHandler::class);
+        Event::subscribe(MarginValueHandler::class);
         //1C import must never write or delete property links again: freezes
         //the element's links against PropertiesShopaholic's beforeImport wipe
         Event::subscribe(PropertyImportGuardHandler::class);
@@ -537,10 +538,14 @@ class Plugin extends PluginBase
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render
                 'offer_render_context' => [OfferRenderContext::class, 'resolve'],
-                // Color Family storefront queries: ?color= product filter and
-                // the search-sheet family chips
+                // Color Family storefront queries: ?color= product/offer
+                // filters and the search-sheet family chips
                 'color_family_filter' => [ColorFamilyHelper::class, 'filterProductIds'],
+                'color_family_offer_filter' => [ColorFamilyHelper::class, 'filterOfferIds'],
                 'color_family_chips' => [ColorFamilyHelper::class, 'chips'],
+                // Catalog search grid: offers matching the query directly
+                // plus every offer of a matching product
+                'search_offer_filter' => [SearchOfferHelper::class, 'searchOfferIds'],
                 'theme_var' => function ($sKey) {
                     $obTheme = \Cms\Classes\Theme::getActiveTheme();
                     if (empty($obTheme)) {

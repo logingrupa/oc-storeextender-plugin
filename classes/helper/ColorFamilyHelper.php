@@ -41,6 +41,33 @@ class ColorFamilyHelper
      */
     public static function filterProductIds($sSlug): ?array
     {
+        return static::filterIds($sSlug, Product::class);
+    }
+
+    /**
+     * Offer ids carrying the family value - the catalog's offer-card grid
+     * for ?color= renders each shade as its own card. Same null/[] contract
+     * as filterProductIds.
+     *
+     * @param mixed $sSlug value slug from ?color=
+     * @return array|null
+     */
+    public static function filterOfferIds($sSlug): ?array
+    {
+        return static::filterIds($sSlug, Offer::class);
+    }
+
+    /**
+     * Shared store lookup behind both filters. The result model picks the
+     * cache bucket: Product::class maps offer links to their products,
+     * Offer::class returns the linked offers themselves.
+     *
+     * @param mixed  $sSlug
+     * @param string $sResultModel
+     * @return array|null
+     */
+    protected static function filterIds($sSlug, string $sResultModel): ?array
+    {
         if (!is_string($sSlug) || trim($sSlug) === '') {
             return null;
         }
@@ -52,14 +79,14 @@ class ColorFamilyHelper
 
         return \Lovata\FilterShopaholic\Classes\Store\FilterValueStore::instance()
             ->property
-            ->getListByPropertyValue($iPropertyId, trim($sSlug), Offer::class, Product::class);
+            ->getListByPropertyValue($iPropertyId, trim($sSlug), Offer::class, $sResultModel);
     }
 
     /**
      * Search chips for the families a query names: slug, localized name,
-     * swatch hex, product count and the ?color= catalog URL. Families whose
-     * filter would land on an empty catalog page are dropped - a chip is a
-     * promise of results.
+     * swatch hex, offer (shade) count and the ?color= catalog URL. Families
+     * whose filter would land on an empty catalog page are dropped - a chip
+     * is a promise of results.
      *
      * @param mixed $sQuery raw search input
      * @param mixed $sLocale active locale code
@@ -89,10 +116,10 @@ class ColorFamilyHelper
 
         $arChipList = [];
         foreach ($arMatchList as $sSlug => $arMatch) {
-            $arProductIdList = \Lovata\FilterShopaholic\Classes\Store\FilterValueStore::instance()
+            $arOfferIdList = \Lovata\FilterShopaholic\Classes\Store\FilterValueStore::instance()
                 ->property
-                ->getListByPropertyValue($iPropertyId, $sSlug, Offer::class, Product::class);
-            if (empty($arProductIdList)) {
+                ->getListByPropertyValue($iPropertyId, $sSlug, Offer::class, Offer::class);
+            if (empty($arOfferIdList)) {
                 continue;
             }
 
@@ -100,7 +127,7 @@ class ColorFamilyHelper
                 'slug'  => $sSlug,
                 'name'  => $arMatch['name'],
                 'hex'   => $arMatch['hex'],
-                'count' => count($arProductIdList),
+                'count' => count($arOfferIdList),
                 'url'   => $sCatalogUrl.'?color='.urlencode($sSlug),
             ];
         }
