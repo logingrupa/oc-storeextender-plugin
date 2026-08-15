@@ -543,6 +543,7 @@ class Plugin extends PluginBase
                 'color_family_filter' => [ColorFamilyHelper::class, 'filterProductIds'],
                 'color_family_offer_filter' => [ColorFamilyHelper::class, 'filterOfferIds'],
                 'color_family_chips' => [ColorFamilyHelper::class, 'chips'],
+                'color_family_list' => [ColorFamilyHelper::class, 'familyList'],
                 // Catalog search grid: offers matching the query directly
                 // plus every offer of a matching product
                 'search_offer_filter' => [SearchOfferHelper::class, 'searchOfferIds'],

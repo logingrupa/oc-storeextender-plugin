@@ -9,7 +9,8 @@ use Logingrupa\StoreExtender\Classes\Color\FamilyPropertySync;
  * Class ColorFamilyHelper
  *
  * The storefront query surface of the Color Family property, exposed as the
- * Twig functions color_family_filter and color_family_chips. Product id
+ * Twig functions color_family_filter, color_family_chips and
+ * color_family_list. Product id
  * lists come from FilterShopaholic's FilterByPropertyStore - the same
  * CCache-tagged store the filter panel uses, invalidated by the link model
  * events FamilyPropertySync writes through. ProductCollection's own
@@ -99,7 +100,37 @@ class ColorFamilyHelper
         }
 
         $arMatchList = (new ColorFamilyMatcher())->match($sQuery, is_string($sLocale) ? $sLocale : ColorFamilyMatcher::LOCALE_DEFAULT);
-        if (empty($arMatchList)) {
+
+        return static::buildChipList($arMatchList);
+    }
+
+    /**
+     * Every synced family as a chip, exposed as the Twig function
+     * color_family_list - the search sheet's all-family pill row. Same shape
+     * and zero-count rule as chips(), without the query matching.
+     *
+     * @param mixed $sLocale active locale code
+     * @return array [['slug','name','hex','count','url'], ...]
+     */
+    public static function familyList($sLocale = ColorFamilyMatcher::LOCALE_DEFAULT): array
+    {
+        $arFamilyMap = (new ColorFamilyMatcher())->families(is_string($sLocale) ? $sLocale : ColorFamilyMatcher::LOCALE_DEFAULT);
+
+        return static::buildChipList($arFamilyMap);
+    }
+
+    /**
+     * Resolve display entries to rendered chips: offer (shade) count from
+     * the filter store and the ?color= catalog URL. Families whose filter
+     * would land on an empty catalog page are dropped - a chip is a promise
+     * of results.
+     *
+     * @param array $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null]]
+     * @return array [['slug','name','hex','count','url'], ...]
+     */
+    protected static function buildChipList(array $arFamilyMap): array
+    {
+        if (empty($arFamilyMap)) {
             return [];
         }
 
@@ -115,7 +146,7 @@ class ColorFamilyHelper
         }
 
         $arChipList = [];
-        foreach ($arMatchList as $sSlug => $arMatch) {
+        foreach ($arFamilyMap as $sSlug => $arFamily) {
             $arOfferIdList = \Lovata\FilterShopaholic\Classes\Store\FilterValueStore::instance()
                 ->property
                 ->getListByPropertyValue($iPropertyId, $sSlug, Offer::class, Offer::class);
@@ -125,8 +156,8 @@ class ColorFamilyHelper
 
             $arChipList[] = [
                 'slug'  => $sSlug,
-                'name'  => $arMatch['name'],
-                'hex'   => $arMatch['hex'],
+                'name'  => $arFamily['name'],
+                'hex'   => $arFamily['hex'],
                 'count' => count($arOfferIdList),
                 'url'   => $sCatalogUrl.'?color='.urlencode($sSlug),
             ];

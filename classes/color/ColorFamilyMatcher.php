@@ -50,8 +50,34 @@ class ColorFamilyMatcher
             return [];
         }
 
+        return static::resolveEntries(static::matchAgainstIndex($sQuery, $arIndex), $sLocale);
+    }
+
+    /**
+     * Every synced family, resolved for one locale - the matcher-less
+     * counterpart of match() behind the search sheet's all-family pill row.
+     * Same fail-safe: no meta rows = empty list.
+     *
+     * @param string $sLocale
+     * @return array ['<valueSlug>' => ['name' => string, 'hex' => string|null]]
+     */
+    public function families(string $sLocale = self::LOCALE_DEFAULT): array
+    {
+        return static::resolveEntries($this->getIndex(), $sLocale);
+    }
+
+    /**
+     * Collapse raw index entries to display data for one locale: requested
+     * locale name, else the default locale, else the raw family name.
+     *
+     * @param array  $arEntryList index entries keyed by value slug
+     * @param string $sLocale
+     * @return array ['<valueSlug>' => ['name' => string, 'hex' => string|null]]
+     */
+    public static function resolveEntries(array $arEntryList, string $sLocale): array
+    {
         $arResult = [];
-        foreach (static::matchAgainstIndex($sQuery, $arIndex) as $sSlug => $arEntry) {
+        foreach ($arEntryList as $sSlug => $arEntry) {
             $arNames = (array) ($arEntry['names'] ?? []);
             $sName = (string) ($arNames[$sLocale] ?? '');
             if ($sName === '') {

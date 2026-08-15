@@ -92,4 +92,26 @@ class ColorFamilyMatcherNormalizationTest extends TestCase
         $this->assertSame('sarkana', ColorFamilyMatcher::normalizeTerm('Sarkanā'));
         $this->assertSame('krasnyj', ColorFamilyMatcher::normalizeTerm('Красный'));
     }
+
+    public function testResolveEntriesPicksRequestedLocaleName()
+    {
+        $arResolved = ColorFamilyMatcher::resolveEntries($this->makeIndex(), 'ru');
+
+        $this->assertSame(['red', 'blue'], array_keys($arResolved));
+        $this->assertSame('Красный', $arResolved['red']['name']);
+        $this->assertSame('#d32f2f', $arResolved['red']['hex']);
+    }
+
+    public function testResolveEntriesFallsBackToDefaultLocaleThenFamily()
+    {
+        $arIndex = [
+            'red'  => ['names' => ['lv' => 'Sarkans'], 'family' => 'Red', 'hex' => null],
+            'gold' => ['names' => [], 'family' => 'Gold', 'hex' => null],
+        ];
+
+        $arResolved = ColorFamilyMatcher::resolveEntries($arIndex, 'de');
+
+        $this->assertSame('Sarkans', $arResolved['red']['name'], 'missing locale falls back to the default locale');
+        $this->assertSame('Gold', $arResolved['gold']['name'], 'no names at all falls back to the raw family name');
+    }
 }
