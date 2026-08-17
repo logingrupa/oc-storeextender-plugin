@@ -90,7 +90,7 @@ class FamilyPropertySync
      */
     protected function syncMetaList(array $arFamilyMap): int
     {
-        $bHasSortOrder = Schema::hasColumn('logingrupa_storeextender_color_family_meta', 'sort_order');
+        $bHasSortOrder = Schema::hasColumn((new ColorFamilyMeta)->getTable(), 'sort_order');
 
         $iMetaCount = 0;
         $arSlugList = [];

@@ -74,7 +74,9 @@ class SyncOfferColors extends Command
             return self::FAILURE;
         }
 
-        $arRowList = $this->buildRowList($arColorMap);
+        $bHasConfidenceColumn = $this->hasConfidenceColumn();
+
+        $arRowList = $this->buildRowList($arColorMap, $bHasConfidenceColumn);
         if (empty($arRowList)) {
             $this->warn('Color API payload contained no valid entries - local table left untouched.');
 
@@ -82,7 +84,7 @@ class SyncOfferColors extends Command
         }
 
         $arUpdateColumnList = ['family', 'hex', 'hue', 'lightness', 'updated_at'];
-        if ($this->hasConfidenceColumn()) {
+        if ($bHasConfidenceColumn) {
             $arUpdateColumnList[] = 'confidence';
         }
 
@@ -159,6 +161,12 @@ class SyncOfferColors extends Command
      * not reach proves nothing, and a table that has been emptied has to be
      * refilled even when the stamps agree.
      *
+     * Trap: the version stamp tracks the export CONTENT, not what this
+     * command stores of it - it does not rotate when the payload gains a
+     * field (confidence did this). After a migration adds a column, an
+     * unchanged export reads "in sync" and the new field stays NULL until
+     * one --force run backfills it; nothing else changes.
+     *
      * @param ColorMapRepository $obRepository
      * @param string             $sRemoteVersion
      * @param bool               $bReachable
@@ -206,7 +214,7 @@ class SyncOfferColors extends Command
         $this->line(sprintf('  imported export from %s', $obRepository->getExportUpdatedAt() !== '' ? $obRepository->getExportUpdatedAt() : '(unknown)'));
         $this->line(sprintf('  imported at          %s', $obRepository->getSyncedAt() !== '' ? $obRepository->getSyncedAt() : '(never)'));
         $this->line(sprintf('  rows in local table  %d', $iRowCount));
-        if (Schema::hasTable('logingrupa_storeextender_color_family_meta')) {
+        if (Schema::hasTable((new ColorFamilyMeta)->getTable())) {
             $this->line(sprintf('  family meta rows     %d', ColorFamilyMeta::query()->count()));
         }
 
@@ -235,22 +243,22 @@ class SyncOfferColors extends Command
      */
     protected function hasConfidenceColumn(): bool
     {
-        return Schema::hasColumn('logingrupa_storeextender_offer_colors', 'confidence');
+        return Schema::hasColumn((new OfferColor)->getTable(), 'confidence');
     }
 
     /**
      * Validate + normalize API entries into upsert rows. Invalid entries are
      * skipped and counted, never imported half-broken. confidence is an
      * optional field (null = unscored, in-family order signal absent) and is
-     * only carried while its column exists.
+     * only carried while its column exists - handle() resolves the column
+     * once per run and passes the flag in.
      *
      * @param array $arColorMap ['<offerUuid>' => ['family' => string, 'hex' => string, 'hue' => float, 'lightness' => float, 'confidence' => float|null]]
+     * @param bool  $bHasConfidenceColumn
      * @return array
      */
-    protected function buildRowList(array $arColorMap): array
+    protected function buildRowList(array $arColorMap, bool $bHasConfidenceColumn): array
     {
-        $bHasConfidenceColumn = $this->hasConfidenceColumn();
-
         $arRowList = [];
         $iSkippedCount = 0;
         foreach ($arColorMap as $sOfferUuid => $arColor) {

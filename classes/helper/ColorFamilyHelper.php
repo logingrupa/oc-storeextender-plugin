@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Facades\Schema;
 use Lovata\Shopaholic\Models\Offer;
-use Lovata\Shopaholic\Models\Product;
 use Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher;
 use Logingrupa\StoreExtender\Classes\Color\FamilyPropertySync;
 use Logingrupa\StoreExtender\Models\OfferColor;
@@ -11,8 +10,7 @@ use Logingrupa\StoreExtender\Models\OfferColor;
  * Class ColorFamilyHelper
  *
  * The storefront query surface of the Color Family property, exposed as the
- * Twig functions color_family_filter, color_family_chips and
- * color_family_list. Product id
+ * Twig functions color_family_offer_filter and color_family_list. Offer id
  * lists come from FilterShopaholic's FilterByPropertyStore - the same
  * CCache-tagged store the filter panel uses, invalidated by the link model
  * events FamilyPropertySync writes through. ProductCollection's own
@@ -34,24 +32,18 @@ class ColorFamilyHelper
     /** @var int|null|false request memo of the property id; false = unresolved */
     protected static $mPropertyId = false;
 
-    /**
-     * Product ids whose offers carry the family value, or null when the
-     * filter cannot apply (the caller then renders unfiltered). An empty
-     * array is a real answer: the slug is filterable but matches nothing.
-     *
-     * @param mixed $sSlug value slug from ?color=
-     * @return array|null
-     */
-    public static function filterProductIds($sSlug): ?array
-    {
-        return static::filterIds($sSlug, Product::class);
-    }
+    /** @var bool|null request memo of the confidence column's existence;
+     * null = unresolved (same pattern as $mPropertyId - one
+     * information-schema query per request at most) */
+    protected static $mHasConfidenceColumn = null;
 
     /**
      * Offer ids carrying the family value - the catalog's offer-card grid
      * for ?color= renders each shade as its own card, ordered by
-     * classification confidence (most certainly-that-color first). Same
-     * null/[] contract as filterProductIds.
+     * classification confidence (most certainly-that-color first). null
+     * when the filter cannot apply (the caller then renders unfiltered); an
+     * empty array is a real answer: the slug is filterable but matches
+     * nothing.
      *
      * @param mixed $sSlug value slug from ?color=
      * @return array|null
@@ -82,7 +74,10 @@ class ColorFamilyHelper
         if (count($arOfferIdList) < 2) {
             return $arOfferIdList;
         }
-        if (!Schema::hasColumn('logingrupa_storeextender_offer_colors', 'confidence')) {
+        if (static::$mHasConfidenceColumn === null) {
+            static::$mHasConfidenceColumn = Schema::hasColumn((new OfferColor)->getTable(), 'confidence');
+        }
+        if (!static::$mHasConfidenceColumn) {
             return $arOfferIdList;
         }
 
@@ -170,33 +165,13 @@ class ColorFamilyHelper
     }
 
     /**
-     * Search chips for the families a query names: slug, localized name,
-     * swatch hex, offer (shade) count and the ?color= catalog URL. Families
-     * whose filter would land on an empty catalog page are dropped - a chip
-     * is a promise of results.
-     *
-     * @param mixed $sQuery raw search input
-     * @param mixed $sLocale active locale code
-     * @return array [['slug','name','hex','count','url'], ...]
-     */
-    public static function chips($sQuery, $sLocale = ColorFamilyMatcher::LOCALE_DEFAULT): array
-    {
-        if (!is_string($sQuery) || $sQuery === '') {
-            return [];
-        }
-
-        $arMatchList = (new ColorFamilyMatcher())->match($sQuery, is_string($sLocale) ? $sLocale : ColorFamilyMatcher::LOCALE_DEFAULT);
-
-        return static::buildChipList($arMatchList);
-    }
-
-    /**
      * Every synced family as a chip, exposed as the Twig function
-     * color_family_list - the search sheet's all-family pill row. Same shape
-     * and zero-count rule as chips(), without the query matching.
+     * color_family_list - the search sheet's all-family pill row: slug,
+     * localized name, swatch hex, active offer (shade) count, the ?color=
+     * catalog URL and the match vocabulary for the client-side pill filter.
      *
      * @param mixed $sLocale active locale code
-     * @return array [['slug','name','hex','count','url'], ...]
+     * @return array [['slug','name','hex','count','url','terms'], ...]
      */
     public static function familyList($sLocale = ColorFamilyMatcher::LOCALE_DEFAULT): array
     {
@@ -206,12 +181,9 @@ class ColorFamilyHelper
     }
 
     /**
-     * Resolve display entries to rendered chips: offer (shade) count from
-     * the filter store and the ?color= catalog URL. Families whose filter
-     * would land on an empty catalog page are dropped - a chip is a promise
-     * of results. terms is the space-joined match vocabulary (all locales,
-     * raw + transliterated) the theme's client-side pill filter reads from
-     * data-terms.
+     * Resolve display entries to rendered chips: per-family offer ids from
+     * the filter store, the active offer list read once, and the ?color=
+     * catalog URL, assembled by assembleChipList().
      *
      * @param array $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array]]
      * @return array [['slug','name','hex','count','url','terms'], ...]
@@ -222,8 +194,7 @@ class ColorFamilyHelper
             return [];
         }
 
-        $iPropertyId = static::getPropertyId();
-        if ($iPropertyId === null) {
+        if (static::getPropertyId() === null) {
             return [];
         }
 
@@ -233,12 +204,42 @@ class ColorFamilyHelper
             return [];
         }
 
+        $arOfferIdListBySlug = [];
+        foreach (array_keys($arFamilyMap) as $sSlug) {
+            $arOfferIdListBySlug[$sSlug] = (array) static::filterIds($sSlug, Offer::class);
+        }
+
+        $arActiveOfferIdList = (array) \Lovata\Shopaholic\Classes\Store\OfferListStore::instance()->active->get();
+
+        return static::assembleChipList($arFamilyMap, $arOfferIdListBySlug, $arActiveOfferIdList, $sCatalogUrl);
+    }
+
+    /**
+     * Pure chip assembly - the unit-testable seam behind buildChipList().
+     * The count is the intersect of the family's offer ids with the active
+     * offer list, because the theme grid intersects with active offers
+     * before it draws: a chip must promise exactly the shades that render.
+     * Families whose intersect is empty are dropped AFTER the intersect, so
+     * an all-inactive family cannot survive on its raw link count - a chip
+     * is a promise of results. terms is the space-joined match vocabulary
+     * (all locales, raw + transliterated) the theme's client-side pill
+     * filter reads from data-terms.
+     *
+     * @param array  $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array]]
+     * @param array  $arOfferIdListBySlug ['<valueSlug>' => [<offerId>, ...]]
+     * @param array  $arActiveOfferIdList
+     * @param string $sCatalogUrl
+     * @return array [['slug','name','hex','count','url','terms'], ...]
+     */
+    public static function assembleChipList(array $arFamilyMap, array $arOfferIdListBySlug, array $arActiveOfferIdList, string $sCatalogUrl): array
+    {
+        $arActiveOfferIdMap = array_flip($arActiveOfferIdList);
+
         $arChipList = [];
         foreach ($arFamilyMap as $sSlug => $arFamily) {
-            $arOfferIdList = \Lovata\FilterShopaholic\Classes\Store\FilterValueStore::instance()
-                ->property
-                ->getListByPropertyValue($iPropertyId, $sSlug, Offer::class, Offer::class);
-            if (empty($arOfferIdList)) {
+            $arFamilyOfferIdList = (array) ($arOfferIdListBySlug[$sSlug] ?? []);
+            $iActiveCount = count(array_intersect_key(array_flip($arFamilyOfferIdList), $arActiveOfferIdMap));
+            if ($iActiveCount === 0) {
                 continue;
             }
 
@@ -246,7 +247,7 @@ class ColorFamilyHelper
                 'slug'  => $sSlug,
                 'name'  => $arFamily['name'],
                 'hex'   => $arFamily['hex'],
-                'count' => count($arOfferIdList),
+                'count' => $iActiveCount,
                 'url'   => $sCatalogUrl.'?color='.urlencode($sSlug),
                 'terms' => implode(' ', (array) ($arFamily['terms'] ?? [])),
             ];

@@ -82,7 +82,7 @@ class ColorFamilySlugHandler
         }
 
         $arMap = [];
-        if (!\Schema::hasTable('logingrupa_storeextender_color_family_meta')) {
+        if (!\Schema::hasTable((new ColorFamilyMeta)->getTable())) {
             // pre-migration boot: an unrelated PropertyValue save (1C import)
             // must never crash on the missing companion table
             static::$arSlugByNameMap = $arMap;

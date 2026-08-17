@@ -8,25 +8,28 @@ use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
 /**
  * Class ColorFamilyMatcher
  *
- * Answers "which color families does this search query name?" from the
- * synced ColorFamilyMeta rows. Terms per family: every localized display
- * name, every per-locale synonym and the current PropertyValue base value
- * for the family slug (covers admin-edited names). Both query and terms are
- * normalized with mb_strtolower + Str::ascii, so Latvian diacritics and
- * Cyrillic transliterate onto one alphabet ('sarkanā' meets 'sarkans',
- * 'красный' meets 'krasnyj') and a term matches only as a whole word inside
- * the query.
+ * The family term index behind the search sheet's pill row. Terms per
+ * family: every localized display name, every per-locale synonym and the
+ * current PropertyValue base value for the family slug (covers admin-edited
+ * names), each stored both raw lowercase and normalized with mb_strtolower
+ * + Str::ascii ('sarkanā' beside 'sarkana', 'красный' beside 'krasnyj').
+ * The vocabulary ships to the theme as data-terms, where the client-side
+ * pill filter matches it per keystroke - the server no longer matches
+ * queries itself.
  *
- * Runs on every search keystroke server-side, so the term index is memoized
- * per request AND kept in Laravel Cache keyed by the meta table's
- * max(updated_at) + row count. Missing or empty table = no matches
- * (fail-safe inactive), never an error.
+ * Read on storefront renders, so the term index is memoized per request AND
+ * kept in Laravel Cache keyed by the meta table's max(updated_at) + row
+ * count. Missing or empty table = no families (fail-safe inactive), never
+ * an error.
  *
  * @package Logingrupa\StoreExtender\Classes\Color
  */
 class ColorFamilyMatcher
 {
-    const QUERY_MIN_LENGTH = 3;
+    /** Mixed into the cache key beside the content stamp: bump whenever
+     * buildIndex()'s output shape changes, because the stamp only sees data
+     * edits and would serve the pre-deploy index for CACHE_TTL_SECONDS */
+    const INDEX_VERSION = 2;
 
     const CACHE_TTL_SECONDS = 3600;
     const CACHE_KEY_PREFIX = 'storeextender.color_family_matcher.index.';
@@ -42,29 +45,12 @@ class ColorFamilyMatcher
     protected static $arIndexMemo = null;
 
     /**
-     * Match the query against the family term index.
-     *
-     * @param string $sQuery
-     * @param string $sLocale
-     * @return array ['<valueSlug>' => ['name' => string, 'hex' => string|null]]
-     */
-    public function match(string $sQuery, string $sLocale = self::LOCALE_DEFAULT): array
-    {
-        $arIndex = $this->getIndex();
-        if (empty($arIndex)) {
-            return [];
-        }
-
-        return static::resolveEntries(static::matchAgainstIndex($sQuery, $arIndex), $sLocale);
-    }
-
-    /**
-     * Every synced family, resolved for one locale - the matcher-less
-     * counterpart of match() behind the search sheet's all-family pill row.
-     * Same fail-safe: no meta rows = empty list.
+     * Every synced family, resolved for one locale - the source of the
+     * search sheet's all-family pill row. Fail-safe: no meta rows = empty
+     * list.
      *
      * @param string $sLocale
-     * @return array ['<valueSlug>' => ['name' => string, 'hex' => string|null]]
+     * @return array ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array]]
      */
     public function families(string $sLocale = self::LOCALE_DEFAULT): array
     {
@@ -108,10 +94,11 @@ class ColorFamilyMatcher
     }
 
     /**
-     * Normalize a term or query onto one lowercase ASCII alphabet:
-     * 'Sarkanā' and 'sarkana' converge, 'красный' becomes 'krasnyj'.
-     * Punctuation collapses to spaces so it cannot defeat the whole-word
-     * rule.
+     * Normalize a term onto one lowercase ASCII alphabet: 'Sarkanā' and
+     * 'sarkana' converge, 'красный' becomes 'krasnyj'. Punctuation
+     * collapses to spaces so it cannot defeat a whole-word comparison.
+     * buildIndex() stores this form beside the raw lowercase one, so a
+     * Latin query in the client-side pill filter meets Cyrillic vocabulary.
      *
      * @param string $sTerm
      * @return string
@@ -129,38 +116,8 @@ class ColorFamilyMatcher
     }
 
     /**
-     * Pure matching rule against a prebuilt index. A family matches when any
-     * of its normalized terms appears as a whole-word sequence inside the
-     * normalized query. Queries shorter than QUERY_MIN_LENGTH match nothing.
-     *
-     * @param string $sQuery
-     * @param array  $arIndex ['<valueSlug>' => ['terms' => array, ...]]
-     * @return array matched index entries, keyed by slug
-     */
-    public static function matchAgainstIndex(string $sQuery, array $arIndex): array
-    {
-        $sQuery = static::normalizeTerm($sQuery);
-        if (mb_strlen($sQuery) < self::QUERY_MIN_LENGTH) {
-            return [];
-        }
-
-        $sPaddedQuery = ' '.$sQuery.' ';
-        $arMatchedList = [];
-        foreach ($arIndex as $sSlug => $arEntry) {
-            foreach ((array) ($arEntry['terms'] ?? []) as $sTerm) {
-                if ($sTerm !== '' && strpos($sPaddedQuery, ' '.$sTerm.' ') !== false) {
-                    $arMatchedList[$sSlug] = $arEntry;
-                    break;
-                }
-            }
-        }
-
-        return $arMatchedList;
-    }
-
-    /**
-     * The term index, memoized per request and cached against the meta
-     * table's content stamp.
+     * The term index, memoized per request and cached against
+     * INDEX_VERSION + the meta table's content stamp.
      *
      * @return array
      */
@@ -170,14 +127,16 @@ class ColorFamilyMatcher
             return static::$arIndexMemo;
         }
 
-        if (!Schema::hasTable('logingrupa_storeextender_color_family_meta')) {
+        // one information-schema query per request at most: $arIndexMemo
+        // short-circuits every later call in the same process
+        if (!Schema::hasTable((new ColorFamilyMeta)->getTable())) {
             // pre-migration boot: the matcher is simply inactive
             static::$arIndexMemo = [];
 
             return static::$arIndexMemo;
         }
 
-        $sStamp = (string) ColorFamilyMeta::query()->max('updated_at').'|'.ColorFamilyMeta::query()->count();
+        $sStamp = self::INDEX_VERSION.'|'.ColorFamilyMeta::query()->max('updated_at').'|'.ColorFamilyMeta::query()->count();
         static::$arIndexMemo = (array) Cache::remember(
             self::CACHE_KEY_PREFIX.md5($sStamp),
             self::CACHE_TTL_SECONDS,
@@ -201,7 +160,7 @@ class ColorFamilyMatcher
     protected function buildIndex(): array
     {
         $obMetaQuery = ColorFamilyMeta::query();
-        if (Schema::hasColumn('logingrupa_storeextender_color_family_meta', 'sort_order')) {
+        if (Schema::hasColumn((new ColorFamilyMeta)->getTable(), 'sort_order')) {
             $obMetaQuery->orderByRaw('sort_order IS NULL')->orderBy('sort_order')->orderBy('id');
         }
         $obMetaList = $obMetaQuery->get();
@@ -233,8 +192,8 @@ class ColorFamilyMatcher
                 }
                 // the raw lowercase form keeps the original alphabet for the
                 // storefront's client-side pill filter (a Cyrillic query must
-                // meet 'красный' - JS cannot transliterate); match() itself
-                // only ever meets the normalized form
+                // meet 'красный' - JS cannot transliterate); the normalized
+                // form lets a Latin query meet the same vocabulary
                 $sRawLowercase = mb_strtolower($sTerm);
                 if ($sRawLowercase !== '') {
                     $arTermList[$sRawLowercase] = true;

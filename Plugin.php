@@ -538,11 +538,9 @@ class Plugin extends PluginBase
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render
                 'offer_render_context' => [OfferRenderContext::class, 'resolve'],
-                // Color Family storefront queries: ?color= product/offer
-                // filters and the search-sheet family chips
-                'color_family_filter' => [ColorFamilyHelper::class, 'filterProductIds'],
+                // Color Family storefront queries: the ?color= offer filter
+                // and the search-sheet family pill row
                 'color_family_offer_filter' => [ColorFamilyHelper::class, 'filterOfferIds'],
-                'color_family_chips' => [ColorFamilyHelper::class, 'chips'],
                 'color_family_list' => [ColorFamilyHelper::class, 'familyList'],
                 // Catalog search grid: offers matching the query directly
                 // plus every offer of a matching product

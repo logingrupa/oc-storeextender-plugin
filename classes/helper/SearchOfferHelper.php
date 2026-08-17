@@ -21,9 +21,12 @@ use Lovata\Shopaholic\Classes\Collection\ProductCollection;
 class SearchOfferHelper
 {
     /**
-     * Offer ids matching the query: direct offer matches first, then the
-     * offers of matching products. Empty/invalid query answers an empty
-     * list - the search grid renders "not found", never everything.
+     * Offer ids matching the query: the deduplicated union of direct offer
+     * matches and the offers of matching products. The order of the ids is
+     * NOT part of the contract - the consumer applies the list via
+     * intersect(), which keeps the collection's own order. Empty/invalid
+     * query answers an empty list - the search grid renders "not found",
+     * never everything.
      *
      * @param mixed $sQuery raw search input
      * @return array
