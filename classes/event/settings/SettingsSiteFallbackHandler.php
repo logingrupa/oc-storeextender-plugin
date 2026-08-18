@@ -24,6 +24,14 @@
  * not run from CLI at all on that deployment. It never showed on .lv, where
  * site 1 happens to be the primary one and the lookup finds its row directly.
  *
+ * GoodsReceivedShopaholic's Settings has the same console-side problem on .no,
+ * with one extra wrinkle: site 2 held a PARTIAL row carrying only 'enabled' and
+ * 'auto_activate_on_stock'. A row that exists blocks this fallback entirely -
+ * SettingModel::instance() fires model.initSettingsData only when
+ * getSettingsRecord() returns null - so the CLI read the partial row and saw
+ * auto_deactivate_on_zero as false. That row was deleted; the site 1 row is the
+ * only one left and is the one both the backend and the CLI now resolve.
+ *
  * @package Logingrupa\StoreExtender\Classes\Event\Settings
  */
 class SettingsSiteFallbackHandler
@@ -36,15 +44,25 @@ class SettingsSiteFallbackHandler
         \Lovata\Shopaholic\Models\Settings::class,
         \Lovata\Toolbox\Models\Settings::class,
         \Lovata\Shopaholic\Models\XmlImportSettings::class,
+        \Logingrupa\GoodsReceivedShopaholic\Models\Settings::class,
     ];
 
     /**
      * Add listeners
+     *
+     * Logingrupa.GoodsReceivedShopaholic is not in this plugin's $require, so its
+     * Settings class is absent on a deployment that does not install it. Skip what
+     * is missing rather than fatal the boot.
+     *
      * @return void
      */
     public function subscribe(): void
     {
         foreach (self::AR_SETTINGS_MODEL_LIST as $sSettingsClass) {
+            if (!class_exists($sSettingsClass)) {
+                continue;
+            }
+
             $sSettingsClass::extend(function ($obSettings): void {
                 /** @var \System\Models\SettingModel $obSettings */
                 $obSettings->bindEvent('model.initSettingsData', function () use ($obSettings): void {

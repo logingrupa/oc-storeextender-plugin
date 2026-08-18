@@ -35,6 +35,16 @@ class SettingsSiteFallbackCoverageTest extends TestCase
         );
     }
 
+    public function testGoodsReceivedSettingsIsCoveredSoTheRecomputeCliReadsTheRealToggles()
+    {
+        $this->assertContains(
+            \Logingrupa\GoodsReceivedShopaholic\Models\Settings::class,
+            SettingsSiteFallbackHandler::AR_SETTINGS_MODEL_LIST,
+            'goodsreceived:recompute_active_from_stock resolves the primary site, so without this'
+                . ' it reads auto_deactivate_on_zero as false on nailscosmetics.no and reconciles nothing.'
+        );
+    }
+
     public function testEveryCoveredModelIsActuallySiteScoped()
     {
         $this->assertNotEmpty(SettingsSiteFallbackHandler::AR_SETTINGS_MODEL_LIST);
