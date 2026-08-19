@@ -18,7 +18,7 @@ use Logingrupa\StoreExtender\Models\OfferColor;
  * pivot configuration, which this property has no rows in, and fails
  * silently.
  *
- * Fail-safe boundary (catalog render and search keystrokes must never
+ * Fail-safe boundary (catalog render and search-sheet open must never
  * 500): every miss - FilterShopaholic absent, property not yet synced,
  * unknown slug - degrades to null (no filtering) or an empty chip list.
  *
@@ -50,7 +50,7 @@ class ColorFamilyHelper
      */
     public static function filterOfferIds($sSlug): ?array
     {
-        $arOfferIdList = static::filterIds($sSlug, Offer::class);
+        $arOfferIdList = static::filterIds($sSlug);
         if (empty($arOfferIdList)) {
             return $arOfferIdList;
         }
@@ -140,15 +140,15 @@ class ColorFamilyHelper
     }
 
     /**
-     * Shared store lookup behind both filters. The result model picks the
-     * cache bucket: Product::class maps offer links to their products,
-     * Offer::class returns the linked offers themselves.
+     * Shared store lookup behind the ?color= filter and the chip counts:
+     * the offer ids linked to one family value, from FilterShopaholic's
+     * property store. Offers are both the filtered model and the result
+     * model - the product-id variant this once served is gone.
      *
-     * @param mixed  $sSlug
-     * @param string $sResultModel
+     * @param mixed $sSlug
      * @return array|null
      */
-    protected static function filterIds($sSlug, string $sResultModel): ?array
+    protected static function filterIds($sSlug): ?array
     {
         if (!is_string($sSlug) || trim($sSlug) === '') {
             return null;
@@ -161,7 +161,7 @@ class ColorFamilyHelper
 
         return \Lovata\FilterShopaholic\Classes\Store\FilterValueStore::instance()
             ->property
-            ->getListByPropertyValue($iPropertyId, trim($sSlug), Offer::class, $sResultModel);
+            ->getListByPropertyValue($iPropertyId, trim($sSlug), Offer::class, Offer::class);
     }
 
     /**
@@ -206,7 +206,7 @@ class ColorFamilyHelper
 
         $arOfferIdListBySlug = [];
         foreach (array_keys($arFamilyMap) as $sSlug) {
-            $arOfferIdListBySlug[$sSlug] = (array) static::filterIds($sSlug, Offer::class);
+            $arOfferIdListBySlug[$sSlug] = (array) static::filterIds($sSlug);
         }
 
         $arActiveOfferIdList = (array) \Lovata\Shopaholic\Classes\Store\OfferListStore::instance()->active->get();

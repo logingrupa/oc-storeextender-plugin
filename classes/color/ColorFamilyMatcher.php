@@ -18,9 +18,9 @@ use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
  * queries itself.
  *
  * Read on storefront renders, so the term index is memoized per request AND
- * kept in Laravel Cache keyed by the meta table's max(updated_at) + row
- * count. Missing or empty table = no families (fail-safe inactive), never
- * an error.
+ * kept in Laravel Cache keyed by INDEX_VERSION plus the meta table's
+ * max(updated_at) + row count. Missing or empty table = no families
+ * (fail-safe inactive), never an error.
  *
  * @package Logingrupa\StoreExtender\Classes\Color
  */
@@ -241,7 +241,7 @@ class ColorFamilyMatcher
                 ->pluck('value', 'slug')
                 ->all();
         } catch (\Throwable $obException) {
-            // boundary fail-safe: a search keystroke must never 500 over an
+            // boundary fail-safe: a search-sheet open must never 500 over an
             // optional term source
             return [];
         }

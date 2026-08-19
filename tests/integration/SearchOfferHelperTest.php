@@ -19,7 +19,14 @@ use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
  * Lovata.SearchShopaholic and Logingrupa.SearchOffersShopaholic boot;
  * booting either plugin here would drag in the whole Shopaholic chain, so
  * their two handlers are subscribed directly in every setUp (the test app
- * refresh flushes extend() registrations between tests).
+ * refresh flushes extend() registrations between tests), along with the
+ * container bind those call sites resolve the helper through.
+ *
+ * The translated branch of TranslatableSearchHelper is not exercised here:
+ * isTranslatedSearch() needs a non-empty active lang, which the default
+ * locale leaves null, and getTranslatedFieldSql() emits MySQL-only
+ * CONVERT/COLLATE that SQLite cannot run. Real coverage needs a MySQL test
+ * connection; the translated branch is verified manually on production.
  */
 class SearchOfferHelperTest extends StoreExtenderPluginTestCase
 {
@@ -49,6 +56,14 @@ class SearchOfferHelperTest extends StoreExtenderPluginTestCase
 
         (new \Lovata\SearchShopaholic\Classes\Event\ProductModelHandler())->subscribe();
         (new \Logingrupa\SearchOffersShopaholic\Classes\Event\OfferModelHandler())->subscribe();
+
+        // loadCurrentPlugin() boots only StoreExtender and its $require chain,
+        // which does not include SearchOffersShopaholic, so its boot() bind
+        // never runs and the search call sites would resolve the vanilla helper
+        $this->app->bind(
+            \Lovata\SearchShopaholic\Classes\Helper\SearchHelper::class,
+            \Logingrupa\SearchOffersShopaholic\Classes\Helper\TranslatableSearchHelper::class
+        );
 
         Settings::clearInternalCache();
 
@@ -123,14 +138,15 @@ class SearchOfferHelperTest extends StoreExtenderPluginTestCase
     /**
      * @param int    $iProductId
      * @param string $sName
+     * @param bool   $bActive
      * @return int
      */
-    protected function insertOffer($iProductId, $sName)
+    protected function insertOffer($iProductId, $sName, $bActive = true)
     {
         return DB::table('lovata_shopaholic_offers')->insertGetId([
             'product_id' => $iProductId,
             'name'       => $sName,
-            'active'     => true,
+            'active'     => $bActive,
         ]);
     }
 
@@ -181,5 +197,34 @@ class SearchOfferHelperTest extends StoreExtenderPluginTestCase
         );
         $this->assertNotContains($this->iUnrelatedOfferId, $arOfferIdList);
         $this->assertContainsOnlyInt($arOfferIdList);
+    }
+
+    /**
+     * The two legs treat inactive offers differently by design: the direct
+     * leg filters on the active list, the offers-of-matching-products leg
+     * is a raw product_id lookup, because the caller intersects the result
+     * with the active offer list anyway.
+     */
+    public function testInactiveOfferOfMatchingProductIsReturnedForCallerToIntersect()
+    {
+        // inserted before this test's first searchOfferIds() call, so the
+        // cached active-offer list is built with both rows already present
+        $iInactiveShadeOfferId = $this->insertOffer($this->iGelProductId, 'Shade 02', false);
+        $iInactiveGelOfferId = $this->insertOffer($this->iTopCoatProductId, 'Gel base', false);
+
+        $this->configureSearchFields();
+
+        $arOfferIdList = SearchOfferHelper::searchOfferIds('gel');
+
+        $this->assertContains(
+            $iInactiveShadeOfferId,
+            $arOfferIdList,
+            'the union leg must not active-filter - the caller intersects'
+        );
+        $this->assertNotContains(
+            $iInactiveGelOfferId,
+            $arOfferIdList,
+            'the direct leg must active-filter'
+        );
     }
 }
