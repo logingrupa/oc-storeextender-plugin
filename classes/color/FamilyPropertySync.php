@@ -6,6 +6,7 @@ use Lovata\Shopaholic\Models\Offer;
 use Lovata\PropertiesShopaholic\Models\Property;
 use Lovata\PropertiesShopaholic\Models\PropertyValue;
 use Lovata\PropertiesShopaholic\Models\PropertyValueLink;
+use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
 use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 
@@ -66,7 +67,9 @@ class FamilyPropertySync
         }
 
         $arStats['meta'] = $this->syncMetaList($arFamilyMap);
+        ColorFamilyMatcher::forgetIndex();
         $obProperty = $this->upsertProperty();
+        ColorFamilyHelper::forgetPropertyId();
         $arValueIdByFamily = $this->upsertValueList($arFamilyMap, $obProperty, $arStats);
         $this->syncLinkList($obProperty, $arValueIdByFamily, $arOfferColorMap, $arStats);
 

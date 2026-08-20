@@ -49,6 +49,7 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 
 //Color Family property slug pinning
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
+use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
 
 //CartPosition events
 use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
@@ -185,6 +186,10 @@ class Plugin extends PluginBase
         //Color Family values keep the stable family slug from families.json,
         //so a display-name rename never moves URLs or filter cache keys
         Event::subscribe(ColorFamilySlugHandler::class);
+        //Satellite rows (prices, property links, files, seo params) clear
+        //their owner's item cache - the toolbox unchanged-save guard means
+        //the parent save no longer does it for them
+        Event::subscribe(SatelliteCacheInvalidationHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
         //Order position
@@ -316,6 +321,10 @@ class Plugin extends PluginBase
      */
     public function extendItemEagerLoading()
     {
+        // seo_container: MightySeo caches seo_param_id on every item and reads
+        // it via the morphOne relation - without eager loading that is one
+        // lovata_mighty_seo_params query per model during cold item builds
+        // (58 on one promo page). Eager loaded, collection builds batch it.
         ProductItem::$arQueryWith = array_merge(ProductItem::$arQueryWith, [
             'translations',
             'preview_image.translations',
@@ -323,6 +332,7 @@ class Plugin extends PluginBase
             'offer.translations',
             'offer.preview_image.translations',
             'offer.images.translations',
+            'seo_container',
         ]);
 
         OfferItem::$arQueryWith = array_merge(OfferItem::$arQueryWith, [
@@ -336,6 +346,7 @@ class Plugin extends PluginBase
             'preview_image.translations',
             'icon.translations',
             'images.translations',
+            'seo_container',
         ]);
     }
 

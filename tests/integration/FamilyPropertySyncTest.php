@@ -320,10 +320,21 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
      */
     protected function resetMatcherIndex(): void
     {
+        $this->resetMatcherMemo();
+        \Illuminate\Support\Facades\Cache::flush();
+    }
+
+    /**
+     * Drop ONLY the per-request memo, leaving the cache entry in place -
+     * the seam that tells a cache hit apart from a rebuild.
+     *
+     * @return void
+     */
+    protected function resetMatcherMemo(): void
+    {
         $obMemoProperty = new \ReflectionProperty(\Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher::class, 'arIndexMemo');
         $obMemoProperty->setAccessible(true);
         $obMemoProperty->setValue(null, null);
-        \Illuminate\Support\Facades\Cache::flush();
     }
 
     public function testSyncPersistsExportPositionAsSortOrder()
@@ -435,5 +446,56 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
 
         $this->assertSame(0, $arStats['links_deleted']);
         $this->assertSame($iLinkTwoId, $this->findOfferLink($this->iOfferTwoId)->id, 'an unknown family must not delete data');
+    }
+
+    public function testWarmMatcherIndexCostsNoQuery()
+    {
+        (new FamilyPropertySync())->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());
+        $this->resetMatcherIndex();
+
+        // cold read builds and caches the index
+        (new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families();
+
+        $this->resetMatcherMemo();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $arFamilyMap = (new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families();
+        $arQueryLog = DB::getQueryLog();
+        DB::disableQueryLog();
+
+        $this->assertSame(['red', 'blue'], array_keys($arFamilyMap), 'the cached index must answer in full');
+        $this->assertSame([], $arQueryLog, 'a warm index must cost no query, not even the table check');
+    }
+
+    public function testSyncDropsTheCachedIndexWithoutAManualFlush()
+    {
+        $obSync = new FamilyPropertySync();
+        $obSync->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());
+        $this->resetMatcherIndex();
+        $this->assertSame(['red', 'blue'], array_keys((new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families()));
+
+        $arFamilyMap = $this->getFamilyMap();
+        $obSync->sync(['blue' => $arFamilyMap['blue'], 'red' => $arFamilyMap['red']], $this->getOfferColorMapFromTable());
+
+        // memo only: the sync itself must have dropped the cache entry
+        $this->resetMatcherMemo();
+        $arSlugList = array_keys((new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families());
+        $this->assertSame(['blue', 'red'], $arSlugList, 'a sync must not leave the old index cached');
+    }
+
+    public function testSyncDropsTheCachedPropertyId()
+    {
+        // what a storefront render caches before the first sync: no property yet
+        \Illuminate\Support\Facades\Cache::forever(
+            \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::CACHE_KEY_PROPERTY_ID,
+            0
+        );
+
+        (new FamilyPropertySync())->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());
+
+        $this->assertNull(
+            \Illuminate\Support\Facades\Cache::get(\Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::CACHE_KEY_PROPERTY_ID),
+            'the first sync must drop the cached "not synced yet" property id'
+        );
     }
 }

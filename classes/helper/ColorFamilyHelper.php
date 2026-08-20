@@ -1,5 +1,6 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Helper;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Lovata\Shopaholic\Models\Offer;
 use Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher;
@@ -28,6 +29,10 @@ class ColorFamilyHelper
 {
     const CATALOG_PAGE_CODE = 'catalog';
     const CATALOG_ROOT_CATEGORY_ID = 1;
+
+    const CACHE_KEY_PROPERTY_ID = 'storeextender.color_family.property_id';
+    const CACHE_KEY_CONFIDENCE_COLUMN = 'storeextender.color_family.confidence_column';
+    const CACHE_TTL_SECONDS = 3600;
 
     /** @var int|null|false request memo of the property id; false = unresolved */
     protected static $mPropertyId = false;
@@ -75,26 +80,29 @@ class ColorFamilyHelper
             return $arOfferIdList;
         }
         if (static::$mHasConfidenceColumn === null) {
-            static::$mHasConfidenceColumn = Schema::hasColumn((new OfferColor)->getTable(), 'confidence');
+            // cached: an information-schema read per request buys nothing,
+            // and a late migration heals within the TTL
+            static::$mHasConfidenceColumn = (bool) Cache::remember(
+                self::CACHE_KEY_CONFIDENCE_COLUMN,
+                self::CACHE_TTL_SECONDS,
+                function () {
+                    return Schema::hasColumn((new OfferColor)->getTable(), 'confidence');
+                }
+            );
         }
         if (!static::$mHasConfidenceColumn) {
             return $arOfferIdList;
         }
 
-        $arUuidByOfferId = Offer::query()
-            ->whereIn('id', $arOfferIdList)
-            ->pluck('external_id', 'id')
+        $sOfferTable = (new Offer)->getTable();
+        $sColorTable = (new OfferColor)->getTable();
+        $arConfidenceByOfferId = Offer::query()
+            ->join($sColorTable, $sColorTable.'.offer_uuid', '=', $sOfferTable.'.external_id')
+            ->whereIn($sOfferTable.'.id', $arOfferIdList)
+            ->whereNotNull($sColorTable.'.confidence')
+            ->pluck($sColorTable.'.confidence', $sOfferTable.'.id')
             ->all();
-        if (empty($arUuidByOfferId)) {
-            return $arOfferIdList;
-        }
-
-        $arConfidenceByUuid = OfferColor::query()
-            ->whereIn('offer_uuid', array_values($arUuidByOfferId))
-            ->whereNotNull('confidence')
-            ->pluck('confidence', 'offer_uuid')
-            ->all();
-        if (empty($arConfidenceByUuid)) {
+        if (empty($arConfidenceByOfferId)) {
             return $arOfferIdList;
         }
 
@@ -102,9 +110,9 @@ class ColorFamilyHelper
         $arPositionByOfferId = array_flip($arOfferIdList);
         usort(
             $arOfferIdList,
-            function ($iFirstId, $iSecondId) use ($arUuidByOfferId, $arConfidenceByUuid, $arPositionByOfferId): int {
-                $fFirst = static::resolveConfidence($iFirstId, $arUuidByOfferId, $arConfidenceByUuid);
-                $fSecond = static::resolveConfidence($iSecondId, $arUuidByOfferId, $arConfidenceByUuid);
+            function ($iFirstId, $iSecondId) use ($arConfidenceByOfferId, $arPositionByOfferId): int {
+                $fFirst = static::resolveConfidence($iFirstId, $arConfidenceByOfferId);
+                $fSecond = static::resolveConfidence($iSecondId, $arConfidenceByOfferId);
 
                 if (($fFirst === null) !== ($fSecond === null)) {
                     return $fFirst === null ? 1 : -1;
@@ -125,18 +133,16 @@ class ColorFamilyHelper
      * score is unknown.
      *
      * @param mixed $iOfferId
-     * @param array $arUuidByOfferId
-     * @param array $arConfidenceByUuid
+     * @param array $arConfidenceByOfferId
      * @return float|null
      */
-    protected static function resolveConfidence($iOfferId, array $arUuidByOfferId, array $arConfidenceByUuid): ?float
+    protected static function resolveConfidence($iOfferId, array $arConfidenceByOfferId): ?float
     {
-        $sUuid = $arUuidByOfferId[$iOfferId] ?? null;
-        if ($sUuid === null || !isset($arConfidenceByUuid[$sUuid])) {
+        if (!isset($arConfidenceByOfferId[$iOfferId])) {
             return null;
         }
 
-        return (float) $arConfidenceByUuid[$sUuid];
+        return (float) $arConfidenceByOfferId[$iOfferId];
     }
 
     /**
@@ -276,13 +282,34 @@ class ColorFamilyHelper
             return null;
         }
 
-        $obProperty = \Lovata\PropertiesShopaholic\Models\Property::query()
-            ->where('code', FamilyPropertySync::PROPERTY_CODE)
-            ->first();
-        if (!empty($obProperty)) {
-            static::$mPropertyId = (int) $obProperty->id;
+        $iPropertyId = (int) Cache::remember(
+            self::CACHE_KEY_PROPERTY_ID,
+            self::CACHE_TTL_SECONDS,
+            function () {
+                // 0, not null: Cache reads a null back as a miss and would
+                // re-query on every request until the property is synced
+                return (int) \Lovata\PropertiesShopaholic\Models\Property::query()
+                    ->where('code', FamilyPropertySync::PROPERTY_CODE)
+                    ->value('id');
+            }
+        );
+        if ($iPropertyId > 0) {
+            static::$mPropertyId = $iPropertyId;
         }
 
         return static::$mPropertyId;
+    }
+
+    /**
+     * Drop the memoized and cached property id. FamilyPropertySync calls
+     * this after the property upsert, so the first sync does not leave the
+     * storefront reading a cached "not synced yet".
+     *
+     * @return void
+     */
+    public static function forgetPropertyId(): void
+    {
+        static::$mPropertyId = false;
+        Cache::forget(self::CACHE_KEY_PROPERTY_ID);
     }
 }

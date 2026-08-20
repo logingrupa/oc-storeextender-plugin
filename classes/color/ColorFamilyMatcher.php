@@ -18,18 +18,18 @@ use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
  * queries itself.
  *
  * Read on storefront renders, so the term index is memoized per request AND
- * kept in Laravel Cache keyed by INDEX_VERSION plus the meta table's
- * max(updated_at) + row count. Missing or empty table = no families
- * (fail-safe inactive), never an error.
+ * kept in Laravel Cache under a fixed key. FamilyPropertySync calls
+ * forgetIndex() after it rewrites the meta rows, so a warm render costs no
+ * query at all; the TTL is the backstop for a write that bypasses the sync.
+ * Missing or empty table = no families (fail-safe inactive), never an error.
  *
  * @package Logingrupa\StoreExtender\Classes\Color
  */
 class ColorFamilyMatcher
 {
-    /** Mixed into the cache key beside the content stamp: bump whenever
-     * buildIndex()'s output shape changes, because the stamp only sees data
-     * edits and would serve the pre-deploy index for CACHE_TTL_SECONDS */
-    const INDEX_VERSION = 2;
+    /** Part of the cache key: bump whenever buildIndex()'s output shape
+     * changes, or a deploy would serve the old shape for CACHE_TTL_SECONDS */
+    const INDEX_VERSION = 3;
 
     const CACHE_TTL_SECONDS = 3600;
     const CACHE_KEY_PREFIX = 'storeextender.color_family_matcher.index.';
@@ -117,7 +117,7 @@ class ColorFamilyMatcher
 
     /**
      * The term index, memoized per request and cached against
-     * INDEX_VERSION + the meta table's content stamp.
+     * INDEX_VERSION.
      *
      * @return array
      */
@@ -127,25 +127,43 @@ class ColorFamilyMatcher
             return static::$arIndexMemo;
         }
 
-        // one information-schema query per request at most: $arIndexMemo
-        // short-circuits every later call in the same process
-        if (!Schema::hasTable((new ColorFamilyMeta)->getTable())) {
-            // pre-migration boot: the matcher is simply inactive
-            static::$arIndexMemo = [];
-
-            return static::$arIndexMemo;
-        }
-
-        $sStamp = self::INDEX_VERSION.'|'.ColorFamilyMeta::query()->max('updated_at').'|'.ColorFamilyMeta::query()->count();
         static::$arIndexMemo = (array) Cache::remember(
-            self::CACHE_KEY_PREFIX.md5($sStamp),
+            static::getCacheKey(),
             self::CACHE_TTL_SECONDS,
             function () {
+                // pre-migration boot: the matcher is simply inactive
+                if (!Schema::hasTable((new ColorFamilyMeta)->getTable())) {
+                    return [];
+                }
+
                 return $this->buildIndex();
             }
         );
 
         return static::$arIndexMemo;
+    }
+
+    /**
+     * Cache key of the built index.
+     *
+     * @return string
+     */
+    protected static function getCacheKey(): string
+    {
+        return self::CACHE_KEY_PREFIX.'v'.self::INDEX_VERSION;
+    }
+
+    /**
+     * Drop the index, memo and cache. FamilyPropertySync calls this after
+     * rewriting the meta rows - the mass delete of dropped slugs bypasses
+     * model events, so no model handler can carry this.
+     *
+     * @return void
+     */
+    public static function forgetIndex(): void
+    {
+        static::$arIndexMemo = null;
+        Cache::forget(static::getCacheKey());
     }
 
     /**
