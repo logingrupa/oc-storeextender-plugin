@@ -2,7 +2,7 @@
 
 use October\Rain\Support\Traits\Singleton;
 
-use Lovata\Buddies\Facades\AuthHelper;
+use Lovata\Toolbox\Classes\Helper\UserHelper;
 use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
 use Lovata\Shopaholic\Classes\Collection\ProductCollection;
 use Lovata\DiscountsShopaholic\Classes\Item\DiscountItem;
@@ -33,7 +33,7 @@ class ActivePriceHelper
     /** @var DiscountItem */
     protected $obAuthorizedDiscount;
 
-    /** @var \Lovata\Buddies\Models\User */
+    /** @var \Lovata\Buddies\Models\User|\RainLab\User\Models\User */
     protected $obUser;
 
     /** @var \Lovata\Shopaholic\Models\PriceType */
@@ -134,7 +134,7 @@ class ActivePriceHelper
      */
     protected function init()
     {
-        $this->obUser = AuthHelper::getUser();
+        $this->obUser = UserHelper::instance()->getUser();
         if (empty($this->obUser)) {
             return;
         }

@@ -14,7 +14,7 @@ fields:
     type: relation
     emptyOption: 'lovata.toolbox::lang.field.empty'
   users:
-    label: 'lovata.buddies::lang.user.list_title'
+    label: 'logingrupa.storeextender::lang.user.list_title'
     span: full
     type: partial
     path: $/logingrupa/storeextender/controllers/groups/_user.htm

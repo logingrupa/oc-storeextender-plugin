@@ -2,6 +2,8 @@
 
 use Lovata\Shopaholic\Models\PriceType;
 
+use Logingrupa\StoreExtender\Classes\Helper\UserGroupHelper;
+
 /**
  * Class ExtendUserGroupModel
  * @package Logingrupa\StoreExtender\Classes\Event\UserGroup
@@ -11,17 +13,13 @@ class ExtendUserGroupModel
 {
     public function subscribe()
     {
-        $pluginManager = \System\Classes\PluginManager::instance();
-        
-        // Check which user group plugin is available
-        if ($pluginManager->hasPlugin('Lovata.Buddies')) {
-            \Lovata\Buddies\Models\Group::extend(function ($obGroup) {
-                $obGroup->belongsTo['price_type'] = [PriceType::class];
-            });
-        } elseif ($pluginManager->hasPlugin('RainLab.User')) {
-            \RainLab\User\Models\UserGroup::extend(function ($obGroup) {
-                $obGroup->belongsTo['price_type'] = [PriceType::class];
-            });
+        $sModelClass = UserGroupHelper::instance()->getGroupModel();
+        if (empty($sModelClass)) {
+            return;
         }
+
+        $sModelClass::extend(function ($obGroup) {
+            $obGroup->belongsTo['price_type'] = [PriceType::class];
+        });
     }
 }

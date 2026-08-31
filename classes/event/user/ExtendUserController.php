@@ -1,7 +1,6 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event\User;
 
-use Lovata\Buddies\Controllers\Users;
-use Lovata\Buddies\Models\User;
+use Lovata\Toolbox\Classes\Helper\UserHelper;
 use Lovata\Toolbox\Classes\Event\AbstractBackendFieldHandler;
 
 /**
@@ -11,6 +10,8 @@ use Lovata\Toolbox\Classes\Event\AbstractBackendFieldHandler;
  */
 class ExtendUserController extends AbstractBackendFieldHandler
 {
+    const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
+
     /**
      * Extend backend fields
      * @param \Backend\Widgets\Form $obWidget
@@ -20,7 +21,7 @@ class ExtendUserController extends AbstractBackendFieldHandler
         $obWidget->addTabFields([
             'groups' => [
                 'label' => 'logingrupa.storeextender::lang.group.list_title',
-                'tab' => 'lovata.buddies::lang.tab.data',
+                'tab' => $this->getTabName(),
                 'type' => 'relation',
             ],
         ]);
@@ -32,7 +33,7 @@ class ExtendUserController extends AbstractBackendFieldHandler
      */
     protected function getModelClass(): string
     {
-        return User::class;
+        return (string) UserHelper::instance()->getUserModel();
     }
 
     /**
@@ -41,6 +42,20 @@ class ExtendUserController extends AbstractBackendFieldHandler
      */
     protected function getControllerClass(): string
     {
-        return Users::class;
+        return (string) UserHelper::instance()->getUserController();
+    }
+
+    /**
+     * Each user plugin names its own form tab. Adding the field to a tab that does not
+     * exist would render it in a tab of its own.
+     * @return string
+     */
+    protected function getTabName(): string
+    {
+        if (UserHelper::instance()->getPluginName() == self::BUDDIES_PLUGIN_NAME) {
+            return 'lovata.buddies::lang.tab.data';
+        }
+
+        return 'Account';
     }
 }

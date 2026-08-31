@@ -3,19 +3,29 @@
 use Lang;
 use Illuminate\Support\Facades\Log;
 
+use Lovata\Toolbox\Classes\Helper\UserHelper;
+use Logingrupa\StoreExtender\Classes\Helper\UserGroupHelper;
+
 class UserModelHandler
 {
+    const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
+
     public function subscribe()
     {
-        $pluginManager = \System\Classes\PluginManager::instance();
-        
-        // Check which user plugin is available and extend accordingly
-        if ($pluginManager->hasPlugin('Lovata.Buddies')) {
+        // UserHelper resolves through PluginManager::exists(), which honours the disabled
+        // flag; hasPlugin() does not. Asking the same seam as every other handler keeps a
+        // disabled Buddies from leaving the model half switched.
+        $sPluginName = UserHelper::instance()->getPluginName();
+
+        if ($sPluginName == self::BUDDIES_PLUGIN_NAME) {
             \Lovata\Buddies\Models\User::extend(function ($obElement) {
                 $this->extendUserModel($obElement);
             });
-        } elseif ($pluginManager->hasPlugin('RainLab.User')) {
-            \RainLab\User\Models\User::extend(function ($obElement) {
+        } elseif (!empty($sPluginName)) {
+            $obRainLabExtension = new ExtendRainLabUserModel();
+
+            \RainLab\User\Models\User::extend(function ($obElement) use ($obRainLabExtension) {
+                $obRainLabExtension->extend($obElement);
                 $this->extendUserModel($obElement);
             });
         }
@@ -36,8 +46,17 @@ class UserModelHandler
 
     protected function addValidationRules($obElement)
     {
+        // October\Rain\Auth\Models\User declares $customMessages; RainLab's User extends the
+        // plain Model and does not, and there is no setter for it, so the rule would fire
+        // with an untranslated message. It is a register-form anti-bot question rather than a
+        // user invariant, so under RainLab it is validated in RainLabRegistrationHandler
+        // instead, which also keeps it from blocking backend and programmatic user creation.
+        if (!property_exists($obElement, 'customMessages')) {
+            return;
+        }
+
         $obElement->rules['property[security]'] = 'required:create|in:5';
-        
+
         // Get current customMessages, modify it, then reassign to avoid "indirect modification" error
         $customMessages = $obElement->customMessages;
         $customMessages['property.security.required'] = Lang::get('logingrupa.storeextender::lang.message.e_security_required');
@@ -53,24 +72,17 @@ class UserModelHandler
             return;
         }
 
-        $pluginManager = \System\Classes\PluginManager::instance();
-        $group = null;
-
-        // Find the group by code using the appropriate model
-        if ($pluginManager->hasPlugin('Lovata.Buddies')) {
-            $group = \Lovata\Buddies\Models\Group::where('code', $sPropertyCode)->first();
-        } elseif ($pluginManager->hasPlugin('RainLab.User')) {
-            $group = \RainLab\User\Models\UserGroup::where('code', $sPropertyCode)->first();
-        }
+        $group = UserGroupHelper::instance()->findByCode($sPropertyCode);
 
         if (!$group) {
             Log::warning("Group with code '{$sPropertyCode}' not found.");
             return;
         }
 
-        // Attach user to the group without detaching existing ones
+        // Attach without detaching: a user can hold several groups and sync() would
+        // drop every group this handler did not name.
         try {
-            $obElement->groups()->sync([$group->id]);
+            $obElement->groups()->syncWithoutDetaching([$group->id]);
         } catch (\Exception $e) {
             Log::error("Failed to attach user to group: {$e->getMessage()}");
         }

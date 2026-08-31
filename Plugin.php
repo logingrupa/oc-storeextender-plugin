@@ -39,6 +39,9 @@ use Logingrupa\StoreExtender\Classes\Event\UserGroup\ExtendUserGroupController;
 //User events
 use Logingrupa\StoreExtender\Classes\Event\User\UserModelHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserController;
+use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserPropertyFieldHandler;
+use Logingrupa\StoreExtender\Classes\Event\User\RainLabRegistrationHandler;
+use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
 
 //Cart component events
 use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
@@ -57,6 +60,7 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 //Order position
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPropertySecretHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderUserPhoneHandler;
 //Product events
 use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductFieldsHandler as StoreExtenderExtendProductFieldsHandler;
 use Logingrupa\StoreExtender\Classes\Event\Product\ProductModelHandler as StoreExtenderProductModelHandler;
@@ -77,6 +81,7 @@ use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
+use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
 
 /**
  * StoreExtender Plugin Information File
@@ -113,6 +118,12 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.verifyxmlimportsettings', 'Logingrupa\StoreExtender\Console\VerifyXmlImportSettings');
         $this->registerConsoleCommand('storeextender.warmofferthumbs', 'Logingrupa\StoreExtender\Console\WarmOfferThumbs');
         $this->registerConsoleCommand('storeextender.purgeorderpropertysecrets', 'Logingrupa\StoreExtender\Console\PurgeOrderPropertySecrets');
+        $this->registerConsoleCommand('storeextender.migratebuddiesusers', 'Logingrupa\StoreExtender\Console\MigrateBuddiesUsers');
+
+        // Toolbox RainLabUserHelper::findUserByEmail() calls a method RainLab.User 3.5.3
+        // does not define. UserHelper resolves its inner helper through the container, so
+        // binding the fixed subclass here reaches every caller, checkout included.
+        $this->app->bind(\Lovata\Toolbox\Classes\Helper\Users\RainLabUserHelper::class, RainLabUserHelperFix::class);
 
         // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
         // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
@@ -177,6 +188,8 @@ class Plugin extends PluginBase
         Event::subscribe(UserModelHandler::class);
         //User events
         Event::subscribe(ExtendUserController::class);
+        Event::subscribe(ExtendUserPropertyFieldHandler::class);
+        Event::subscribe(RainLabRegistrationHandler::class);
         //Cart component events
         Event::subscribe(CartComponentHandler::class);
         //Meta Purchase value = margin (order total minus izpl cost), via
@@ -199,6 +212,7 @@ class Plugin extends PluginBase
 
         // Keeps raw checkout credentials out of the order property snapshot.
         Event::subscribe(OrderPropertySecretHandler::class);
+        Event::subscribe(OrderUserPhoneHandler::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
 
@@ -453,6 +467,7 @@ class Plugin extends PluginBase
             'Logingrupa\Storeextender\Components\CustomProductPage' => 'CustomProductPage',
             'Logingrupa\Storeextender\Components\LazyPromoBlockLoader' => 'LazyPromoBlockLoader',
             'Logingrupa\Storeextender\Components\OfferSheet' => 'OfferSheet',
+            'Logingrupa\Storeextender\Components\UserPhoneCheck' => 'UserPhoneCheck',
         ];
     }
 
@@ -637,7 +652,7 @@ class Plugin extends PluginBase
                 return $arPages;
             });
             $obModel->addDynamicMethod('getUserFieldsOptions', function () {
-                return \Lovata\Buddies\Models\Property::lists('name', 'code');
+                return UserPropertyHelper::instance()->getCodeNameList();
             });
             $obModel->addDynamicMethod('getShippingCodeOptions', function () {
                 return \Lovata\OrdersShopaholic\Models\ShippingType::lists('name', 'code');

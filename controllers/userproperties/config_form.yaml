@@ -1,0 +1,16 @@
+name: 'logingrupa.storeextender::lang.user_property.name'
+modelClass: Logingrupa\StoreExtender\Models\UserProperty
+form: $/logingrupa/storeextender/models/userproperty/fields.yaml
+defaultRedirect: logingrupa/storeextender/userproperties
+create:
+    title: 'backend::lang.form.create_title'
+    redirect: 'logingrupa/storeextender/userproperties/update/:id'
+    redirectClose: logingrupa/storeextender/userproperties
+    flashSave: 'lovata.toolbox::lang.message.create_success'
+update:
+    title: 'backend::lang.form.update_title'
+    redirect: logingrupa/storeextender/userproperties
+    redirectClose: logingrupa/storeextender/userproperties
+    flashSave: 'lovata.toolbox::lang.message.update_success'
+    flashDelete: 'lovata.toolbox::lang.message.delete_success'
+preview: {  }

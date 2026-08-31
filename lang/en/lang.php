@@ -5,7 +5,16 @@
         'warning' => 'Warning',
     ],
     'menu' => [
+        'user_property' => 'User properties',
         'group' => 'Groups',
+    ],
+    'user_property' => [
+        'list_title' => 'User properties',
+        'name' => 'User property',
+    ],
+    'user' => [
+        'list_title' => 'Users',
+        'name' => 'Users',
     ],
     'group' => [
         'list_title' => 'Groups',

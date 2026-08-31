@@ -1,5 +1,5 @@
 users:
-  label: 'lovata.buddies::lang.user.name'
+  label: 'logingrupa.storeextender::lang.user.name'
   manage:
     list: $/lovata/buddies/models/user/columns.yaml
     form: $/lovata/buddies/models/user/fields.yaml

@@ -1,0 +1,15 @@
+users:
+  label: 'logingrupa.storeextender::lang.user.name'
+  manage:
+    list: $/rainlab/user/models/user/columns.yaml
+    form: $/rainlab/user/models/user/fields.yaml
+    showSearch: true
+    showSorting: true
+    recordsPerPage: 10
+  view:
+    list: $/rainlab/user/models/user/columns.yaml
+    recordUrl: rainlab/user/users/update/:id
+    toolbarButtons: 'add|remove'
+    showSearch: true
+    showSorting: true
+    recordsPerPage: 10

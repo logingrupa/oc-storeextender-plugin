@@ -22,7 +22,8 @@ class UpdateTableUserGroup extends Migration
         if ($pluginManager->hasPlugin('Lovata.Buddies')) {
             return 'lovata_buddies_groups';
         } elseif ($pluginManager->hasPlugin('RainLab.User')) {
-            return 'users_groups';
+            // RainLab group table. "users_groups" is the membership pivot.
+            return 'user_groups';
         }
         
         return null;
