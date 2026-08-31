@@ -56,6 +56,7 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 
 //Order position
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderPropertySecretHandler;
 //Product events
 use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductFieldsHandler as StoreExtenderExtendProductFieldsHandler;
 use Logingrupa\StoreExtender\Classes\Event\Product\ProductModelHandler as StoreExtenderProductModelHandler;
@@ -111,6 +112,7 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.importthememessages', 'Logingrupa\StoreExtender\Console\ImportThemeMessages');
         $this->registerConsoleCommand('storeextender.verifyxmlimportsettings', 'Logingrupa\StoreExtender\Console\VerifyXmlImportSettings');
         $this->registerConsoleCommand('storeextender.warmofferthumbs', 'Logingrupa\StoreExtender\Console\WarmOfferThumbs');
+        $this->registerConsoleCommand('storeextender.purgeorderpropertysecrets', 'Logingrupa\StoreExtender\Console\PurgeOrderPropertySecrets');
 
         // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
         // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
@@ -194,6 +196,9 @@ class Plugin extends PluginBase
         Event::subscribe(CartPositionItemHandler::class);
         //Order position
         Event::subscribe(OrderPositionItemHandler::class);
+
+        // Keeps raw checkout credentials out of the order property snapshot.
+        Event::subscribe(OrderPropertySecretHandler::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
 
