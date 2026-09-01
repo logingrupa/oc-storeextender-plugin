@@ -51,6 +51,27 @@ class CartStateReader
     }
 
     /**
+     * Offer ids currently in the cart, cheapest possible read: one indexed
+     * query, no cart creation, no position/promo build
+     * @return array<int>
+     */
+    public static function getOfferIdList(): array
+    {
+        $iCartID = static::resolveCartID();
+        if (empty($iCartID)) {
+            return [];
+        }
+
+        $arOfferIdList = CartPosition::getByCart($iCartID)
+            ->where('item_type', \Lovata\Shopaholic\Models\Offer::class)
+            ->toBase()
+            ->pluck('item_id')
+            ->all();
+
+        return array_map('intval', $arOfferIdList);
+    }
+
+    /**
      * Resolve the visitor's cart ID without creating one
      * @return int|null
      */

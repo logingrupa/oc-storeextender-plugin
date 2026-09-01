@@ -3,15 +3,14 @@
 use Cms\Classes\ComponentBase;
 use Illuminate\Support\Facades\Cache;
 use Kharanenka\Helper\CCache;
-use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 use Lovata\Shopaholic\Classes\Collection\OfferCollection;
 use Lovata\Shopaholic\Classes\Helper\CurrencyHelper;
 use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
 use Lovata\Shopaholic\Classes\Item\OfferItem;
 use Lovata\Shopaholic\Classes\Item\ProductItem;
-use Lovata\Shopaholic\Models\Offer;
 use Logingrupa\StoreExtender\Classes\Color\ColorMapRepository;
 use Logingrupa\StoreExtender\Classes\Color\OfferColorGrouper;
+use Logingrupa\StoreExtender\Classes\Helper\CartStateReader;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 
 /**
@@ -573,20 +572,14 @@ class OfferSheet extends ComponentBase
 
     /**
      * Offer ids currently in the cart - applied client-side so cached row
-     * HTML stays shared between visitors
+     * HTML stays shared between visitors. Read through CartStateReader:
+     * CartProcessor::get() would run the full position build and the whole
+     * campaign promo pass just to answer which ids sit in the cart.
      * @return array
      */
     protected function getCartOfferIdList(): array
     {
-        $arCartOfferIdList = [];
-        foreach (CartProcessor::instance()->get() as $obCartPositionItem) {
-            if ($obCartPositionItem->item_type != Offer::class) {
-                continue;
-            }
-            $arCartOfferIdList[] = (int) $obCartPositionItem->item_id;
-        }
-
-        return $arCartOfferIdList;
+        return CartStateReader::getOfferIdList();
     }
 
     /**
