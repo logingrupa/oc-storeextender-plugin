@@ -7,10 +7,12 @@ use Yaml;
 use Event;
 use Backend;
 use System\Classes\PluginBase;
+use System\Classes\PluginManager;
 
 // use Illuminate\Foundation\AliasLoader;
 use Lovata\Shopaholic\Models\Offer as ShopaholicOfferModel;
 use Lovata\Shopaholic\Models\Product as ShopaholicProductModel;
+use Lovata\Shopaholic\Models\Category as ShopaholicCategoryModel;
 use Lovata\OrdersShopaholic\Models\Order as ShopaholicOrderModel;
 use Lovata\Shopaholic\Models\Currency as ShopaholicCurrencyModel;
 use Lovata\Shopaholic\Controllers\Currencies as ShopaholicCurrenciesController;
@@ -26,6 +28,7 @@ use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
 //Events
 use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
 use Logingrupa\StoreExtender\Classes\Event\ExtendMenuHandler;
+use Logingrupa\StoreExtender\Classes\Event\Category\PrimeCategoryTreeHandler;
 use Logingrupa\StoreExtender\Classes\Event\ExtendOfferHandler;
 
 //Offer events
@@ -173,6 +176,7 @@ class Plugin extends PluginBase
         $this->extendShopaholicProductModel();
         $this->extendShopaholicOfferModel();
         $this->extendItemEagerLoading();
+        $this->extendCategoryChildrenMapReset();
         $this->extendXMLImporter();
         $this->extendShopaholicOrderModel();
         Event::subscribe(ExtendPaymentGateway::class);
@@ -226,6 +230,7 @@ class Plugin extends PluginBase
 
         //Currency rounding for NOK, SEK, DKK
         ExtendCurrencyConversion::swapCurrencyHelper();
+        PrimeCategoryTreeHandler::primeOnPageDisplay();
 
         //Extend currency form to allow more decimal places in rate field
         $this->extendShopaholicCurrenciesController();
@@ -338,6 +343,24 @@ class Plugin extends PluginBase
      * images NOT being listed in $translatable on the parent model (RainLab swaps
      * the attachment class to MLFile only in that case).
      */
+    /**
+     * CategoryItem primes its active children map once per request. A process
+     * that saves categories and then rebuilds items (backend save, XML import)
+     * would otherwise read the map it primed before the save.
+     */
+    public function extendCategoryChildrenMapReset()
+    {
+        ShopaholicCategoryModel::extend(function ($obModel) {
+            $obModel->bindEvent('model.afterSave', function () {
+                CategoryItem::clearActiveChildrenMap();
+            });
+
+            $obModel->bindEvent('model.afterDelete', function () {
+                CategoryItem::clearActiveChildrenMap();
+            });
+        });
+    }
+
     public function extendItemEagerLoading()
     {
         // seo_container: MightySeo caches seo_param_id on every item and reads
@@ -360,13 +383,21 @@ class Plugin extends PluginBase
             'images.translations',
         ]);
 
-        CategoryItem::$arQueryWith = array_merge(CategoryItem::$arQueryWith, [
+        $arCategoryWith = [
             'translations',
             'preview_image.translations',
             'icon.translations',
             'images.translations',
             'seo_container',
-        ]);
+        ];
+
+        // property_set is a PropertiesShopaholic relation, absent when that
+        // plugin is off - an unknown path here throws RelationNotFoundException
+        if (PluginManager::instance()->hasPlugin('Lovata.PropertiesShopaholic')) {
+            $arCategoryWith[] = 'property_set';
+        }
+
+        CategoryItem::$arQueryWith = array_merge(CategoryItem::$arQueryWith, $arCategoryWith);
     }
 
     public function extendShopaholicProductModel()
