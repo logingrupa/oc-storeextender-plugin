@@ -28,4 +28,7 @@
         'product_page_name' => 'Custom Product Page',
         'product_page_description' => 'Get product page data including if product is not Active for SEO purposes',
     ],
+    'mail' => [
+        'rights_reserved' => 'Alle Rechte vorbehalten.',
+    ],
 ];
