@@ -112,6 +112,42 @@ class RainLabUserModelExtensionTest extends StoreExtenderUserPluginTestCase
         $this->assertSame('+37126111222', $obUser->fresh()->phone_short);
     }
 
+    public function testValidationMessagesNameTheFieldInTheShoppersLanguage()
+    {
+        // Both validators the auth forms hit - the model rules on register, a bare
+        // Validator on password reset - read validation.attributes for the locale.
+        // Without the plugin's lang path they shipped "password apstiprinājums nesakrīt".
+        $sPreviousLocale = \App::getLocale();
+        \App::setLocale('lv');
+
+        try {
+            $obUser = new User([
+                'email'                 => 'named@nc.test',
+                'password'              => 'Probe12345',
+                'password_confirmation' => 'Other12345',
+            ]);
+
+            $sModelMessage = '';
+            try {
+                $obUser->validate();
+                $this->fail('A mismatched confirmation must fail validation');
+            } catch (\October\Rain\Database\ModelException $obException) {
+                $sModelMessage = $obException->getErrors()->first('password');
+            }
+
+            $obValidator = \Validator::make(
+                ['password' => 'Probe12345', 'password_confirmation' => 'Other12345'],
+                ['password' => 'required|confirmed']
+            );
+            $sPlainMessage = $obValidator->errors()->first('password');
+        } finally {
+            \App::setLocale($sPreviousLocale);
+        }
+
+        $this->assertSame('Paroles apstiprinājums nesakrīt.', $sModelMessage);
+        $this->assertSame('Paroles apstiprinājums nesakrīt.', $sPlainMessage);
+    }
+
     public function testSchoolNamePropertyAttachesTheGroupOnSave()
     {
         $obGroup = UserGroup::create(['name' => 'Kolonna', 'code' => 'kolonna']);
@@ -128,8 +164,46 @@ class RainLabUserModelExtensionTest extends StoreExtenderUserPluginTestCase
             'UserModelHandler must attach the school group after save'
         );
 
+        $this->assertSame(
+            $obGroup->id,
+            (int) $obUser->fresh()->primary_group_id,
+            'The chosen school must replace the seeded registered group as primary'
+        );
+
         // A second save must not detach it (syncWithoutDetaching contract)
         $obUser->save();
         $this->assertTrue($obUser->groups()->where('id', $obGroup->id)->exists());
+    }
+
+    public function testChangingSchoolMovesThePrimaryGroup()
+    {
+        UserGroup::create(['name' => 'Kolonna', 'code' => 'kolonna']);
+        $obNewSchool = UserGroup::create(['name' => 'Studija', 'code' => 'studija']);
+
+        $obUser = User::create([
+            'email'                 => 'school-change@nc.test',
+            'password'              => 'Probe12345',
+            'password_confirmation' => 'Probe12345',
+            'property'              => ['school-name' => 'kolonna'],
+        ]);
+
+        $obUser->property = ['school-name' => 'studija'];
+        $obUser->save();
+
+        $this->assertSame($obNewSchool->id, (int) $obUser->fresh()->primary_group_id);
+    }
+
+    public function testRegistrationWithoutSchoolKeepsRegisteredPrimary()
+    {
+        $obUser = User::create([
+            'email'                 => 'no-school@nc.test',
+            'password'              => 'Probe12345',
+            'password_confirmation' => 'Probe12345',
+        ]);
+
+        $this->assertSame(
+            UserGroup::getRegisteredGroup()->id,
+            (int) $obUser->fresh()->primary_group_id
+        );
     }
 }

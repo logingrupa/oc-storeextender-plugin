@@ -76,6 +76,14 @@ class RainLabRegistrationHandlerTest extends StoreExtenderUserPluginTestCase
         $this->assertSame(0, (int) $obUser->is_mail_blocked);
     }
 
+    public function testRegistrationStampsBothIpAddressColumns()
+    {
+        $obUser = $this->register($this->shopFormPost(['email' => 'reg-ip@nc.test']));
+
+        $this->assertNotEmpty($obUser->created_ip_address);
+        $this->assertSame($obUser->created_ip_address, $obUser->last_ip_address);
+    }
+
     public function testMissingPasswordConfirmationIsDefaulted()
     {
         $arInput = $this->shopFormPost(['email' => 'reg-b@nc.test']);

@@ -1,6 +1,9 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event\User;
 
+use Cms;
 use Lang;
+use Redirect;
+use Request;
 use Validator;
 
 use Lovata\Toolbox\Classes\Helper\UserHelper;
@@ -30,7 +33,9 @@ class RainLabRegistrationHandler
 {
     const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
     const EVENT_BEFORE_REGISTER = 'rainlab.user.beforeRegister';
+    const EVENT_REGISTER = 'rainlab.user.register';
     const SECURITY_ANSWER = '5';
+    const PROFILE_PAGE = 'auth/my-account';
 
     /** Posted fields that map straight onto the user. "name" is aliased onto first_name. */
     const FIELD_LIST = ['name', 'last_name', 'email', 'password', 'password_confirmation', 'phone', 'property'];
@@ -48,6 +53,31 @@ class RainLabRegistrationHandler
         $obEvent->listen(self::EVENT_BEFORE_REGISTER, function ($obComponent, &$arInput) {
             return $this->createUser($arInput);
         });
+
+        $obEvent->listen(self::EVENT_REGISTER, function ($obComponent, $obUser) {
+            return $this->makeProfileRedirect($obUser);
+        });
+    }
+
+    /**
+     * A registration that posted no redirect target lands on the fresh account's own
+     * profile page, so the shopper sees they are signed in. An explicit target keeps
+     * winning through the component's redirectIntendedFromPost, which runs after this.
+     * @param \RainLab\User\Models\User $obUser
+     * @return \Illuminate\Http\RedirectResponse|null
+     */
+    protected function makeProfileRedirect($obUser)
+    {
+        if (trim((string) post('redirect')) !== '') {
+            return null;
+        }
+
+        $sProfileUrl = Cms::pageUrl(self::PROFILE_PAGE, ['slug' => $obUser->getKey()]);
+        if (empty($sProfileUrl)) {
+            return null;
+        }
+
+        return Redirect::to($sProfileUrl);
     }
 
     /**
@@ -77,7 +107,16 @@ class RainLabRegistrationHandler
             $arFieldList[$sField] = $arInput[$sField];
         }
 
-        return $sUserModelClass::create($arFieldList);
+        $obUser = new $sUserModelClass($arFieldList);
+
+        // Not in the RainLab model's $fillable and never written by the plugin itself,
+        // so both audit columns are stamped here; logins refresh last_ip_address
+        // through UserIpAddressHandler.
+        $obUser->created_ip_address = Request::ip();
+        $obUser->last_ip_address = Request::ip();
+        $obUser->save();
+
+        return $obUser;
     }
 
     /**

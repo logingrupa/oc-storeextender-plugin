@@ -26,22 +26,22 @@ class ExtendMenuHandler extends AbstractBackendMenuHandler
     {
         $bIsBuddies = UserHelper::instance()->getPluginName() == self::BUDDIES_PLUGIN_NAME;
 
-        $sOwner = $bIsBuddies ? self::BUDDIES_OWNER : self::RAINLAB_OWNER;
-        $sMainMenu = $bIsBuddies ? self::BUDDIES_MAIN_MENU : self::RAINLAB_MAIN_MENU;
-
-        $obManager->addSideMenuItem($sOwner, $sMainMenu, 'side-menu-buddies-group', [
-            'label' => 'logingrupa.storeextender::lang.menu.group',
-            'url' => Backend::url('logingrupa/storeextender/groups'),
-            'icon' => 'icon-users',
-            'order' => 1000,
-        ]);
-
-        // Buddies ships its own property editor at lovata/buddies/properties.
+        // Under RainLab the stock User Groups page is the single group editor
+        // (ExtendUserGroupController injects the price type field there); the
+        // Groups controller in this plugin serves only the Buddies branch.
         if ($bIsBuddies) {
+            $obManager->addSideMenuItem(self::BUDDIES_OWNER, self::BUDDIES_MAIN_MENU, 'side-menu-buddies-group', [
+                'label' => 'logingrupa.storeextender::lang.menu.group',
+                'url' => Backend::url('logingrupa/storeextender/groups'),
+                'icon' => 'icon-users',
+                'order' => 1000,
+            ]);
+
+            // Buddies ships its own property editor at lovata/buddies/properties.
             return;
         }
 
-        $obManager->addSideMenuItem($sOwner, $sMainMenu, 'side-menu-user-properties', [
+        $obManager->addSideMenuItem(self::RAINLAB_OWNER, self::RAINLAB_MAIN_MENU, 'side-menu-user-properties', [
             'label' => 'logingrupa.storeextender::lang.menu.user_property',
             'url' => Backend::url('logingrupa/storeextender/userproperties'),
             'icon' => 'icon-list-ul',

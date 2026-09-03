@@ -161,6 +161,7 @@ class BuddiesUserPorter
             $arResult['users'] = $this->portUsers();
             $arResult['memberships'] = $this->portMemberships();
             $arResult['properties'] = $this->portProperties();
+            $arResult['school primary groups'] = $this->promoteSchoolPrimaryGroups();
         });
 
         // ALTER TABLE commits implicitly, so it stays outside the transaction above.
@@ -334,6 +335,32 @@ class BuddiesUserPorter
             .' ON DUPLICATE KEY UPDATE '.implode(', ', $arUpdateList);
 
         return DB::affectingStatement($sSql);
+    }
+
+    /**
+     * The school picked at registration (property["school-name"]) is the user's group of
+     * record, so it becomes RainLab's primary group, matching what UserModelHandler does
+     * for users registering after the cutover. Users without a school keep "registered".
+     *
+     * JSON_EXTRACT returns utf8mb4_bin, so the value is re-collated before matching the
+     * group code, and invalid or NULL property payloads are folded to an empty document
+     * inside the expression - a WHERE guard alone would not stop MySQL evaluating the
+     * join condition on a malformed row.
+     * @return int
+     */
+    protected function promoteSchoolPrimaryGroups()
+    {
+        $sSchoolCode = 'CONVERT(JSON_UNQUOTE(JSON_EXTRACT('
+            ."IF(JSON_VALID(u.`property`), u.`property`, '{}'), '$.\"school-name\"'"
+            .')) USING utf8mb4) COLLATE utf8mb4_unicode_ci';
+
+        return DB::affectingStatement(
+            'UPDATE `'.self::TARGET_USER_TABLE.'` AS u'
+            .' JOIN `'.self::SOURCE_USER_TABLE.'` AS s ON s.`id` = u.`id`'
+            .' JOIN `'.self::TARGET_GROUP_TABLE.'` AS g ON g.`code` = '.$sSchoolCode
+            .' SET u.`primary_group_id` = g.`id`'
+            ." WHERE g.`code` NOT IN ('".implode("', '", UserGroupHelper::SEEDED_GROUP_CODES)."')"
+        );
     }
 
     /**

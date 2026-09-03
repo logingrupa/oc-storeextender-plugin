@@ -85,6 +85,31 @@ class UserModelHandler
             $obElement->groups()->syncWithoutDetaching([$group->id]);
         } catch (\Exception $e) {
             Log::error("Failed to attach user to group: {$e->getMessage()}");
+
+            return;
         }
+
+        $this->makeSchoolGroupPrimary($obElement, $group);
+    }
+
+    /**
+     * The chosen school is the user's group of record, so it also becomes RainLab's
+     * primary group (the one the backend shows). Written with a quiet query: this
+     * runs inside afterSave, and a model save here would re-fire it.
+     */
+    protected function makeSchoolGroupPrimary($obElement, $obGroup)
+    {
+        // Buddies has no primary group concept
+        if (!$obElement instanceof \RainLab\User\Models\User) {
+            return;
+        }
+
+        if ((int) $obElement->primary_group_id === (int) $obGroup->id) {
+            return;
+        }
+
+        $obElement->newQuery()->whereKey($obElement->getKey())->update(['primary_group_id' => $obGroup->id]);
+        $obElement->primary_group_id = $obGroup->id;
+        $obElement->syncOriginalAttribute('primary_group_id');
     }
 }

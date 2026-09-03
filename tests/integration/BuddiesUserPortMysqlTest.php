@@ -229,6 +229,22 @@ class BuddiesUserPortMysqlTest extends StoreExtenderPluginTestCase
                 'property' => null, 'viewed_products' => null, 'deleted_at' => '2024-06-01 00:00:00',
                 'created_at' => '2023-01-01 00:00:00', 'updated_at' => '2024-06-01 00:00:00',
             ],
+            [
+                'id' => 15, 'name' => 'Skola', 'last_name' => null, 'email' => 'student@nc.test',
+                'password' => '$2y$10$studenthashstudenthashstudenth', 'activation_code' => null,
+                'is_activated' => 1, 'activated_at' => '2024-01-01 00:00:00', 'last_login' => null,
+                'phone' => null, 'phone_short' => null,
+                'property' => '{"security":"5","school-name":"kolonna"}', 'viewed_products' => null, 'deleted_at' => null,
+                'created_at' => '2024-01-01 00:00:00', 'updated_at' => '2024-01-01 00:00:00',
+            ],
+            [
+                'id' => 16, 'name' => 'Broken', 'last_name' => null, 'email' => 'broken-json@nc.test',
+                'password' => '$2y$10$brokenhashbrokenhashbrokenhash', 'activation_code' => null,
+                'is_activated' => 1, 'activated_at' => '2024-01-01 00:00:00', 'last_login' => null,
+                'phone' => null, 'phone_short' => null,
+                'property' => 'not-json', 'viewed_products' => null, 'deleted_at' => null,
+                'created_at' => '2024-01-01 00:00:00', 'updated_at' => '2024-01-01 00:00:00',
+            ],
         ]);
 
         DB::table('lovata_buddies_users_groups')->insert([
@@ -301,6 +317,11 @@ class BuddiesUserPortMysqlTest extends StoreExtenderPluginTestCase
 
         $this->assertNull(DB::table('users')->where('id', 11)->value('activated_at'), 'a never-activated account must stay unactivated');
         $this->assertSame('2024-06-01 00:00:00', DB::table('users')->where('id', 12)->value('deleted_at'));
+
+        // The school from property["school-name"] becomes the primary group; a malformed
+        // property payload neither errors nor moves the primary off registered
+        $this->assertSame(5, (int) DB::table('users')->where('id', 15)->value('primary_group_id'));
+        $this->assertSame($iRegisteredID, (int) DB::table('users')->where('id', 16)->value('primary_group_id'));
 
         // Memberships copied as (user_id, group_id) pairs on original group ids
         $this->assertSame(
@@ -383,7 +404,7 @@ class BuddiesUserPortMysqlTest extends StoreExtenderPluginTestCase
             'email' => 'fresh@nc.test', 'created_at' => '2026-09-01 00:00:00', 'updated_at' => '2026-09-01 00:00:00',
         ]);
 
-        $this->assertSame(13, $iNewID, 'AUTO_INCREMENT must resume above the highest ported id');
+        $this->assertSame(17, $iNewID, 'AUTO_INCREMENT must resume above the highest ported id');
     }
 
     public function testPhoneLookupMatchesAVariantInsideTheCommaList()
