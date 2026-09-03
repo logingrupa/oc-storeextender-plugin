@@ -1,30 +1,20 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Helper;
 
 use Cms\Classes\ComponentManager;
-use Lovata\Toolbox\Classes\Helper\UserHelper;
 
 /**
  * Class ThemeUserBinder
  * @package Logingrupa\StoreExtender\Classes\Helper
  *
- * Binds the live user plugin's session component onto a layout and hands the layout the
+ * Binds RainLab.User's Session component onto a layout and hands the layout the
  * two variables the theme reads from it: "obUser" and "sLogoutHandler".
  *
- * Buddies exposes the current user through its own UserData component and logs out through
- * Logout::onAjax; RainLab.User uses Session and Session::onLogout. Neither component class
- * exists when the other plugin is the live one, so five layouts each carried their own copy
- * of the check.
- *
- * Buddies stays supported until the production cutover, when it is removed for good.
+ * The Session component resolves the user from the session on every call, unlike
+ * Auth::getUser(), which serves Illuminate's cached instance - that is why the
+ * theme must read obUser from here and never through UserHelper::getUser().
  */
 class ThemeUserBinder
 {
-    const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
-
-    const BUDDIES_COMPONENT_CLASS = 'Lovata\Buddies\Components\UserData';
-    const BUDDIES_COMPONENT_ALIAS = 'UserData';
-    const BUDDIES_LOGOUT_HANDLER = 'Logout::onAjax';
-
     const RAINLAB_COMPONENT_CLASS = 'RainLab\User\Components\Session';
     const RAINLAB_COMPONENT_ALIAS = 'Session';
     const RAINLAB_LOGOUT_HANDLER = 'Session::onLogout';
@@ -40,41 +30,33 @@ class ThemeUserBinder
             throw new \InvalidArgumentException('ThemeUserBinder::bind() needs the layout object');
         }
 
-        $bIsBuddies = UserHelper::instance()->getPluginName() == self::BUDDIES_PLUGIN_NAME;
+        $obLayout['sLogoutHandler'] = self::RAINLAB_LOGOUT_HANDLER;
 
-        $obLayout['sLogoutHandler'] = $bIsBuddies
-            ? self::BUDDIES_LOGOUT_HANDLER
-            : self::RAINLAB_LOGOUT_HANDLER;
-
-        $obComponent = self::resolveComponent($obLayout, $bIsBuddies);
+        $obComponent = self::resolveComponent($obLayout);
         if (empty($obComponent)) {
             return;
         }
 
-        $obLayout['obUser'] = $bIsBuddies ? $obComponent->get() : $obComponent->user();
+        $obLayout['obUser'] = $obComponent->user();
     }
 
     /**
      * Reuse the instance the layout INI declared, otherwise register one
      * @param \Cms\Classes\CodeBase $obLayout
-     * @param bool $bIsBuddies
      * @return \Cms\Classes\ComponentBase|null
      */
-    protected static function resolveComponent($obLayout, $bIsBuddies)
+    protected static function resolveComponent($obLayout)
     {
-        $sComponentClass = $bIsBuddies ? self::BUDDIES_COMPONENT_CLASS : self::RAINLAB_COMPONENT_CLASS;
-        $sComponentAlias = $bIsBuddies ? self::BUDDIES_COMPONENT_ALIAS : self::RAINLAB_COMPONENT_ALIAS;
-
-        if (!ComponentManager::instance()->hasComponent($sComponentClass)) {
+        if (!ComponentManager::instance()->hasComponent(self::RAINLAB_COMPONENT_CLASS)) {
             return null;
         }
 
         // addComponent would shadow a configured instance with a bare one.
-        $obComponent = $obLayout->{$sComponentAlias} ?? null;
+        $obComponent = $obLayout->{self::RAINLAB_COMPONENT_ALIAS} ?? null;
         if (!empty($obComponent)) {
             return $obComponent;
         }
 
-        return $obLayout->addComponent($sComponentClass, $sComponentAlias, []);
+        return $obLayout->addComponent(self::RAINLAB_COMPONENT_CLASS, self::RAINLAB_COMPONENT_ALIAS, []);
     }
 }

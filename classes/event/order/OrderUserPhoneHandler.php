@@ -37,7 +37,7 @@ class OrderUserPhoneHandler
 
     /**
      * @param array $arOrderData
-     * @param \Lovata\Buddies\Models\User|\RainLab\User\Models\User|null $obUser
+     * @param \RainLab\User\Models\User|null $obUser
      * @return void
      */
     protected function updateUserPhone($arOrderData, $obUser)

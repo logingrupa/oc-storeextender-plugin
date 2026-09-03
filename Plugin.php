@@ -93,7 +93,7 @@ use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
  */
 class Plugin extends PluginBase
 {
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing'];
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
 
     /**
      * Returns information about this plugin.
@@ -556,10 +556,8 @@ class Plugin extends PluginBase
      * RainLab ships one English view and October only looks for locale variants beside
      * the registered view, so the shop must own the registration to own the locales.
      *
-     * Registrations merge left to right, so the later plugin owns the code. This plugin
-     * sorts well after RainLab.User on its existing $require chain; RainLab.User is
-     * deliberately NOT added to $require, because the production sites still run
-     * Lovata.Buddies and a missing requirement disables the whole plugin.
+     * Registrations merge left to right, so the later plugin owns the code. RainLab.User
+     * sits in $require, so this plugin always sorts after it.
      *
      * Note: a DB row with code='user:recover_password' in system_mail_templates takes
      * precedence over this file and is never localized from views.

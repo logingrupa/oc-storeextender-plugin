@@ -356,6 +356,37 @@ class BuddiesUserPortMysqlTest extends StoreExtenderPluginTestCase
         $this->assertAllChecksumsMatch('with a native RainLab user present');
     }
 
+    public function testResyncPropagatesAMembershipRevocationButSparesNativeRows()
+    {
+        $obPorter = BuddiesUserPorter::instance();
+        $obPorter->port();
+
+        // A native account above the ported range with its own membership
+        DB::table('users')->insert([
+            'id' => 100, 'email' => 'native@nc.test',
+            'created_at' => '2026-08-01 00:00:00', 'updated_at' => '2026-08-01 00:00:00',
+        ]);
+        DB::table('users_groups')->insert(['user_id' => 100, 'user_group_id' => 2]);
+
+        // The source revokes a ported user's membership between syncs
+        $arRevoked = (array) DB::table('lovata_buddies_users_groups')->orderBy('user_id')->first();
+        DB::table('lovata_buddies_users_groups')
+            ->where('user_id', $arRevoked['user_id'])->where('group_id', $arRevoked['group_id'])->delete();
+
+        $obPorter->port();
+
+        $this->assertFalse(
+            DB::table('users_groups')
+                ->where('user_id', $arRevoked['user_id'])->where('user_group_id', $arRevoked['group_id'])->exists(),
+            'a membership revoked at the source must disappear from the target on a re-sync'
+        );
+        $this->assertTrue(
+            DB::table('users_groups')->where('user_id', 100)->where('user_group_id', 2)->exists(),
+            'a native account above the ported range keeps its membership'
+        );
+        $this->assertAllChecksumsMatch('after the revocation re-sync');
+    }
+
     public function testSecondRunIsIdempotentAndRepairsADivergedRow()
     {
         $obPorter = BuddiesUserPorter::instance();

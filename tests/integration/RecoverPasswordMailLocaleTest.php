@@ -22,14 +22,14 @@ class RecoverPasswordMailLocaleTest extends StoreExtenderPluginTestCase
 
     const SHOP_LOCALE_LIST = ['lv', 'ru', 'de', 'lt', 'nb-no'];
 
-    public function testRainLabUserStaysOutOfRequireWhileProductionRunsBuddies()
+    public function testRainLabUserSitsInRequireSoThisPluginSortsAfterIt()
     {
         $arRequire = (new Plugin(App::make('app')))->require;
 
-        $this->assertNotContains(
+        $this->assertContains(
             'RainLab.User',
             $arRequire,
-            'a missing requirement disables the whole plugin on a site that still runs Buddies'
+            'registrations merge left to right; requiring RainLab.User keeps this plugin later so it owns user:recover_password'
         );
     }
 

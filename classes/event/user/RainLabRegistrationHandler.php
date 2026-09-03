@@ -31,7 +31,6 @@ use Lovata\Toolbox\Classes\Helper\UserHelper;
  */
 class RainLabRegistrationHandler
 {
-    const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
     const EVENT_BEFORE_REGISTER = 'rainlab.user.beforeRegister';
     const EVENT_REGISTER = 'rainlab.user.register';
     const SECURITY_ANSWER = '5';
@@ -46,10 +45,6 @@ class RainLabRegistrationHandler
      */
     public function subscribe($obEvent)
     {
-        if (UserHelper::instance()->getPluginName() == self::BUDDIES_PLUGIN_NAME) {
-            return;
-        }
-
         $obEvent->listen(self::EVENT_BEFORE_REGISTER, function ($obComponent, &$arInput) {
             return $this->createUser($arInput);
         });

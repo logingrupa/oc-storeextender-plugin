@@ -51,7 +51,7 @@ class BuddiesUserPorter
 
         foreach ([self::SOURCE_USER_TABLE, self::SOURCE_GROUP_TABLE, self::SOURCE_MEMBERSHIP_TABLE, self::SOURCE_PROPERTY_TABLE] as $sTable) {
             if (!Schema::hasTable($sTable)) {
-                $arResult[] = 'Source table "'.$sTable.'" is missing. Lovata.Buddies must still be installed to read from.';
+                $arResult[] = 'Source table "'.$sTable.'" is missing. The port reads the lovata_buddies_* staging tables; restore or reload them first.';
             }
         }
 
@@ -272,10 +272,21 @@ class BuddiesUserPorter
      */
     protected function portMemberships()
     {
+        // A membership revoked at the source must disappear from the target on a re-sync,
+        // so target-only rows are deleted first - but only for users the source knows:
+        // native accounts above the ported range keep every membership they hold.
+        $iDeleted = DB::affectingStatement(
+            'DELETE ug FROM `'.self::TARGET_MEMBERSHIP_TABLE.'` AS ug'
+            .' JOIN `'.self::SOURCE_USER_TABLE.'` AS s ON s.`id` = ug.`user_id`'
+            .' LEFT JOIN `'.self::SOURCE_MEMBERSHIP_TABLE.'` AS b'
+            .' ON b.`user_id` = ug.`user_id` AND b.`group_id` = ug.`user_group_id`'
+            .' WHERE b.`user_id` IS NULL'
+        );
+
         // Inserted in (user_id, group_id) order so the pivot scans back in the same order
         // Buddies produced. ActivePriceHelper reads groups->first(), so the order picks the
         // price type for the 62 users who belong to two groups.
-        return $this->upsert(
+        return $iDeleted + $this->upsert(
             self::TARGET_MEMBERSHIP_TABLE,
             ['user_id', 'user_group_id'],
             'SELECT `user_id`, `group_id` FROM `'.self::SOURCE_MEMBERSHIP_TABLE.'`'

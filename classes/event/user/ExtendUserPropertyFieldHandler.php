@@ -10,23 +10,17 @@ use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
  * Class ExtendUserPropertyFieldHandler
  * @package Logingrupa\StoreExtender\Classes\Event\User
  *
- * Renders the dynamic user properties on the backend user form. Buddies ships this in
- * its own ExtendFieldHandler, so the handler stands down while Buddies is the active
- * plugin and there is never a duplicate set of fields.
+ * Renders the dynamic user properties on the backend user form.
  */
 class ExtendUserPropertyFieldHandler extends AbstractBackendFieldHandler
 {
-    const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
-
     /**
      * Extend backend fields
      * @param \Backend\Widgets\Form $obWidget
      */
     protected function extendFields($obWidget)
     {
-        if (UserHelper::instance()->getPluginName() == self::BUDDIES_PLUGIN_NAME
-            || $obWidget->context != 'update'
-        ) {
+        if ($obWidget->context != 'update') {
             return;
         }
 

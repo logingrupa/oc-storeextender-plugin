@@ -8,27 +8,20 @@ use Logingrupa\StoreExtender\Classes\Helper\UserGroupHelper;
 
 class UserModelHandler
 {
-    const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
-
     public function subscribe()
     {
         // UserHelper resolves through PluginManager::exists(), which honours the disabled
-        // flag; hasPlugin() does not. Asking the same seam as every other handler keeps a
-        // disabled Buddies from leaving the model half switched.
-        $sPluginName = UserHelper::instance()->getPluginName();
-
-        if ($sPluginName == self::BUDDIES_PLUGIN_NAME) {
-            \Lovata\Buddies\Models\User::extend(function ($obElement) {
-                $this->extendUserModel($obElement);
-            });
-        } elseif (!empty($sPluginName)) {
-            $obRainLabExtension = new ExtendRainLabUserModel();
-
-            \RainLab\User\Models\User::extend(function ($obElement) use ($obRainLabExtension) {
-                $obRainLabExtension->extend($obElement);
-                $this->extendUserModel($obElement);
-            });
+        // flag, so a broken RainLab install leaves the model unextended instead of fatal.
+        if (empty(UserHelper::instance()->getPluginName())) {
+            return;
         }
+
+        $obRainLabExtension = new ExtendRainLabUserModel();
+
+        \RainLab\User\Models\User::extend(function ($obElement) use ($obRainLabExtension) {
+            $obRainLabExtension->extend($obElement);
+            $this->extendUserModel($obElement);
+        });
     }
 
     protected function extendUserModel($obElement)
@@ -99,11 +92,6 @@ class UserModelHandler
      */
     protected function makeSchoolGroupPrimary($obElement, $obGroup)
     {
-        // Buddies has no primary group concept
-        if (!$obElement instanceof \RainLab\User\Models\User) {
-            return;
-        }
-
         if ((int) $obElement->primary_group_id === (int) $obGroup->id) {
             return;
         }

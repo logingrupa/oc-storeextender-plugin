@@ -2,7 +2,6 @@
 
 require_once __DIR__.'/../StoreExtenderUserPluginTestCase.php';
 
-use Lovata\Toolbox\Classes\Helper\UserHelper;
 use Logingrupa\StoreExtender\Classes\Helper\ThemeUserBinder;
 
 /**
@@ -61,7 +60,7 @@ class FakeBinderLayout implements ArrayAccess
     }
 }
 
-/** Answers both plugin shapes: RainLab's user() and Buddies' get(). */
+/** Answers the RainLab Session component's user() shape. */
 class FakeSessionComponent
 {
     public $obFakeUser;
@@ -75,39 +74,22 @@ class FakeSessionComponent
     {
         return $this->obFakeUser;
     }
-
-    public function get()
-    {
-        return $this->obFakeUser;
-    }
 }
 
 class ThemeUserBinderTest extends StoreExtenderUserPluginTestCase
 {
-    protected function isBuddies()
-    {
-        return UserHelper::instance()->getPluginName() == ThemeUserBinder::BUDDIES_PLUGIN_NAME;
-    }
-
-    public function testBindsTheActivePluginsComponentAndLogoutHandler()
+    public function testBindsTheSessionComponentAndLogoutHandler()
     {
         $obLayout = new FakeBinderLayout();
 
         ThemeUserBinder::bind($obLayout);
 
-        $sExpectedHandler = $this->isBuddies()
-            ? ThemeUserBinder::BUDDIES_LOGOUT_HANDLER
-            : ThemeUserBinder::RAINLAB_LOGOUT_HANDLER;
-        $sExpectedAlias = $this->isBuddies()
-            ? ThemeUserBinder::BUDDIES_COMPONENT_ALIAS
-            : ThemeUserBinder::RAINLAB_COMPONENT_ALIAS;
-        $sExpectedClass = $this->isBuddies()
-            ? ThemeUserBinder::BUDDIES_COMPONENT_CLASS
-            : ThemeUserBinder::RAINLAB_COMPONENT_CLASS;
-
-        $this->assertSame($sExpectedHandler, $obLayout['sLogoutHandler']);
+        $this->assertSame(ThemeUserBinder::RAINLAB_LOGOUT_HANDLER, $obLayout['sLogoutHandler']);
         $this->assertSame(1, $obLayout->iAddComponentCallCount);
-        $this->assertSame($sExpectedClass, $obLayout->arComponentList[$sExpectedAlias]);
+        $this->assertSame(
+            ThemeUserBinder::RAINLAB_COMPONENT_CLASS,
+            $obLayout->arComponentList[ThemeUserBinder::RAINLAB_COMPONENT_ALIAS]
+        );
 
         // obUser comes from the component the binder registered
         $this->assertSame('binder-probe@nc.test', $obLayout['obUser']->email);
@@ -116,13 +98,10 @@ class ThemeUserBinderTest extends StoreExtenderUserPluginTestCase
     public function testReusesAnIniDeclaredComponentInstance()
     {
         $obLayout = new FakeBinderLayout();
-        $sAlias = $this->isBuddies()
-            ? ThemeUserBinder::BUDDIES_COMPONENT_ALIAS
-            : ThemeUserBinder::RAINLAB_COMPONENT_ALIAS;
 
         $obDeclared = new FakeSessionComponent();
         $obDeclared->obFakeUser = (object) ['email' => 'declared-instance@nc.test'];
-        $obLayout->arDeclaredList[$sAlias] = $obDeclared;
+        $obLayout->arDeclaredList[ThemeUserBinder::RAINLAB_COMPONENT_ALIAS] = $obDeclared;
 
         ThemeUserBinder::bind($obLayout);
 

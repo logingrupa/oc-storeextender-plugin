@@ -3,21 +3,17 @@
 use October\Rain\Database\Collection;
 use October\Rain\Support\Traits\Singleton;
 
-use Lovata\Toolbox\Classes\Helper\UserHelper;
-
 /**
  * Class UserGroupHelper
  * @package Logingrupa\StoreExtender\Classes\Helper
  *
- * Toolbox UserHelper resolves the user model and controller but not the group model,
- * which the two plugins name differently. This is the single seam for that.
+ * Toolbox UserHelper resolves the user model and controller but not the group model.
+ * This is the single seam for that.
  */
 class UserGroupHelper
 {
     use Singleton;
 
-    const BUDDIES_PLUGIN_NAME = 'Lovata.Buddies';
-    const BUDDIES_GROUP_MODEL = \Lovata\Buddies\Models\Group::class;
     const RAINLAB_GROUP_MODEL = \RainLab\User\Models\UserGroup::class;
 
     /** Groups 1 to 4 carry the price types; the school groups start at 5. */
@@ -27,16 +23,12 @@ class UserGroupHelper
     const SEEDED_GROUP_CODES = ['guest', 'registered'];
 
     /**
-     * Get the user group model class for the active user plugin
+     * Get the user group model class
      * @return string|null
      */
     public function getGroupModel()
     {
-        $sModelClass = UserHelper::instance()->getPluginName() == self::BUDDIES_PLUGIN_NAME
-            ? self::BUDDIES_GROUP_MODEL
-            : self::RAINLAB_GROUP_MODEL;
-
-        return class_exists($sModelClass) ? $sModelClass : null;
+        return class_exists(self::RAINLAB_GROUP_MODEL) ? self::RAINLAB_GROUP_MODEL : null;
     }
 
     /**

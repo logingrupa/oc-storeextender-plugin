@@ -33,7 +33,7 @@ class ActivePriceHelper
     /** @var DiscountItem */
     protected $obAuthorizedDiscount;
 
-    /** @var \Lovata\Buddies\Models\User|\RainLab\User\Models\User */
+    /** @var \RainLab\User\Models\User */
     protected $obUser;
 
     /** @var \Lovata\Shopaholic\Models\PriceType */
