@@ -2,6 +2,7 @@
 
 // use App;
 use File;
+use Lang;
 use Omnipay\Omnipay;
 use Yaml;
 use Event;
@@ -44,6 +45,7 @@ use Logingrupa\StoreExtender\Classes\Event\User\UserModelHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserController;
 use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserPropertyFieldHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\RainLabRegistrationHandler;
+use Logingrupa\StoreExtender\Classes\Event\User\UserIpAddressHandler;
 use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
 
 //Cart component events
@@ -147,6 +149,11 @@ class Plugin extends PluginBase
      */
     public function boot()
     {
+        // lang/<locale>/validation.php supplies validation.attributes for the user
+        // fields, so every validator names them in the shopper's language. Plugin
+        // namespaces cannot override the core validation group; a loader path can.
+        Lang::getLoader()->addPath(__DIR__ . '/lang');
+
         // A duplicate shopaholic_cart_id cookie (stale longer-path shadow)
         // makes CartProcessor mint a fresh cart per request: adds succeed
         // into throwaway carts while the header/sidebar read empty ones.
@@ -194,6 +201,7 @@ class Plugin extends PluginBase
         Event::subscribe(ExtendUserController::class);
         Event::subscribe(ExtendUserPropertyFieldHandler::class);
         Event::subscribe(RainLabRegistrationHandler::class);
+        Event::subscribe(UserIpAddressHandler::class);
         //Cart component events
         Event::subscribe(CartComponentHandler::class);
         //Meta Purchase value = margin (order total minus izpl cost), via
@@ -522,8 +530,13 @@ class Plugin extends PluginBase
      * `bankdetails` is read from views/mail/bankdetails.htm at runtime, allowing each
      * deployed site to render its own seller block from its own theme settings DB.
      *
-     * Note: a DB row with code='bankdetails' in system_mail_partials takes precedence
-     * over this file. Existing sites must delete that row once to switch over.
+     * `product`, `orderSummary` and `buttons` are the order mail body: the line item
+     * rows, the totals block and the proforma links. The order templates call them and
+     * no site carries a DB row for them, so October rendered "Missing partial" comments
+     * where the customer's products belong.
+     *
+     * Note: a DB row with the same code in system_mail_partials takes precedence over
+     * these files. Existing sites must delete that row once to switch over.
      *
      * @return array
      */
@@ -531,6 +544,32 @@ class Plugin extends PluginBase
     {
         return [
             'bankdetails' => 'logingrupa.storeextender::mail.bankdetails',
+            'product' => 'logingrupa.storeextender::mail.product',
+            'orderSummary' => 'logingrupa.storeextender::mail.ordersummary',
+            'buttons' => 'logingrupa.storeextender::mail.buttons',
+        ];
+    }
+
+    /**
+     * Points the RainLab.User password recovery mail at our own view so October can
+     * resolve a localized variant next to it (views/mail/<locale>/recover_password.htm).
+     * RainLab ships one English view and October only looks for locale variants beside
+     * the registered view, so the shop must own the registration to own the locales.
+     *
+     * Registrations merge left to right, so the later plugin owns the code. This plugin
+     * sorts well after RainLab.User on its existing $require chain; RainLab.User is
+     * deliberately NOT added to $require, because the production sites still run
+     * Lovata.Buddies and a missing requirement disables the whole plugin.
+     *
+     * Note: a DB row with code='user:recover_password' in system_mail_templates takes
+     * precedence over this file and is never localized from views.
+     *
+     * @return array
+     */
+    public function registerMailTemplates()
+    {
+        return [
+            'user:recover_password' => 'logingrupa.storeextender::mail.recover_password',
         ];
     }
 
