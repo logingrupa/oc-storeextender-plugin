@@ -1,0 +1,110 @@
+{% set obOffer = obOrderPosition.item %}
+{% set obProduct = obOrderPosition.item.product %}
+
+<div style="background-color:transparent;">
+    <div class="block-grid four-up no-stack" style="Margin: 0 auto; min-width: 320px; max-width: 650px; overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; background-color: #ffffff;">
+        <div style="border-collapse: collapse;display: table;width: 100%;background-color:#ffffff;">
+            <!--[if (mso)|(IE)]><table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:transparent;"><tr><td align="center"><table cellpadding="0" cellspacing="0" border="0" style="width:650px"><tr class="layout-full-width" style="background-color:#ffffff"><![endif]-->
+            <!--[if (mso)|(IE)]><td align="center" width="162" style="background-color:#ffffff;width:162px; border-top: 0px solid transparent; border-left: 0px solid transparent; border-bottom: 0px solid transparent; border-right: 0px solid transparent;" valign="top"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 0px; padding-left: 0px; padding-top:5px; padding-bottom:5px;"><![endif]-->
+            <div class="col num3" style="max-width: 320px; min-width: 162px; display: table-cell; vertical-align: top; width: 162px;">
+                <div style="width:100% !important;">
+                    <!--[if (!mso)&(!IE)]><!-->
+                    <div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:0px solid transparent; padding-top:5px; padding-bottom:5px; padding-right: 0px; padding-left: 0px;">
+                        <!--<![endif]-->
+                        <div align="center" class="img-container center fixedwidth" style="padding-right: 0px;padding-left: 0px;">
+                            <!--[if mso]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr style="line-height:0px"><td style="padding-right: 0px;padding-left: 0px;" align="center"><![endif]-->
+                             {% if obOffer.preview_image is not empty %}
+                               <img align="center" alt="Image" border="0" class="center fixedwidth" src="{{ obOffer.preview_image.getThumb(100, 100, {quality: 80}) }}" style="text-decoration: none; -ms-interpolation-mode: bicubic; border: 0; height: auto; width: 100%; max-width: 130px; display: block;" title="{{ obOffer.description }}" width="130" />
+                             {% elseif obProduct.preview_image is not empty %}
+                                <img align="center" alt="Image" border="0" class="center fixedwidth" src="{{ obProduct.preview_image.getThumb(100, 100, {quality: 80}) }}" style="text-decoration: none; -ms-interpolation-mode: bicubic; border: 0; height: auto; width: 100%; max-width: 130px; display: block;" title="{{ obOffer.description }}" width="130" />
+                             {% else %}
+                                <img align="center" alt="Image" border="0" class="center fixedwidth" src="https://naiscosmetics.de/themes/naisstore/assets/images/no-image.webp" style="text-decoration: none; -ms-interpolation-mode: bicubic; border: 0; height: auto; width: 100%; max-width: 130px; display: block;" title="{{ obOffer.description }}" width="130" />
+                             {% endif %}                            
+                            <!--[if mso]></td></tr></table><![endif]-->
+                        </div>
+                        <!--[if (!mso)&(!IE)]><!-->
+                    </div>
+                    <!--<![endif]-->
+                </div>
+            </div>
+            <!--[if (mso)|(IE)]></td></tr></table><![endif]-->
+            <!--[if (mso)|(IE)]></td><td align="center" width="162" style="background-color:#ffffff;width:162px; border-top: 0px solid transparent; border-left: 0px solid transparent; border-bottom: 0px solid transparent; border-right: 1px dotted #E8E8E8;" valign="top"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 0px; padding-left: 0px; padding-top:30px; padding-bottom:35px;"><![endif]-->
+            <div class="col num3" style="max-width: 320px; min-width: 162px; display: table-cell; vertical-align: top; width: 161px;">
+                <div style="width:100% !important;">
+                    <!--[if (!mso)&(!IE)]><!-->
+                    <div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:1px dotted #E8E8E8; padding-top:30px; padding-bottom:35px; padding-right: 0px; padding-left: 0px;">
+                        <!--<![endif]-->
+                        <!--[if mso]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 10px; padding-left: 0px; padding-top: 10px; padding-bottom: 5px; font-family: Tahoma, Verdana, sans-serif"><![endif]-->
+                        <div style="color:#555555;font-family:Lato, Tahoma, Verdana, Segoe, sans-serif;line-height:1.2;padding-top:10px;padding-right:10px;padding-bottom:5px;padding-left:0px;">
+                            <div style="font-size: 12px; line-height: 1.2; font-family: Lato, Tahoma, Verdana, Segoe, sans-serif; color: #555555; mso-line-height-alt: 14px;">
+                                <p style="font-size: 13px; line-height: 1.2; text-align: left; word-break: break-word; font-family: Lato, Tahoma, Verdana, Segoe, sans-serif; mso-line-height-alt: 16px; mso-ansi-font-size: 14px; margin: 0;"><span style="font-size: 13px; color: #99cc00; mso-ansi-font-size: 14px;"><strong>{{ obOffer.name }}</strong></span></p>
+                            </div>
+                        </div>
+                        <!--[if mso]></td></tr></table><![endif]-->
+                        <!--[if mso]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 10px; padding-left: 0px; padding-top: 0px; padding-bottom: 10px; font-family: Tahoma, Verdana, sans-serif"><![endif]-->
+                        
+                        <!--[if mso]></td></tr></table><![endif]-->
+                        <!--[if (!mso)&(!IE)]><!-->
+                    </div>
+                    <!--<![endif]-->
+                </div>
+            </div>
+            <!--[if (mso)|(IE)]></td></tr></table><![endif]-->
+            <!--[if (mso)|(IE)]></td><td align="center" width="162" style="background-color:#ffffff;width:162px; border-top: 0px solid transparent; border-left: 0px solid transparent; border-bottom: 0px solid transparent; border-right: 1px dotted #E8E8E8;" valign="top"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 0px; padding-left: 0px; padding-top:55px; padding-bottom:5px;"><![endif]-->
+            <div class="col num3" style="max-width: 320px; min-width: 162px; display: table-cell; vertical-align: top; width: 161px;">
+                <div style="width:100% !important;">
+                    <!--[if (!mso)&(!IE)]><!-->
+                    <div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:1px dotted #E8E8E8; padding-top:55px; padding-bottom:5px; padding-right: 0px; padding-left: 0px;">
+                        <!--<![endif]-->
+                        <!--[if mso]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 10px; padding-left: 10px; padding-top: 0px; padding-bottom: 10px; font-family: Tahoma, Verdana, sans-serif"><![endif]-->
+                        <div style="color:#555555;font-family:Lato, Tahoma, Verdana, Segoe, sans-serif;line-height:1.2;padding-top:0px;padding-right:10px;padding-bottom:10px;padding-left:10px;">
+                            <div style="line-height: 1.2; font-size: 12px; font-family: Lato, Tahoma, Verdana, Segoe, sans-serif; color: #555555; mso-line-height-alt: 14px;">
+                                <p style="line-height: 1.2; text-align: center; font-size: 14px; word-break: break-word; font-family: Lato, Tahoma, Verdana, Segoe, sans-serif; mso-line-height-alt: 17px; margin: 0;"><span style="font-size: 14px;"><strong>{{ obOrderPosition.quantity }} x {{ order.currency.symbol }}{{ obOrderPosition.price }}</strong></span></p>
+                            </div>
+                        </div>
+                        <!--[if mso]></td></tr></table><![endif]-->
+                        <table border="0" cellpadding="0" cellspacing="0" class="divider" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; min-width: 100%; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;" valign="top" width="100%">
+                            <tbody>
+                                <tr style="vertical-align: top;" valign="top">
+                                    <td class="divider_inner" style="word-break: break-word; vertical-align: top; min-width: 100%; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px;" valign="top">
+                                        <table align="center" border="0" cellpadding="0" cellspacing="0" class="divider_content" height="30" role="presentation" style="table-layout: fixed; vertical-align: top; border-spacing: 0; border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-top: 0px solid transparent; height: 30px; width: 100%;" valign="top" width="100%">
+                                            <tbody>
+                                                <tr style="vertical-align: top;" valign="top">
+                                                    <td height="30" style="word-break: break-word; vertical-align: top; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;" valign="top"><span></span></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <!--[if (!mso)&(!IE)]><!-->
+                    </div>
+                    <!--<![endif]-->
+                </div>
+            </div>
+            <!--[if (mso)|(IE)]></td></tr></table><![endif]-->
+            <!--[if (mso)|(IE)]></td><td align="center" width="162" style="background-color:#ffffff;width:162px; border-top: 0px solid transparent; border-left: 0px solid transparent; border-bottom: 0px solid transparent; border-right: 0px solid transparent;" valign="top"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 0px; padding-left: 0px; padding-top:55px; padding-bottom:5px;"><![endif]-->
+            <div class="col num3" style="max-width: 320px; min-width: 162px; display: table-cell; vertical-align: top; width: 162px;">
+                <div style="width:100% !important;">
+                    <!--[if (!mso)&(!IE)]><!-->
+                    <div style="border-top:0px solid transparent; border-left:0px solid transparent; border-bottom:0px solid transparent; border-right:0px solid transparent; padding-top:55px; padding-bottom:5px; padding-right: 0px; padding-left: 0px;">
+                        <!--<![endif]-->
+                        <!--[if mso]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding-right: 15px; padding-left: 0px; padding-top: 0px; padding-bottom: 0px; font-family: Tahoma, Verdana, sans-serif"><![endif]-->
+                        <div style="color:#555555;font-family:Lato, Tahoma, Verdana, Segoe, sans-serif;line-height:1.2;padding-top:0px;padding-right:15px;padding-bottom:0px;padding-left:0px;">
+                            <div style="line-height: 1.2; font-size: 12px; font-family: Lato, Tahoma, Verdana, Segoe, sans-serif; color: #555555; mso-line-height-alt: 14px;">
+                                <p style="line-height: 1.2; text-align: center; font-size: 14px; word-break: break-word; font-family: Lato, Tahoma, Verdana, Segoe, sans-serif; mso-line-height-alt: 17px; margin: 0;"><span style="font-size: 14px;"><span style=""><strong>{{ order.currency.symbol }}{{  obOrderPosition.total_price  }}</strong></span></span>
+                                </p>
+                            </div>
+                        </div>
+                        <!--[if mso]></td></tr></table><![endif]-->
+                        <!--[if (!mso)&(!IE)]><!-->
+                    </div>
+                    <!--<![endif]-->
+                </div>
+            </div>
+            <!--[if (mso)|(IE)]></td></tr></table><![endif]-->
+            <!--[if (mso)|(IE)]></td></tr></table></td></tr></table><![endif]-->
+        </div>
+    </div>
+</div>
