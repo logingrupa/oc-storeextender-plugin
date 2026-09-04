@@ -89,6 +89,7 @@ class CategorySorter
                         .$obModel->id.': '.$obException->getMessage());
                 }
 
+                self::assertParentUnchanged($obModel, $iParentID);
                 $obPrevious = $obModel;
             }
 
@@ -100,6 +101,26 @@ class CategorySorter
         }
 
         return $iMoves;
+    }
+
+    /**
+     * A sibling move must never change the parent. Abort loudly if the tree drifted.
+     * @param Category $obModel
+     * @param int      $iParentID 0 for root level
+     */
+    protected static function assertParentUnchanged(Category $obModel, int $iParentID): void
+    {
+        $obModel->reload();
+        if ((int) $obModel->parent_id === $iParentID) {
+            return;
+        }
+
+        throw new \RuntimeException(sprintf(
+            'CategorySorter: category #%d left parent #%d for #%d, aborting',
+            $obModel->id,
+            $iParentID,
+            (int) $obModel->parent_id
+        ));
     }
 
     /**
