@@ -36,7 +36,12 @@ class CartComponentHandler
     ];
 
     /**
-     * Subscribe to outer AJAX dispatch event.
+     * Checkout fields Lovata keeps on the cart row (Cart::onSaveData, user[...]).
+     */
+    public const SAVED_USER_FIELDS = ['name', 'last_name', 'email', 'phone'];
+
+    /**
+     * Subscribe to outer AJAX dispatch event and extend the Cart component.
      */
     public function subscribe()
     {
@@ -45,6 +50,36 @@ class CartComponentHandler
 
             return $sMethod !== null ? $this->{$sMethod}() : null;
         });
+
+        // Twig-only: dynamic methods are invisible to the AJAX dispatcher (see class docblock)
+        Cart::extend(function (Cart $obCart) {
+            $obCart->addDynamicMethod('getSavedUserData', function (): array {
+                $obCartModel = CartProcessor::instance()->getCartObject();
+
+                return self::savedUserData($obCartModel ? $obCartModel->user_data : null);
+            });
+        });
+    }
+
+    /**
+     * Name, last name, email and phone from the cart's user_data as trimmed
+     * strings, for the checkout prefill. Empty and non-scalar values are dropped.
+     * @param mixed $mUserData
+     * @return array
+     */
+    public static function savedUserData($mUserData): array
+    {
+        $arSaved = array_intersect_key((array) $mUserData, array_flip(self::SAVED_USER_FIELDS));
+
+        $arResult = [];
+        foreach ($arSaved as $sField => $mValue) {
+            $sValue = is_scalar($mValue) ? trim((string) $mValue) : '';
+            if ($sValue !== '') {
+                $arResult[$sField] = $sValue;
+            }
+        }
+
+        return $arResult;
     }
 
     /**

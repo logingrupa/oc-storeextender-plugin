@@ -52,6 +52,7 @@ use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
 use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
 
 use Logingrupa\StoreExtender\Classes\Event\Metapixel\MarginValueHandler;
+use Logingrupa\StoreExtender\Classes\Event\Metapixel\GuestCheckoutIdentityHandler;
 
 use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 
@@ -216,6 +217,9 @@ class Plugin extends PluginBase
         //Meta Purchase value = margin (order total minus izpl cost), via
         //Metapixel's before_dispatch payload hook - restores the v1 rule
         Event::subscribe(MarginValueHandler::class);
+        //Guest identity for Meta from the checkout fields on the cart row;
+        //logged-in accounts stay with Metapixel's own AccountIdentityHandler
+        Event::subscribe(GuestCheckoutIdentityHandler::class);
         //1C import must never write or delete property links again: freezes
         //the element's links against PropertiesShopaholic's beforeImport wipe
         Event::subscribe(PropertyImportGuardHandler::class);
