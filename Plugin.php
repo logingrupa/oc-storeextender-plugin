@@ -86,6 +86,7 @@ use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
 use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
+use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
@@ -667,6 +668,9 @@ class Plugin extends PluginBase
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render
                 'offer_render_context' => [OfferRenderContext::class, 'resolve'],
+                // schema.org Product JSON for the product page: offers only
+                // when a sellable offer exists, ratings only from real reviews
+                'product_json_ld' => [ProductStructuredData::class, 'render'],
                 // Color Family storefront queries: the ?color= offer filter
                 // and the search-sheet family pill row
                 'color_family_offer_filter' => [ColorFamilyHelper::class, 'filterOfferIds'],
