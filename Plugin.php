@@ -28,6 +28,7 @@ use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
 
 //Events
 use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
+use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
 use Logingrupa\StoreExtender\Classes\Event\ExtendMenuHandler;
 use Logingrupa\StoreExtender\Classes\Event\Category\PrimeCategoryTreeHandler;
 use Logingrupa\StoreExtender\Classes\Event\ExtendOfferHandler;
@@ -131,6 +132,9 @@ class Plugin extends PluginBase
         // does not define. UserHelper resolves its inner helper through the container, so
         // binding the fixed subclass here reaches every caller, checkout included.
         $this->app->bind(\Lovata\Toolbox\Classes\Helper\Users\RainLabUserHelper::class, RainLabUserHelperFix::class);
+
+        // ajax() resolves the response class from the container on every call.
+        \Larajax\Classes\AjaxResponse::registerCustomResponse(SafeAjaxResponse::class);
 
         // Extend `mail.manager` so every Mail::*() entry point routes through SafeMailer.
         // MUST use extend() not singleton(): Laravel's MailServiceProvider is a
