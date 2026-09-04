@@ -59,6 +59,7 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
 use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
+use Logingrupa\StoreExtender\Classes\Event\Review\ReviewValidationHandler;
 
 //CartPosition events
 use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
@@ -226,6 +227,7 @@ class Plugin extends PluginBase
         //the parent save no longer does it for them
         Event::subscribe(SatelliteCacheInvalidationHandler::class);
         Event::subscribe(EqualOldPriceHandler::class);
+        Event::subscribe(ReviewValidationHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
         //Order position
