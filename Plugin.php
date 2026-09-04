@@ -83,6 +83,7 @@ use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
 
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
+use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
@@ -645,6 +646,9 @@ class Plugin extends PluginBase
                 'uppercase' => [$this, 'makeTextAllCaps'],
                 // Currency-aware price formatting (e.g., "225,-" for NOK)
                 'currency_price' => [ExtendCurrencyConversion::class, 'formatPrice'],
+                // Banner artwork uploaded per language ("...-lv.jpg", "-ru.jpg"):
+                // serve the file that matches the locale being read
+                'localized_media' => [LocalizedMediaHelper::class, 'localize'],
             ],
             'functions' => [
 
