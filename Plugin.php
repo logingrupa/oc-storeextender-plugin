@@ -58,6 +58,7 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 //Color Family property slug pinning
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
+use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
 
 //CartPosition events
 use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
@@ -218,6 +219,7 @@ class Plugin extends PluginBase
         //their owner's item cache - the toolbox unchanged-save guard means
         //the parent save no longer does it for them
         Event::subscribe(SatelliteCacheInvalidationHandler::class);
+        Event::subscribe(EqualOldPriceHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
         //Order position
