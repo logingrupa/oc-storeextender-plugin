@@ -195,3 +195,6 @@
 
 2.0.69:
   - 'Meta events carry the customer identity. CustomerIdentityHandler answers Metapixel''s user_data.resolve hook with the logged-in account''s email, phone, name and user id plus the city and postcode of the latest address that has them, or with the email and phone a guest typed into checkout when the cart holds them; Metapixel hashes the values into ViewContent, AddToCart, PageView and Search and into the browser pixel''s Advanced Matching. National 8-digit phone numbers get the shop''s dial code from the app URL domain. Country is not sent because the checkout stores it as a free-text label.'
+
+2.0.70:
+  - 'The Meta identity listener moved into Metapixel 2.1.1 (Settings > Meta Pixel > Advanced: switch on "account identity" and set the dial code 371 / 47 / 370 per shop). CustomerIdentityHandler is deleted with its guest cart and address city/zip lookups: the cart branch never fired because nothing writes carts.user_data, and the address query cost one query per logged-in page view for data present on about 5 percent of address rows.'
