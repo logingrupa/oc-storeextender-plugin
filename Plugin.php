@@ -131,6 +131,7 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.purgeorderpropertysecrets', 'Logingrupa\StoreExtender\Console\PurgeOrderPropertySecrets');
         $this->registerConsoleCommand('storeextender.migratebuddiesusers', 'Logingrupa\StoreExtender\Console\MigrateBuddiesUsers');
         $this->registerConsoleCommand('storeextender.sortcategories', 'Logingrupa\StoreExtender\Console\SortCategories');
+        $this->registerConsoleCommand('storeextender.refreshpickuppoints', 'Logingrupa\StoreExtender\Console\RefreshPickupPoints');
 
         // Toolbox RainLabUserHelper::findUserByEmail() calls a method RainLab.User 3.5.3
         // does not define. UserHelper resolves its inner helper through the container, so
@@ -557,6 +558,10 @@ class Plugin extends PluginBase
         // An unchanged export costs one 304 and no write, because the command
         // compares the payload version against the one it last imported.
         $obSchedule->command('storeextender:sync-offer-colors')->hourly();
+
+        // Carrier pickup point feeds change a few times a month: one pull before the shop day
+        // keeps the checkout from fetching a 1.3 MB feed inside a customer request.
+        $obSchedule->command('storeextender:refresh-pickup-points')->dailyAt('04:10');
     }
 
     /**

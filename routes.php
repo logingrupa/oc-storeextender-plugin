@@ -1,38 +1,25 @@
 <?php
 
-use Lovata\Toolbox\Classes\Component\SortingElementList;
-use Lovata\Shopaholic\Classes\Collection\ProductCollection;
-use Lovata\Shopaholic\Classes\Collection\OfferCollection;
-use Lovata\Shopaholic\Classes\Store\ProductListStore;
-use Lovata\Shopaholic\Classes\Item\ProductItem;
-use Logingrupa\ExtendShopaholic\Components\OfferList;
-use Lovata\Shopaholic\Classes\Item\OfferItem;
-use Lovata\Shopaholic\Models\Offer;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Route;
+use Logingrupa\StoreExtender\Classes\Pickup\PickupPointFeed;
+use Logingrupa\StoreExtender\Classes\Pickup\PickupPointRepository;
 
-Route::group(['middleware' => 'web'], function () {
-    Route::group(['prefix' => 'api'], function () {
-        Route::any('offers', function () {
-            $color = \ColorPalette::getColor('http://naiscosmetics.eu.ngrok.io/storage/app/uploads/public/5db/058/bd8/thumb__0_0_0_0_auto.jpeg');
-            // dd($color->rgbaString);
-            $obProductCollection = ProductCollection::make([246, 247])->active();
-            $obList = Offer::whereProductId([366, 246])->get();
-            // dd($obList);
-            // 'rgb' => isset($obOffer->preview_image->path) ? \ColorPalette::getColor($obOffer->preview_image->getThumb('390', '1000', ['mode' => 'crop', 'offset' => [-0,-0]]))->rgbaString : false,
-            // 'colors' => isset($obOffer->preview_image->path) ? array_combine(\ColorPalette::getPalette($obOffer->preview_image->getThumb('390', '1000', ['mode' => 'crop', 'offset' => [-0,-0]]), $colorCount = 6, $quality = 10, $area = null),['14%', '34%', '43%', '52%', '85%', '100%' ] ) : false,
-            foreach ($obList as $obOffer) {
-                $data[] = [
-                    'name' => $obOffer->name,
-                    'id' => $obOffer->id,
-                    'path' => isset($obOffer->preview_image->path) ? $obOffer->preview_image->getThumb('390', '1000', ['mode' => 'crop', 'offset' => [-0, -0]]) : false,
-                    'rgb' => isset($obOffer->preview_image->path) ? \ColorPalette::getColor($obOffer->preview_image->getThumb('390', '1000', ['mode' => 'crop', 'offset' => [-0, -0]]))->rgbaString : false,
+/**
+ * Pickup points of one carrier in one country for the checkout dropdown.
+ * GET /api/pickup-points/{carrier}/{country} -> {carrier, country, points: [...]}
+ */
+Route::get('/api/pickup-points/{carrier}/{country}', function (string $sCarrier, string $sCountry) {
+    if (!array_key_exists($sCarrier, PickupPointFeed::FEED_CLASS_LIST) || preg_match('/^[A-Za-z]{2}$/', $sCountry) !== 1) {
+        return new JsonResponse(['message' => 'Unknown carrier or country'], 404);
+    }
 
-                ];
-            };
-            // dd($data);
+    $arPointList = (new PickupPointRepository())->get($sCarrier, $sCountry);
 
-            return View::make('logingrupa.storeextender::offer_colors')->with('data', $data);
-        });
-    });
-
-
-});
+    return (new JsonResponse([
+        'carrier' => $sCarrier,
+        'country' => strtoupper($sCountry),
+        'points'  => $arPointList,
+    ], $arPointList === [] ? 503 : 200, [], JSON_UNESCAPED_UNICODE))
+        ->header('Cache-Control', $arPointList === [] ? 'no-store' : 'public, max-age=3600');
+})->where(['carrier' => '[a-z]+', 'country' => '[A-Za-z]{2}']);
