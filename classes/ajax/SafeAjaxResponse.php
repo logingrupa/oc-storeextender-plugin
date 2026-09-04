@@ -5,35 +5,64 @@ use Larajax\Contracts\AjaxExceptionInterface;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
-use October\Rain\Exception\ApplicationException;
 use System\Classes\ErrorHandler;
+use Twig\Error\RuntimeError;
 
 /**
- * Larajax echoes the raw exception message into the AJAX envelope regardless
- * of debug mode, so a failed query hands its SQL text to the browser.
- * Exceptions written for the user keep their message; everything else goes
- * through the October error policy, which stays generic with debug off.
+ * AJAX envelope keeps Larajax severity and status, but the message of any
+ * exception not written for the user goes through the October error policy,
+ * which stays generic with debug off.
  */
 class SafeAjaxResponse extends AjaxResponse
 {
-    public function exception($exception): static
+    /**
+     * @param \Throwable $obException
+     * @return static
+     */
+    public function exception($obException): static
     {
-        if ($this->isUserFacing($exception)) {
-            return parent::exception($exception);
+        $obResponse = parent::exception($obException);
+        $obCause = $this->unwrapTwig($obException);
+
+        if ($this->isStructured($obCause)) {
+            return $obResponse;
         }
 
-        return $this->fatal(ErrorHandler::getDetailedMessage($exception), 500);
+        $sMessage = ErrorHandler::getDetailedMessage($obCause);
+        $iStatus = $obResponse->getStatusCode();
+
+        return $obResponse->isFatal()
+            ? $obResponse->fatal($sMessage, $iStatus)
+            : $obResponse->error($sMessage, $iStatus);
     }
 
-    protected function isUserFacing($exception): bool
+    /**
+     * Exceptions whose envelope shape comes from Larajax itself.
+     * @param \Throwable $obException
+     * @return bool
+     */
+    protected function isStructured($obException): bool
     {
-        if ($exception instanceof HttpException) {
-            return $exception->getStatusCode() < 500;
+        if ($obException instanceof HttpException) {
+            return $obException->getStatusCode() < 500;
         }
 
-        return $exception instanceof AjaxExceptionInterface
-            || $exception instanceof ValidationException
-            || $exception instanceof ModelNotFoundException
-            || $exception instanceof ApplicationException;
+        return $obException instanceof AjaxExceptionInterface
+            || $obException instanceof ValidationException
+            || $obException instanceof ModelNotFoundException;
+    }
+
+    /**
+     * Exceptions thrown while rendering a partial arrive wrapped by Twig.
+     * @param \Throwable $obException
+     * @return \Throwable
+     */
+    protected function unwrapTwig($obException)
+    {
+        if ($obException instanceof RuntimeError && $obException->getPrevious()) {
+            return $obException->getPrevious();
+        }
+
+        return $obException;
     }
 }

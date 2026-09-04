@@ -28,7 +28,6 @@ use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
 
 //Events
 use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
-use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
 use Logingrupa\StoreExtender\Classes\Event\ExtendMenuHandler;
 use Logingrupa\StoreExtender\Classes\Event\Category\PrimeCategoryTreeHandler;
 use Logingrupa\StoreExtender\Classes\Event\ExtendOfferHandler;
@@ -89,6 +88,7 @@ use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
+use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
 
 /**
  * StoreExtender Plugin Information File
