@@ -986,6 +986,83 @@ class Plugin extends PluginBase
                 'isActive' => $sPageUrl == $sURL,
             ];
         });
+
+        $this->registerCategorySlugPageLookupType();
+    }
+
+    /**
+     * registerCategorySlugPageLookupType registers a slug-keyed pagefinder
+     * type for shop categories.
+     *
+     * Shopaholic's own id-keyed shop-category type is listed on the pagefinder
+     * events but its resolver throws (getFileName() on null), so banners kept
+     * absolute https://nailscosmetics.lv/lv/... URLs instead - which send an
+     * /en/ or /ru/ visitor to the Latvian page, and on any other server off
+     * the site entirely.
+     *
+     * The catalog route takes the whole ancestor chain
+     * (:main_category/:category?/:sub_category?/:sub2_category?), so unlike
+     * the product and promo block types this one has to load the category to
+     * learn its parents. One indexed slug lookup per banner, memoized per
+     * request, against the category tree the menu already primed.
+     *
+     * @return void
+     */
+    protected function registerCategorySlugPageLookupType(): void
+    {
+        $sType = 'shop-category-slug';
+
+        Event::listen(['cms.pageLookup.listTypes', 'pages.menuitem.listTypes'], function () use ($sType) {
+            return [$sType => 'Category (by slug)'];
+        });
+
+        Event::listen(['cms.pageLookup.getTypeInfo', 'pages.menuitem.getTypeInfo'], function ($sRequestedType) use ($sType) {
+            if ($sRequestedType !== $sType) {
+                return;
+            }
+
+            return [
+                'references'   => ShopaholicCategoryModel::orderBy('name')->pluck('name', 'slug')->all(),
+                'nesting'      => false,
+                'dynamicItems' => false,
+            ];
+        });
+
+        Event::listen(['cms.pageLookup.resolveItem', 'pages.menuitem.resolveItem'], function ($sRequestedType, $obItem, $sURL) use ($sType) {
+            if ($sRequestedType !== $sType) {
+                return;
+            }
+
+            $sSlug = (string) ($obItem->reference ?? '');
+            if ($sSlug === '') {
+                return [];
+            }
+
+            static $arCategoryIdList = [];
+            if (!array_key_exists($sSlug, $arCategoryIdList)) {
+                $arCategoryIdList[$sSlug] = ShopaholicCategoryModel::getBySlug($sSlug)->value('id');
+            }
+
+            if (empty($arCategoryIdList[$sSlug])) {
+                return [];
+            }
+
+            $obCategoryItem = CategoryItem::make($arCategoryIdList[$sSlug]);
+            if ($obCategoryItem->isEmpty()) {
+                return [];
+            }
+
+            // getPageUrl builds the ancestor params and resolves the route in
+            // the ACTIVE locale, so one stored value renders /lv/, /en/ and
+            // /ru/ links from the same repeater row
+            $sPageUrl = $obCategoryItem->getPageUrl($obItem->cmsPage ?: 'catalog');
+
+            return [
+                'title'    => $obCategoryItem->name,
+                'url'      => $sPageUrl,
+                'isActive' => $sPageUrl == $sURL,
+            ];
+        });
     }
 
 }
