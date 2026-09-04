@@ -192,3 +192,6 @@
   - 'Fix the review handler directory case so it loads on Linux. The 2.0.66 handler sat in classes/event/Review with a capital R; every sibling event directory is lowercase and the October class loader lowercases the path, so the class resolved on case-insensitive Windows but not on the deploy target, which aborted october:migrate. Directory renamed to classes/event/review, namespace unchanged.'
 2.0.68:
   - 'Codes in the GS1 restricted-circulation ranges (GTIN-13 prefixes 020-029, 040-049, 200-299) are emitted as mpn, not gtin. The 1C feed uses the 2... range for products without a real barcode, and Google rejects such values as invalid GTINs.'
+
+2.0.69:
+  - 'Meta events carry the customer identity. CustomerIdentityHandler answers Metapixel''s user_data.resolve hook with the logged-in account''s email, phone, name and user id plus the city and postcode of the latest address that has them, or with the email and phone a guest typed into checkout when the cart holds them; Metapixel hashes the values into ViewContent, AddToCart, PageView and Search and into the browser pixel''s Advanced Matching. National 8-digit phone numbers get the shop''s dial code from the app URL domain. Country is not sent because the checkout stores it as a free-text label.'
