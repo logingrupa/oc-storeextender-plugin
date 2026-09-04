@@ -33,6 +33,9 @@ class ProductStructuredData
     const RATING_BEST = 5;
     const RATING_WORST = 1;
     const GTIN_PROPERTY_BY_LENGTH = [8 => 'gtin8', 12 => 'gtin12', 13 => 'gtin13', 14 => 'gtin14'];
+    // GS1 prefixes (first three digits of the 13-digit form) reserved for
+    // restricted circulation: 020-029, 040-049, 200-299
+    const RESTRICTED_GS1_PREFIX_PATTERNS = ['/^02\d$/', '/^04\d$/', '/^2\d\d$/'];
     const BLOCK_BOUNDARY_PATTERN = '#<br\s*/?>|</(?:p|div|li|ul|ol|h[1-6]|tr|td|th|table|blockquote|section|script|style)\s*>#i';
 
     /**
@@ -286,7 +289,9 @@ class ProductStructuredData
     }
 
     /**
-     * GS1 check digit: weights 3,1,3,1... from the digit left of the check digit.
+     * A GS1 code Google accepts as a GTIN: known length, valid check digit, and
+     * not a restricted-circulation prefix (store-internal codes such as the 1C
+     * "2..." range), which Google rejects as invalid GTINs.
      * @param string $sCode
      * @return bool
      */
@@ -294,6 +299,13 @@ class ProductStructuredData
     {
         if (!ctype_digit($sCode) || !isset(self::GTIN_PROPERTY_BY_LENGTH[strlen($sCode)])) {
             return false;
+        }
+
+        $sPrefix = substr(str_pad($sCode, 14, '0', STR_PAD_LEFT), 1, 3);
+        foreach (self::RESTRICTED_GS1_PREFIX_PATTERNS as $sPattern) {
+            if (preg_match($sPattern, $sPrefix)) {
+                return false;
+            }
         }
 
         $arDigitList = array_map('intval', str_split($sCode));

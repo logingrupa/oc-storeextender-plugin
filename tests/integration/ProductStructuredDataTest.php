@@ -151,6 +151,24 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
         $this->assertFalse(ProductStructuredData::isValidGs1Code('47510394841AA'));
     }
 
+    /**
+     * Store-internal codes pass the check digit but Google rejects them as GTINs.
+     * The 1C feed uses the 2... range for products without a real barcode.
+     */
+    public function testRestrictedCirculationCodesAreAnMpnNotAGtin()
+    {
+        $this->assertFalse(ProductStructuredData::isValidGs1Code('2100000000821'), 'EAN-13 prefix 2');
+        $this->assertFalse(ProductStructuredData::isValidGs1Code('200000000004'), 'UPC-A prefix 2 is GTIN-13 prefix 020');
+        $this->assertFalse(ProductStructuredData::isValidGs1Code('400000000008'), 'UPC-A prefix 4 is GTIN-13 prefix 040');
+        $this->assertFalse(ProductStructuredData::isValidGs1Code('0400000000008'), 'EAN-13 prefix 040');
+        $this->assertTrue(ProductStructuredData::isValidGs1Code('4751039484144'), 'a real EAN-13 still passes');
+
+        $obProduct = $this->makeProduct(['id' => 555, 'name' => 'Putekļu nosūcējs', 'code' => '2100000000821']);
+        $arData = ProductStructuredData::build($obProduct, null, false, [], self::PAGE_URL, self::SELLER);
+        $this->assertSame('2100000000821', $arData['mpn']);
+        $this->assertArrayNotHasKey('gtin13', $arData);
+    }
+
     public function testImagesAreOfferFirstUniqueAndCapped()
     {
         $obShared = $this->makeFile('shared000001.jpg');
