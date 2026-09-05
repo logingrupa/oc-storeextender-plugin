@@ -27,12 +27,9 @@ class UserModelHandler
     protected function extendUserModel($obElement)
     {
         $this->addValidationRules($obElement);
-        
-        $obElement->bindEvent('model.afterCreate', function() use ($obElement) {
-            $this->attachUserToGroup($obElement);
-        });
 
-        $obElement->bindEvent('model.afterSave', function() use ($obElement) {
+        // afterSave also fires on create, so one binding covers registration and later edits
+        $obElement->bindEvent('model.afterSave', function () use ($obElement) {
             $this->attachUserToGroup($obElement);
         });
     }
@@ -57,17 +54,19 @@ class UserModelHandler
         $obElement->customMessages = $customMessages;
     }
 
+    /**
+     * Runs only when the school changed: every other save (login stamp, checkout phone,
+     * backend edit) leaves the groups alone.
+     */
     protected function attachUserToGroup($obElement)
     {
         $sPropertyCode = $obElement->property['school-name'] ?? null;
-        
-        if (!$sPropertyCode) {
+        if (!$sPropertyCode || $sPropertyCode === $this->getOriginalSchoolCode($obElement)) {
             return;
         }
 
-        $group = UserGroupHelper::instance()->findByCode($sPropertyCode);
-
-        if (!$group) {
+        $obGroup = UserGroupHelper::instance()->findByCode($sPropertyCode);
+        if (!$obGroup) {
             Log::warning("Group with code '{$sPropertyCode}' not found.");
             return;
         }
@@ -75,14 +74,30 @@ class UserModelHandler
         // Attach without detaching: a user can hold several groups and sync() would
         // drop every group this handler did not name.
         try {
-            $obElement->groups()->syncWithoutDetaching([$group->id]);
-        } catch (\Exception $e) {
-            Log::error("Failed to attach user to group: {$e->getMessage()}");
+            $obElement->groups()->syncWithoutDetaching([$obGroup->id]);
+        } catch (\Exception $obException) {
+            Log::error("Failed to attach user to group: {$obException->getMessage()}");
 
             return;
         }
 
-        $this->makeSchoolGroupPrimary($obElement, $group);
+        $this->makeSchoolGroupPrimary($obElement, $obGroup);
+    }
+
+    /**
+     * The school code as loaded from the database. Read from the raw original because
+     * "property" is jsonable and afterSave runs before Eloquent syncs the originals.
+     * @param \RainLab\User\Models\User $obElement
+     * @return string|null
+     */
+    protected function getOriginalSchoolCode($obElement)
+    {
+        $arOriginalProperty = json_decode((string) $obElement->getRawOriginal('property'), true);
+        if (!is_array($arOriginalProperty)) {
+            return null;
+        }
+
+        return $arOriginalProperty['school-name'] ?? null;
     }
 
     /**

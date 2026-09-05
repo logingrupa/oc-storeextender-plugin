@@ -2,6 +2,8 @@
 
 require_once __DIR__.'/../StoreExtenderUserPluginTestCase.php';
 
+use Illuminate\Support\Facades\Log;
+
 use RainLab\User\Models\User;
 use RainLab\User\Models\UserGroup;
 
@@ -191,6 +193,49 @@ class RainLabUserModelExtensionTest extends StoreExtenderUserPluginTestCase
         $obUser->save();
 
         $this->assertSame($obNewSchool->id, (int) $obUser->fresh()->primary_group_id);
+    }
+
+    public function testUnrelatedSaveLeavesTheSchoolGroupsAlone()
+    {
+        $obGroup = UserGroup::create(['name' => 'Kolonna', 'code' => 'kolonna']);
+
+        $obUser = User::create([
+            'email'                 => 'school-unrelated@nc.test',
+            'password'              => 'Probe12345',
+            'password_confirmation' => 'Probe12345',
+            'property'              => ['school-name' => 'kolonna'],
+        ]);
+
+        // A backend admin took the group away; a checkout phone update must not put it back
+        $obUser->groups()->detach($obGroup->id);
+
+        $obUser = $obUser->fresh();
+        $obUser->phone = '+371 26111222';
+        $obUser->save();
+
+        $this->assertFalse($obUser->groups()->where('id', $obGroup->id)->exists());
+    }
+
+    public function testUnknownSchoolCodeWarnsOnlyWhenItChanges()
+    {
+        // 16 ported accounts carry a free-text school-name such as "1" that matches no
+        // group; every login or checkout save of those users used to log this warning.
+        Log::shouldReceive('warning')
+            ->once()
+            ->with("Group with code '1' not found.");
+
+        $obUser = User::create([
+            'email'                 => 'school-junk@nc.test',
+            'password'              => 'Probe12345',
+            'password_confirmation' => 'Probe12345',
+            'property'              => ['school-name' => '1'],
+        ]);
+
+        $obUser = $obUser->fresh();
+        $obUser->phone = '+371 26111222';
+        $obUser->save();
+
+        $this->assertSame('1', $obUser->fresh()->property['school-name']);
     }
 
     public function testRegistrationWithoutSchoolKeepsRegisteredPrimary()
