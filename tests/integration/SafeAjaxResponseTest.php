@@ -68,6 +68,42 @@ class SafeAjaxResponseTest extends StoreExtenderPluginTestCase
         $this->assertSame(['Nepareizs e-pasts'], $obValidation->getInvalidFields()['email']);
     }
 
+    public function testUnintendedExceptionsReachTheLogWithDebugOff()
+    {
+        $obQuery = new QueryException('mysql', 'SELECT * FROM tbl_secret', [], new \Exception('SQLSTATE[42S02]'));
+
+        Log::shouldReceive('error')
+            ->once()
+            ->withArgs(function ($sMessage, $arContext) use ($obQuery) {
+                return $arContext['exception'] === $obQuery;
+            });
+
+        ajax()->exception($obQuery);
+    }
+
+    public function testTwigWrappedExceptionsReportTheirCause()
+    {
+        $obQuery = new QueryException('mysql', 'SELECT * FROM tbl_secret', [], new \Exception('SQLSTATE[42S02]'));
+        $obWrapped = new RuntimeError('rendering failed', -1, null, $obQuery);
+
+        Log::shouldReceive('error')
+            ->once()
+            ->withArgs(function ($sMessage, $arContext) use ($obQuery) {
+                return $arContext['exception'] === $obQuery;
+            });
+
+        ajax()->exception($obWrapped);
+    }
+
+    public function testUserFacingExceptionsAreNotReported()
+    {
+        Log::shouldReceive('error')->never();
+
+        ajax()->exception(new ApplicationException('Grozs ir tukšs'));
+        ajax()->exception(new ForbiddenException('Access Denied'));
+        ajax()->exception(ValidationException::withMessages(['email' => ['Nepareizs e-pasts']]));
+    }
+
     public function testTwigWrappedExceptionsAreClassifiedByTheirCause()
     {
         $obUser = new RuntimeError('rendering failed', -1, null, new ApplicationException('Grozs ir tukšs'));

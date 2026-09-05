@@ -11,7 +11,8 @@ use Twig\Error\RuntimeError;
 /**
  * AJAX envelope keeps Larajax severity and status, but the message of any
  * exception not written for the user goes through the October error policy,
- * which stays generic with debug off.
+ * which stays generic with debug off. Those unintended exceptions are also
+ * reported, since the Larajax controller swallows them otherwise.
  */
 class SafeAjaxResponse extends AjaxResponse
 {
@@ -27,6 +28,8 @@ class SafeAjaxResponse extends AjaxResponse
         if ($this->isStructured($obCause)) {
             return $obResponse;
         }
+
+        report($obCause);
 
         $sMessage = ErrorHandler::getDetailedMessage($obCause);
         $iStatus = $obResponse->getStatusCode();

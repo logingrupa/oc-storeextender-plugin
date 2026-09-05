@@ -209,3 +209,6 @@
 
 2.0.74:
   - 'The school group handler runs once per save and only when the school-name property changed. It used to fire twice on registration and on every later save (checkout phone, profile edit), logging "Group with code not found" for the 16 accounts whose backend-typed school code is junk.'
+
+2.0.75:
+  - 'SafeAjaxResponse now reports every unintended AJAX exception before masking its message, so query errors and other internals reach the log with debug off. The Larajax controller swallows handler exceptions itself, so nothing else logged them. Upstream larajax merged the same fix (PR 17) but has not released it past v2.2.3.'
