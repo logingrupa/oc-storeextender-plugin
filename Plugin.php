@@ -130,7 +130,6 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.warmofferthumbs', 'Logingrupa\StoreExtender\Console\WarmOfferThumbs');
         $this->registerConsoleCommand('storeextender.purgeorderpropertysecrets', 'Logingrupa\StoreExtender\Console\PurgeOrderPropertySecrets');
         $this->registerConsoleCommand('storeextender.migratebuddiesusers', 'Logingrupa\StoreExtender\Console\MigrateBuddiesUsers');
-        $this->registerConsoleCommand('storeextender.sortcategories', 'Logingrupa\StoreExtender\Console\SortCategories');
         $this->registerConsoleCommand('storeextender.refreshpickuppoints', 'Logingrupa\StoreExtender\Console\RefreshPickupPoints');
 
         // Toolbox RainLabUserHelper::findUserByEmail() calls a method RainLab.User 3.5.3
@@ -251,7 +250,6 @@ class Plugin extends PluginBase
         Event::subscribe(StoreExtenderExtendProductFieldsHandler::class);
         Event::subscribe(StoreExtenderProductModelHandler::class);
         Event::subscribe(StoreExtenderExtendProductImport::class);
-        $this->sortCategoriesAfterImport();
 
         //Currency rounding for NOK, SEK, DKK
         ExtendCurrencyConversion::swapCurrencyHelper();
@@ -272,24 +270,6 @@ class Plugin extends PluginBase
      * Listen to Omnipay gateway cancel/return events and redirect
      * back to the order checkout page instead of homepage.
      */
-    /**
-     * Re-sort category siblings by their 1C code prefix once per process after a category import.
-     */
-    protected function sortCategoriesAfterImport(): void
-    {
-        $bScheduled = false;
-        Event::listen(\Lovata\Toolbox\Classes\Helper\AbstractImportModel::EVENT_AFTER_IMPORT, function ($obModel) use (&$bScheduled) {
-            if ($bScheduled || !$obModel instanceof \Lovata\Shopaholic\Models\Category) {
-                return;
-            }
-
-            $bScheduled = true;
-            $this->app->terminating(function () {
-                \Logingrupa\StoreExtender\Classes\Helper\CategorySorter::sort();
-            });
-        });
-    }
-
     protected function addPaymentGatewayRedirectListeners(): void
     {
         $fnGetCheckoutURL = function ($obOrder) {

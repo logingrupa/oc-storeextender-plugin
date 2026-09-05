@@ -204,3 +204,5 @@
 
 2.0.72:
   - 'Pickup points come from the carrier feeds through the shop. GET /api/pickup-points/{carrier}/{country} serves DPD Baltics and Omniva parcel machines as one normalised list (id, name, address, city, zip, country) from storage/app/pickup-points/{carrier}.json, refreshed daily at 04:10 by storeextender:refresh-pickup-points and on the first read after 24 hours; a dead feed leaves the stored file in place. Replaces the checkout''s fetch of two hand-updated GitHub copies (DPD from 2024-09, Omniva from 2021-02) that named lockers no longer in service. The dead /api/offers colour experiment route and its view are gone.'
+2.0.73:
+  - 'CategorySorter, storeextender:sort_categories and the afterImport hook are gone. The category importer in ExtendShopaholic 1.0.24 places each category among its siblings by code as it imports, so nothing re-sorts the tree afterwards.'
