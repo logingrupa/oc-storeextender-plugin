@@ -39,4 +39,20 @@
     'mail' => [
         'rights_reserved' => 'All rights reserved.',
     ],
+    'color_sync' => [
+        'label' => 'Offer color sync',
+        'description' => 'Pull offer color families from the color lab on nailolab.com. Runs once a day at 07:00; use the button after a manual color update.',
+        'permission_tab' => 'StoreExtender',
+        'permission_label' => 'Run the offer color sync',
+        'sync_now' => 'Sync now',
+        'syncing' => 'Syncing colors...',
+        'success' => 'Color sync finished.',
+        'failure' => 'Color sync failed, see the output below.',
+        'row_count' => 'Offers with a color',
+        'synced_at' => 'Last imported',
+        'export_updated_at' => 'Export last changed',
+        'version' => 'Imported export version',
+        'never' => 'never',
+        'unknown' => 'unknown',
+    ],
 ];

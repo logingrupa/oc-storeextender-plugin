@@ -1,0 +1,28 @@
+<?php
+    $fnValue = function (string $sValue, string $sEmptyKey): string {
+        return $sValue !== '' ? $sValue : trans('logingrupa.storeextender::lang.color_sync.'.$sEmptyKey);
+    };
+?>
+<table class="table data" style="max-width: 640px">
+    <tbody>
+        <tr>
+            <th><?= e(trans('logingrupa.storeextender::lang.color_sync.row_count')) ?></th>
+            <td><?= (int) $arStatus['row_count'] ?></td>
+        </tr>
+        <tr>
+            <th><?= e(trans('logingrupa.storeextender::lang.color_sync.synced_at')) ?></th>
+            <td><?= e($fnValue($arStatus['synced_at'], 'never')) ?></td>
+        </tr>
+        <tr>
+            <th><?= e(trans('logingrupa.storeextender::lang.color_sync.export_updated_at')) ?></th>
+            <td><?= e($fnValue($arStatus['export_updated_at'], 'unknown')) ?></td>
+        </tr>
+        <tr>
+            <th><?= e(trans('logingrupa.storeextender::lang.color_sync.version')) ?></th>
+            <td><code><?= e($fnValue($arStatus['version'], 'never')) ?></code></td>
+        </tr>
+    </tbody>
+</table>
+<?php if ($sOutput !== ''): ?>
+    <pre class="control-textarea" style="max-width: 640px; white-space: pre-wrap"><?= e($sOutput) ?></pre>
+<?php endif ?>

@@ -1,0 +1,22 @@
+<?= Form::open(['class' => 'layout']) ?>
+    <div class="layout-row">
+        <div class="padded-container">
+            <p><?= e(trans('logingrupa.storeextender::lang.color_sync.description')) ?></p>
+
+            <div id="colorSyncStatus">
+                <?= $this->makePartial('status', ['arStatus' => $arStatus, 'sOutput' => '']) ?>
+            </div>
+
+            <div class="form-buttons">
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                    data-request="onSync"
+                    data-load-indicator="<?= e(trans('logingrupa.storeextender::lang.color_sync.syncing')) ?>"
+                    data-request-flash>
+                    <?= e(trans('logingrupa.storeextender::lang.color_sync.sync_now')) ?>
+                </button>
+            </div>
+        </div>
+    </div>
+<?= Form::close() ?>

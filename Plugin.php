@@ -531,13 +531,11 @@ class Plugin extends PluginBase
      */
     public function registerSchedule($obSchedule)
     {
-        // Hourly, matching the export's own Cache-Control: max-age=3600, so
-        // the storefront is at most an hour behind a curation change. Twice a
-        // day left a real gap: the 2026-08-05 regrouping landed at 09:49 UTC,
-        // just after the 09:00 run, and would have sat unseen until 13:00.
-        // An unchanged export costs one 304 and no write, because the command
-        // compares the payload version against the one it last imported.
-        $obSchedule->command('storeextender:sync-offer-colors')->hourly();
+        // Once a day before the shop opens. Colors move only after a manual
+        // curation on nailolab, and that host sleeps between requests, so an
+        // hourly poll mostly paid to wake it for a 304. The ColorSync settings
+        // page runs the same command on demand when a change cannot wait.
+        $obSchedule->command('storeextender:sync-offer-colors')->dailyAt('07:00')->timezone('Europe/Riga');
 
         // Carrier pickup point feeds change a few times a month: one pull before the shop day
         // keeps the checkout from fetching a 1.3 MB feed inside a customer request.
@@ -597,12 +595,30 @@ class Plugin extends PluginBase
      */
     public function registerPermissions()
     {
-        return []; // Remove this line to activate
-
         return [
-            'logingrupa.storeextender.some_permission' => [
-                'tab' => 'StoreExtender',
-                'label' => 'Some permission'
+            'logingrupa.storeextender.color_sync' => [
+                'tab' => 'logingrupa.storeextender::lang.color_sync.permission_tab',
+                'label' => 'logingrupa.storeextender::lang.color_sync.permission_label',
+            ],
+        ];
+    }
+
+    /**
+     * Registers back-end settings pages for this plugin.
+     *
+     * @return array
+     */
+    public function registerSettings()
+    {
+        return [
+            'color_sync' => [
+                'label' => 'logingrupa.storeextender::lang.color_sync.label',
+                'description' => 'logingrupa.storeextender::lang.color_sync.description',
+                'category' => 'lovata.shopaholic::lang.tab.settings',
+                'icon' => 'icon-paint-brush',
+                'url' => Backend::url('logingrupa/storeextender/colorsync'),
+                'order' => 520,
+                'permissions' => ['logingrupa.storeextender.color_sync'],
             ],
         ];
     }

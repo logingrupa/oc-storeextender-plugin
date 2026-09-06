@@ -39,4 +39,20 @@
     'mail' => [
         'rights_reserved' => 'Visas tiesības aizsargātas.',
     ],
+    'color_sync' => [
+        'label' => 'Piedāvājumu krāsu sinhronizācija',
+        'description' => 'Ielādē piedāvājumu krāsu saimes no nailolab.com krāsu laboratorijas. Notiek reizi dienā plkst. 07:00; pēc manuālas krāsu maiņas spied pogu.',
+        'permission_tab' => 'StoreExtender',
+        'permission_label' => 'Palaist piedāvājumu krāsu sinhronizāciju',
+        'sync_now' => 'Sinhronizēt tagad',
+        'syncing' => 'Sinhronizē krāsas...',
+        'success' => 'Krāsu sinhronizācija pabeigta.',
+        'failure' => 'Krāsu sinhronizācija neizdevās, skati izvadi zemāk.',
+        'row_count' => 'Piedāvājumi ar krāsu',
+        'synced_at' => 'Pēdējais imports',
+        'export_updated_at' => 'Eksports pēdējoreiz mainīts',
+        'version' => 'Importētā eksporta versija',
+        'never' => 'nekad',
+        'unknown' => 'nezināms',
+    ],
 ];

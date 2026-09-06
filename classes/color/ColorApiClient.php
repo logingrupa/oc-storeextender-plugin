@@ -37,7 +37,7 @@ class ColorApiClient
     const OBSERVED_COLD_EXPORT_SECONDS = 12;
 
     /**
-     * Only the hourly CLI sync holds this client - the storefront reads the
+     * Only the scheduled CLI sync holds this client - the storefront reads the
      * local table through ColorMapRepository and never opens a socket - so a
      * generous timeout costs at worst one cron run, never a page render.
      *
@@ -201,7 +201,7 @@ class ColorApiClient
         } catch (\Throwable $obException) {
             // silent to caller: offer sheet must render without colors, never 500
             $this->iLastFetchStatus = 0;
-            Log::warning('ColorApiClient: request failed - '.$obException->getMessage());
+            Log::warning(class_basename(static::class).': request failed - '.$obException->getMessage());
             Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
 
             return $arStaleBody;
@@ -211,13 +211,12 @@ class ColorApiClient
 
         if ($obResponse->status() === 304) {
             Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_SECONDS);
-            Log::info('ColorApiClient: 304 Not Modified, TTL extended');
 
             return $arStaleBody;
         }
 
         if (!$obResponse->ok()) {
-            Log::warning('ColorApiClient: unexpected status '.$obResponse->status());
+            Log::warning(class_basename(static::class).': unexpected status '.$obResponse->status());
             Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
 
             return $arStaleBody;
@@ -238,7 +237,7 @@ class ColorApiClient
         $arBody = $obResponse->json();
         $sRootKey = $this->payloadRootKey();
         if (!is_array($arBody) || !isset($arBody[$sRootKey]) || !is_array($arBody[$sRootKey])) {
-            Log::warning('ColorApiClient: malformed JSON payload, keeping last cached body');
+            Log::warning(class_basename(static::class).': malformed JSON payload, keeping last cached body');
             Cache::put(static::CACHE_KEY_FRESH, true, self::CACHE_TTL_ERROR_SECONDS);
 
             return $arStaleBody;

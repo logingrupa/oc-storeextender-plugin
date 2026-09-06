@@ -16,8 +16,8 @@ use Logingrupa\StoreExtender\Models\OfferColor;
  * Pull the color-lab offer color map from nailolab into the local
  * logingrupa_storeextender_offer_colors table. The storefront reads only the
  * table (via ColorMapRepository), so production never blocks on the API.
- * Scheduled hourly; the client sends If-None-Match, unchanged data costs one
- * 304 round trip.
+ * Scheduled daily and run on demand from the ColorSync settings page; the
+ * client sends If-None-Match, unchanged data costs one 304 round trip.
  *
  * @package Logingrupa\StoreExtender\Console
  */

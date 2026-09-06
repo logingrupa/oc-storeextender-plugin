@@ -212,3 +212,6 @@
 
 2.0.75:
   - 'SafeAjaxResponse now reports every unintended AJAX exception before masking its message, so query errors and other internals reach the log with debug off. The Larajax controller swallows handler exceptions itself, so nothing else logged them. Upstream larajax merged the same fix (PR 17) but has not released it past v2.2.3.'
+
+2.0.76:
+  - 'Offer color sync runs once a day at 07:00 Riga instead of hourly, and a new Settings page (Shopaholic, Offer color sync) shows the import state and runs the sync on demand. Colors change only after a manual curation on nailolab.com, which sleeps between requests, so the hourly poll mostly woke it for a 304. The client no longer logs the 304 and names FamilyApiClient in its own warnings.'
