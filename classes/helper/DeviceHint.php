@@ -2,7 +2,9 @@
 
 namespace Logingrupa\StoreExtender\Classes\Helper;
 
+use Detection\Exception\MobileDetectException;
 use Detection\MobileDetect;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Answers one question: is this request a phone.
@@ -70,8 +72,13 @@ class DeviceHint
             $obDetect->setUserAgent((string) $sUserAgent);
 
             return $obDetect->isMobile() && !$obDetect->isTablet();
-        } catch (\Throwable $obException) {
-            return false; // desktop is the page that exists today
+        } catch (MobileDetectException $obException) {
+            // Boundary: a header the library rejects must not 500 a public
+            // page. Narrow on purpose, so a dropped or changed dependency
+            // surfaces instead of turning every phone into a desktop.
+            Log::warning('DeviceHint: MobileDetect rejected the request headers', ['message' => $obException->getMessage()]);
+
+            return false;
         }
     }
 
