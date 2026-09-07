@@ -42,31 +42,7 @@ class ViteAssetHelper
      */
     public static function renderEntry(string $sEntryName): string
     {
-        if (!preg_match('/^[a-z0-9][a-z0-9-]*$/', $sEntryName)) {
-            throw new RuntimeException(
-                sprintf('vite_entry: invalid entry name "%s" - expected a lowercase slug like "core"', $sEntryName)
-            );
-        }
-
-        $obTheme = Theme::getActiveTheme();
-        if ($obTheme === null) {
-            throw new RuntimeException('vite_entry: no active CMS theme resolved');
-        }
-
-        $sEntryKey = self::ENTRY_KEY_PREFIX.$sEntryName.self::ENTRY_KEY_SUFFIX;
-        $sThemeDirectoryPath = $obTheme->getPath();
-
-        $sHotFilePath = $sThemeDirectoryPath.'/'.self::HOT_FILE_RELATIVE_PATH;
-        if (is_file($sHotFilePath)) {
-            $sDevServerUrl = rtrim(trim((string) file_get_contents($sHotFilePath)), '/');
-
-            return self::buildDevServerHtml($sDevServerUrl, $sEntryKey);
-        }
-
-        $arManifest = self::loadManifest($sThemeDirectoryPath.'/'.self::MANIFEST_RELATIVE_PATH);
-        $sBuildBaseUrl = '/themes/'.$obTheme->getDirName().'/'.self::BUILD_DIRECTORY;
-
-        return self::buildEntryHtml($arManifest, $sEntryKey, $sBuildBaseUrl);
+        return self::render('vite_entry', $sEntryName, self::ENTRY_KEY_PREFIX, self::ENTRY_KEY_SUFFIX, [self::class, 'buildEntryHtml']);
     }
 
     /**
@@ -89,40 +65,61 @@ class ViteAssetHelper
      */
     public static function renderStyle(string $sEntryName): string
     {
+        return self::render('vite_style', $sEntryName, self::STYLE_KEY_PREFIX, self::STYLE_KEY_SUFFIX, [self::class, 'buildStyleHtml']);
+    }
+
+    /**
+     * The resolution both Twig functions share: validate the slug, resolve the
+     * active theme, then serve from the dev server or the built manifest. Only
+     * the manifest key shape and the tag builder differ between them.
+     *
+     * @param  string   $sFunction  Twig function that was called, named in failures
+     * @param  string   $sEntryName Lowercase slug, e.g. "core"
+     * @param  string   $sKeyPrefix Manifest key prefix for this kind of entry
+     * @param  string   $sKeySuffix Manifest key suffix for this kind of entry
+     * @param  callable $fnBuild    Tag builder: (array, string, string): string
+     * @return string
+     */
+    protected static function render(string $sFunction, string $sEntryName, string $sKeyPrefix, string $sKeySuffix, callable $fnBuild): string
+    {
         if (!preg_match('/^[a-z0-9][a-z0-9-]*$/', $sEntryName)) {
             throw new RuntimeException(
-                sprintf('vite_style: invalid entry name "%s" - expected a lowercase slug like "chrome"', $sEntryName)
+                sprintf('%s: invalid entry name "%s" - expected a lowercase slug', $sFunction, $sEntryName)
             );
         }
 
         $obTheme = Theme::getActiveTheme();
         if ($obTheme === null) {
-            throw new RuntimeException('vite_style: no active CMS theme resolved');
+            throw new RuntimeException($sFunction.': no active CMS theme resolved');
         }
 
-        $sEntryKey = self::STYLE_KEY_PREFIX.$sEntryName.self::STYLE_KEY_SUFFIX;
+        $sEntryKey = $sKeyPrefix.$sEntryName.$sKeySuffix;
         $sThemeDirectoryPath = $obTheme->getPath();
 
         $sHotFilePath = $sThemeDirectoryPath.'/'.self::HOT_FILE_RELATIVE_PATH;
         if (is_file($sHotFilePath)) {
             $sDevServerUrl = rtrim(trim((string) file_get_contents($sHotFilePath)), '/');
 
-            return self::buildDevServerHtml($sDevServerUrl, $sEntryKey);
+            return self::buildDevServerHtml($sDevServerUrl, $sEntryKey, $sFunction);
         }
 
-        $arManifest = self::loadManifest($sThemeDirectoryPath.'/'.self::MANIFEST_RELATIVE_PATH);
+        $arManifest = self::loadManifest($sThemeDirectoryPath.'/'.self::MANIFEST_RELATIVE_PATH, $sFunction);
         $sBuildBaseUrl = '/themes/'.$obTheme->getDirName().'/'.self::BUILD_DIRECTORY;
 
-        return self::buildStyleHtml($arManifest, $sEntryKey, $sBuildBaseUrl);
+        return $fnBuild($arManifest, $sEntryKey, $sBuildBaseUrl);
     }
 
     /**
      * Dev-mode tags: the Vite client plus the raw entry module.
+     *
+     * @param string $sDevServerUrl Origin read from the hot file
+     * @param string $sEntryKey     Manifest key, served as a source path in dev
+     * @param string $sFunction     Twig function that asked, named in failures
      */
-    public static function buildDevServerHtml(string $sDevServerUrl, string $sEntryKey): string
+    public static function buildDevServerHtml(string $sDevServerUrl, string $sEntryKey, string $sFunction): string
     {
         if ($sDevServerUrl === '') {
-            throw new RuntimeException('vite_entry: hot file exists but is empty - restart the Vite dev server');
+            throw new RuntimeException($sFunction.': hot file exists but is empty - restart the Vite dev server');
         }
 
         return '<script type="module" src="'.e($sDevServerUrl.'/@vite/client').'"></script>'."\n"
@@ -254,9 +251,11 @@ class ViteAssetHelper
     /**
      * Read + decode the manifest once per request.
      *
+     * @param  string $sManifestPath Absolute path to the built manifest
+     * @param  string $sFunction     Twig function that asked, named in failures
      * @return array<string, array<string, mixed>>
      */
-    protected static function loadManifest(string $sManifestPath): array
+    protected static function loadManifest(string $sManifestPath, string $sFunction): array
     {
         if (isset(self::$arManifestCache[$sManifestPath])) {
             return self::$arManifestCache[$sManifestPath];
@@ -264,13 +263,13 @@ class ViteAssetHelper
 
         if (!is_file($sManifestPath)) {
             throw new RuntimeException(
-                sprintf('vite_entry: manifest not found at "%s" - run "pnpm build" in the theme', $sManifestPath)
+                sprintf('%s: manifest not found at "%s" - run "pnpm build" in the theme', $sFunction, $sManifestPath)
             );
         }
 
         $arManifest = json_decode((string) file_get_contents($sManifestPath), true);
         if (!is_array($arManifest)) {
-            throw new RuntimeException(sprintf('vite_entry: manifest at "%s" is not valid JSON', $sManifestPath));
+            throw new RuntimeException(sprintf('%s: manifest at "%s" is not valid JSON', $sFunction, $sManifestPath));
         }
 
         self::$arManifestCache[$sManifestPath] = $arManifest;

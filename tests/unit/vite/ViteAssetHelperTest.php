@@ -211,7 +211,7 @@ class ViteAssetHelperTest extends TestCase
 
     public function testBuildDevServerHtmlRendersViteClientAndEntryModule()
     {
-        $sHtml = ViteAssetHelper::buildDevServerHtml('http://localhost:5173', 'src/entries/core.js');
+        $sHtml = ViteAssetHelper::buildDevServerHtml('http://localhost:5173', 'src/entries/core.js', 'vite_entry');
 
         $this->assertStringContainsString(
             '<script type="module" src="http://localhost:5173/@vite/client"></script>',
@@ -228,6 +228,6 @@ class ViteAssetHelperTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('hot file exists but is empty');
 
-        ViteAssetHelper::buildDevServerHtml('', 'src/entries/core.js');
+        ViteAssetHelper::buildDevServerHtml('', 'src/entries/core.js', 'vite_entry');
     }
 }
