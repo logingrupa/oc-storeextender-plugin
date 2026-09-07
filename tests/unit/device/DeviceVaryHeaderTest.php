@@ -18,8 +18,15 @@ use Logingrupa\StoreExtender\Classes\Middleware\DeviceVaryHeader;
  */
 class DeviceVaryHeaderTest extends TestCase
 {
-    /** @var string The pinned value, asserted by equality: Symfony already computes a default */
-    const PINNED_CACHE_CONTROL = 'private, max-age=0, must-revalidate';
+    /**
+     * @var string The pinned value as it reaches the wire. The middleware
+     * sets private, max-age=0, must-revalidate; ResponseHeaderBag parses
+     * Cache-Control into directives and re-emits them sorted, so equality is
+     * asserted against the sorted form. Symfony pins no directive of its own
+     * and falls back to no-cache, private, which is why this is an equality
+     * assertion rather than a check that a header appeared.
+     */
+    const PINNED_CACHE_CONTROL = 'max-age=0, must-revalidate, private';
 
     /**
      * @param DeviceVaryHeader $obMiddleware
