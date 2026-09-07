@@ -31,6 +31,7 @@ use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
 use Logingrupa\StoreExtender\Classes\Event\ExtendMenuHandler;
 use Logingrupa\StoreExtender\Classes\Event\Category\PrimeCategoryTreeHandler;
 use Logingrupa\StoreExtender\Classes\Event\ExtendOfferHandler;
+use Logingrupa\StoreExtender\Classes\Event\Device\DeviceLayoutHandler;
 
 //Offer events
 use Logingrupa\StoreExtender\Classes\Event\Offer\ExtendOfferImportMetadata;
@@ -82,6 +83,7 @@ use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 
 //Cart cookie identity
 use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
+use Logingrupa\StoreExtender\Classes\Middleware\DeviceVaryHeader;
 
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
@@ -170,6 +172,7 @@ class Plugin extends PluginBase
         // Frontend only - the backend never resolves a guest cart.
         \Cms\Classes\CmsController::extend(function ($obController) {
             $obController->middleware(ClearShadowCartCookie::class);
+            $obController->middleware(DeviceVaryHeader::class);
         });
 
         $factory = Omnipay::getFactory();
@@ -254,6 +257,9 @@ class Plugin extends PluginBase
         //Currency rounding for NOK, SEK, DKK
         ExtendCurrencyConversion::swapCurrencyHelper();
         PrimeCategoryTreeHandler::primeOnPageDisplay();
+
+        //Phone layout branch for the product page - no-ops until a page named product2 exists
+        DeviceLayoutHandler::switchLayoutOnPageDisplay();
 
         //Extend currency form to allow more decimal places in rate field
         $this->extendShopaholicCurrenciesController();
@@ -666,6 +672,8 @@ class Plugin extends PluginBase
                 },
                 // Script/style tags for a Vite entry built into the active theme
                 'vite_entry' => [ViteAssetHelper::class, 'renderEntry'],
+                // A CSS-only Vite entry (a .scss rollup input) as a stylesheet link
+                'vite_style' => [ViteAssetHelper::class, 'renderStyle'],
                 // Sized offer image derivatives - the ONLY way a template is
                 // allowed to size an offer picture, so the sizes stay in one place
                 'offer_swatch_src' => [OfferImageHelper::class, 'swatch'],
