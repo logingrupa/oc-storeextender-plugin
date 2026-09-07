@@ -63,9 +63,10 @@ class DeviceHint
         }
 
         try {
-            $obDetect = new MobileDetect();
-            // MobileDetect's auto-init reads the PHP server superglobal, which
-            // is not the request this method was handed, so set it explicitly
+            // Auto-init off: it copies WAP and Accept keys out of $_SERVER and
+            // isMobile() answers on those before it reads the user agent, which
+            // is not the request this method was handed
+            $obDetect = new MobileDetect(null, ['autoInitOfHttpHeaders' => false]);
             $obDetect->setUserAgent((string) $sUserAgent);
 
             return $obDetect->isMobile() && !$obDetect->isTablet();
