@@ -6,6 +6,7 @@ use Cms\Classes\Page;
 use Cms\Classes\Theme;
 use Cms\Models\MaintenanceSetting;
 use Illuminate\Support\Facades\Event;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use Logingrupa\StoreExtender\Classes\Event\Device\DeviceLayoutHandler;
 use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
 
@@ -21,10 +22,9 @@ use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
  * full request, because the Shopaholic schema does not build on SQLite and
  * the resulting 500 debug page starts with <html itself.
  *
- * Method declaration order is load-bearing. DeviceHint memoizes in a
- * process-wide static that has no reset by design, and PHPUnit runs the suite
- * in one process, so the three methods that assert wasConsulted() is false
- * are declared before the lifecycle method that turns it true.
+ * DeviceHint memoizes in a process-wide static that has no reset by design,
+ * so the one method that turns wasConsulted() true is isolated. The other
+ * three read the flag as false whatever order the suite runs in.
  */
 class DeviceLayoutHandlerTest extends StoreExtenderPluginTestCase
 {
@@ -114,12 +114,13 @@ class DeviceLayoutHandlerTest extends StoreExtenderPluginTestCase
     }
 
     /**
-     * One ordered method by necessity. DeviceHint memoizes in a process-wide
-     * static that D-13 deliberately gives no reset, and PHPUnit runs the
-     * suite in one process, so the false-to-true transition of wasConsulted()
-     * and the "memo held across a changed User-Agent" assertion can only be
-     * observed as a single sequence.
+     * One ordered sequence by necessity: DeviceHint memoizes in a process-wide
+     * static that D-13 deliberately gives no reset, so the false-to-true
+     * transition of wasConsulted() and the "memo held across a changed
+     * User-Agent" assertion can only be observed in one run. Its own process,
+     * so the static it writes is never read by another method.
      */
+    #[RunInSeparateProcess]
     public function testDeviceBranchLifecycleOnASharedStaticMemo()
     {
         request()->headers->set('User-Agent', self::UA_IPHONE_SAFARI);
