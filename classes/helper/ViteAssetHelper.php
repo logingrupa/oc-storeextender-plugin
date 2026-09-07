@@ -169,6 +169,13 @@ class ViteAssetHelper
         foreach (array_keys($arModulePreloadUrlList) as $sModulePreloadUrl) {
             $arHtmlLineList[] = '<link rel="modulepreload" href="'.e($sModulePreloadUrl).'">';
         }
+        $sEntryFile = (string) $arManifest[$sEntryKey]['file'];
+        if (!str_ends_with($sEntryFile, '.js')) {
+            throw new RuntimeException(
+                sprintf('vite_entry: entry "%s" resolves to "%s", which is not a script - use vite_style() for stylesheet entries', $sEntryKey, $sEntryFile)
+            );
+        }
+
         $arHtmlLineList[] = '<script type="module" src="'.e($sBuildBaseUrl.'/'.$arManifest[$sEntryKey]['file']).'"></script>';
 
         return implode("\n", $arHtmlLineList);

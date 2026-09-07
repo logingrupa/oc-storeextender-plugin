@@ -37,6 +37,41 @@ class ViteAssetHelperTest extends TestCase
                 'file' => 'assets/shared-Ab12Cd34.js',
                 'css' => ['assets/shared-Ij90Kl12.css'],
             ],
+            // Only for the ASSET-02 mirror case: a JS entry key whose file is
+            // a stylesheet, which buildEntryHtml() must refuse to emit.
+            'src/entries/mislabelled.js' => [
+                'file' => 'assets/mislabelled-DItFHviR.css',
+                'name' => 'mislabelled',
+                'isEntry' => true,
+            ],
+        ];
+    }
+
+    /**
+     * A CSS-only entry: a .scss listed directly in rollupOptions.input.
+     * Vite 8.2.0 keeps the source extension in the key and emits no JS
+     * chunk, no "imports" and no "css" array - the "file" IS the sheet.
+     * Shape verified by a probe build against the theme's own Vite, 2026-09-07.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    protected function getStyleManifestFixture(): array
+    {
+        return [
+            'src/css/chrome.scss' => [
+                'file' => 'assets/chrome-DItFHviR.css',
+                'name' => 'chrome',
+                'names' => ['chrome.css'],
+                'src' => 'src/css/chrome.scss',
+                'isEntry' => true,
+            ],
+            // The mismatch case ASSET-02 must throw on: a JS file where a
+            // stylesheet was asked for.
+            'src/css/broken.scss' => [
+                'file' => 'assets/broken-DItFHviR.js',
+                'name' => 'broken',
+                'isEntry' => true,
+            ],
         ];
     }
 
@@ -113,6 +148,65 @@ class ViteAssetHelperTest extends TestCase
         $this->expectExceptionMessage('manifest is empty');
 
         ViteAssetHelper::buildEntryHtml([], 'src/entries/core.js', self::BUILD_BASE_URL);
+    }
+
+    public function testBuildStyleHtmlRendersStylesheetLink()
+    {
+        $sHtml = ViteAssetHelper::buildStyleHtml($this->getStyleManifestFixture(), 'src/css/chrome.scss', self::BUILD_BASE_URL);
+
+        $this->assertSame(
+            '<link rel="stylesheet" href="'.self::BUILD_BASE_URL.'/assets/chrome-DItFHviR.css">',
+            $sHtml
+        );
+        $this->assertStringNotContainsString('<script', $sHtml);
+    }
+
+    public function testBuildStyleHtmlThrowsForMissingEntry()
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('src/css/missing.scss');
+
+        ViteAssetHelper::buildStyleHtml($this->getStyleManifestFixture(), 'src/css/missing.scss', self::BUILD_BASE_URL);
+    }
+
+    public function testBuildStyleHtmlThrowsForEmptyManifest()
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('manifest is empty');
+
+        ViteAssetHelper::buildStyleHtml([], 'src/css/chrome.scss', self::BUILD_BASE_URL);
+    }
+
+    public function testBuildStyleHtmlThrowsWhenManifestFileIsJavaScript()
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('src/css/broken.scss');
+
+        ViteAssetHelper::buildStyleHtml($this->getStyleManifestFixture(), 'src/css/broken.scss', self::BUILD_BASE_URL);
+    }
+
+    public function testBuildEntryHtmlThrowsWhenManifestFileIsStylesheet()
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('src/entries/mislabelled.js');
+
+        ViteAssetHelper::buildEntryHtml($this->getManifestFixture(), 'src/entries/mislabelled.js', self::BUILD_BASE_URL);
+    }
+
+    public function testRenderStyleThrowsForUppercaseEntryName()
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('vite_style: invalid entry name');
+
+        ViteAssetHelper::renderStyle('Chrome');
+    }
+
+    public function testRenderStyleThrowsForEntryNameStartingWithUnderscore()
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('vite_style: invalid entry name');
+
+        ViteAssetHelper::renderStyle('_chrome');
     }
 
     public function testBuildDevServerHtmlRendersViteClientAndEntryModule()
