@@ -227,7 +227,6 @@ class ViteAssetHelper
     {
         $arVisitedKeyList = [];
         $arQueueKeyList = [$sEntryKey];
-        $iManifestChunkCount = count($arManifest);
 
         while (!empty($arQueueKeyList)) {
             $sCurrentKey = array_shift($arQueueKeyList);
@@ -235,10 +234,6 @@ class ViteAssetHelper
                 continue;
             }
             $arVisitedKeyList[$sCurrentKey] = true;
-
-            if (count($arVisitedKeyList) > $iManifestChunkCount) {
-                throw new RuntimeException('vite_entry: manifest import graph exceeded manifest size - corrupt manifest');
-            }
 
             foreach ((array) ($arManifest[$sCurrentKey]['imports'] ?? []) as $sImportedKey) {
                 $arQueueKeyList[] = $sImportedKey;
