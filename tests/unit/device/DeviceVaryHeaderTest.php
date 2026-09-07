@@ -30,17 +30,21 @@ class DeviceVaryHeaderTest extends TestCase
 
     /**
      * @param DeviceVaryHeader $obMiddleware
-     * @param bool             $bSeedExistingVary seed a Vary set by another layer
+     * @param bool             $bSeedExistingVary  seed a Vary set by another layer
+     * @param string|null      $sSeedCacheControl  seed a Cache-Control set by another layer
      * @return Response
      */
-    protected function runMiddleware(DeviceVaryHeader $obMiddleware, bool $bSeedExistingVary): Response
+    protected function runMiddleware(DeviceVaryHeader $obMiddleware, bool $bSeedExistingVary, ?string $sSeedCacheControl = null): Response
     {
         $obRequest = Request::create('/lv/p2/some-slug/6405');
 
-        return $obMiddleware->handle($obRequest, function () use ($bSeedExistingVary) {
+        return $obMiddleware->handle($obRequest, function () use ($bSeedExistingVary, $sSeedCacheControl) {
             $obResponse = new Response('ok');
             if ($bSeedExistingVary) {
                 $obResponse->setVary(['Accept-Encoding']);
+            }
+            if ($sSeedCacheControl !== null) {
+                $obResponse->headers->set('Cache-Control', $sSeedCacheControl);
             }
 
             return $obResponse;
@@ -91,6 +95,20 @@ class DeviceVaryHeaderTest extends TestCase
         $obResponse = $this->runMiddleware(new ConsultedDeviceVaryHeaderStub(), false);
 
         $this->assertSame(self::PINNED_CACHE_CONTROL, $obResponse->headers->get('Cache-Control'));
+    }
+
+    /**
+     * A layer that forbade storage outright is stricter than the pinned value,
+     * so relaxing it into a storable response would be a privacy regression.
+     * Everything else the middleware does still applies.
+     */
+    public function testConsultedResponseKeepsAnUpstreamNoStore()
+    {
+        $obResponse = $this->runMiddleware(new ConsultedDeviceVaryHeaderStub(), false, 'no-store, private');
+
+        $this->assertTrue($obResponse->headers->hasCacheControlDirective('no-store'));
+        $this->assertNotSame(self::PINNED_CACHE_CONTROL, $obResponse->headers->get('Cache-Control'));
+        $this->assertContains('Sec-CH-UA-Mobile', $this->getVaryValueList($obResponse));
     }
 
     public function testUnconsultedResponseCarriesNoDeviceHeaders()

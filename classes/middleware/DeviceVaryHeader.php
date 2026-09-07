@@ -43,8 +43,11 @@ class DeviceVaryHeader
             // rather than adding a header. Chrome drops a page from the
             // back/forward cache only when storing it is forbidden outright,
             // which this value deliberately allows: catalog to product to
-            // back is the most common gesture on this shop.
-            $obResponse->headers->set('Cache-Control', 'private, max-age=0, must-revalidate');
+            // back is the most common gesture on this shop. A layer that
+            // forbade storage outright is stricter than this, so it stands.
+            if (!$obResponse->headers->hasCacheControlDirective('no-store')) {
+                $obResponse->headers->set('Cache-Control', 'private, max-age=0, must-revalidate');
+            }
         }
 
         return $obResponse;
