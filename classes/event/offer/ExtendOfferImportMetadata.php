@@ -71,15 +71,37 @@ class ExtendOfferImportMetadata
     }
 
     /**
+     * These listeners normalise what the feed sent. A field the mapping does
+     * not name is owned by someone else - GoodsReceived owns offer quantity on
+     * .lt and .no - and writing the key anyway handed Shopaholic an empty
+     * string, which its setQuantityField() cast to 0 over the stock (1523
+     * offers on .no, 620 on .lt, 2026-09-08). An absent key stays absent.
+     * @param array    $arImportData
+     * @param string   $sField
+     * @param callable $fnNormalize
+     * @return array
+     */
+    protected function normalizeField($arImportData, $sField, callable $fnNormalize)
+    {
+        if (!array_key_exists($sField, $arImportData)) {
+            return $arImportData;
+        }
+
+        $arImportData[$sField] = $fnNormalize(array_pull($arImportData, $sField));
+
+        return $arImportData;
+    }
+
+    /**
      * Fix quantity value - remove spaces from thousnds
      * @param array $arImportData
      * @return mixed
      */
     protected function fixQuantity($arImportData)
     {
-        $sQuantity = array_pull($arImportData, 'quantity');
-        $arImportData['quantity'] = preg_replace("/ /", "", (string) ($sQuantity ?? ''));
-        return $arImportData;
+        return $this->normalizeField($arImportData, 'quantity', function ($sQuantity) {
+            return preg_replace("/ /", "", (string) ($sQuantity ?? ''));
+        });
     }
 
     /**
@@ -89,11 +111,12 @@ class ExtendOfferImportMetadata
      */
     protected function fixVariationText($arImportData)
     {
-        $sOldVariation = array_pull($arImportData, 'variation');
-        $matches = null;
-        $sNewVariation = preg_match('/\((.*?)\)/', (string) ($sOldVariation ?? ''), $matches);
-        $arImportData['variation'] = (empty($matches)) ? null : $matches[1];
-        return $arImportData;
+        return $this->normalizeField($arImportData, 'variation', function ($sOldVariation) {
+            $matches = null;
+            preg_match('/\((.*?)\)/', (string) ($sOldVariation ?? ''), $matches);
+
+            return empty($matches) ? null : $matches[1];
+        });
     }
 
     /**
@@ -103,9 +126,9 @@ class ExtendOfferImportMetadata
      */
     protected function fixWeight($arImportData)
     {
-        $sWeight = array_pull($arImportData, 'weight');
-        $arImportData['weight'] = (is_numeric($sWeight) ? $sWeight : null);
-        return $arImportData;
+        return $this->normalizeField($arImportData, 'weight', function ($sWeight) {
+            return is_numeric($sWeight) ? $sWeight : null;
+        });
     }
 
     /**
@@ -115,9 +138,9 @@ class ExtendOfferImportMetadata
      */
     protected function fixHeight($arImportData)
     {
-        $sHeight = array_pull($arImportData, 'height');
-        $arImportData['height'] = (is_numeric($sHeight) ? $sHeight : null);
-        return $arImportData;
+        return $this->normalizeField($arImportData, 'height', function ($sHeight) {
+            return is_numeric($sHeight) ? $sHeight : null;
+        });
     }
 
     /**
@@ -127,9 +150,9 @@ class ExtendOfferImportMetadata
      */
     protected function fixLength($arImportData)
     {
-        $sLength = array_pull($arImportData, 'length');
-        $arImportData['length'] = (is_numeric($sLength) ? $sLength : null);
-        return $arImportData;
+        return $this->normalizeField($arImportData, 'length', function ($sLength) {
+            return is_numeric($sLength) ? $sLength : null;
+        });
     }
 
     /**
@@ -139,9 +162,9 @@ class ExtendOfferImportMetadata
      */
     protected function fixWidth($arImportData)
     {
-        $sWidth = array_pull($arImportData, 'width');
-        $arImportData['width'] = (is_numeric($sWidth) ? $sWidth : null);
-        return $arImportData;
+        return $this->normalizeField($arImportData, 'width', function ($sWidth) {
+            return is_numeric($sWidth) ? $sWidth : null;
+        });
     }
 
     /**

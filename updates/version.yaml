@@ -215,3 +215,6 @@
 
 2.0.76:
   - 'Offer color sync runs once a day at 07:00 Riga instead of hourly, and a new Settings page (Shopaholic, Offer color sync) shows the import state and runs the sync on demand. Colors change only after a manual curation on nailolab.com, which sleeps between requests, so the hourly poll mostly woke it for a 304. The client no longer logs the 304 and names FamilyApiClient in its own warnings.'
+
+2.0.77:
+  - 'A field the XML mapping does not name is no longer written by the PASS 1 metadata listeners. fixQuantity() pulled quantity and wrote the key back unconditionally, so an unmapped quantity arrived as an empty string; Shopaholic setQuantityField() only guards against null and cast it to 0 over the stock. The 2026-09-08 import zeroed 1523 offers on .no (62458 units, restored from the 09:00 backup) and 620 on .lt, both shops where GoodsReceived owns the stock and quantity is deliberately unmapped. The same hole was in the variation, weight, height, length and width fixers, which forced null onto every unmapped row. All six now run through one guard that leaves an absent key absent, and .lv keeps its mapped quantity from the 1C stock node.'
