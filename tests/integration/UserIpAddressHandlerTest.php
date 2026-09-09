@@ -9,6 +9,7 @@ use Logingrupa\StoreExtender\Classes\Event\User\UserIpAddressHandler;
 /**
  * The rainlab.user.login seam is the only writer of last_ip_address after
  * registration; RainLab's own touchIpAddress() has no caller inside the plugin.
+ * AccountCartIdentityHandler shares the seam, hence the cart tables.
  */
 class UserIpAddressHandlerTest extends StoreExtenderUserPluginTestCase
 {
@@ -17,6 +18,14 @@ class UserIpAddressHandlerTest extends StoreExtenderUserPluginTestCase
         parent::setUp();
 
         $this->skipUnlessUserPlugin('RainLab.User');
+        $this->createCartTables();
+    }
+
+    public function tearDown(): void
+    {
+        $this->dropCartTables();
+
+        parent::tearDown();
     }
 
     public function testLoginTouchesLastIpAddress()

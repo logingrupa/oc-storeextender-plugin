@@ -46,6 +46,7 @@ use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserController;
 use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserPropertyFieldHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\RainLabRegistrationHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\UserIpAddressHandler;
+use Logingrupa\StoreExtender\Classes\Event\User\AccountCartIdentityHandler;
 use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
 
 //Cart component events
@@ -212,6 +213,9 @@ class Plugin extends PluginBase
         Event::subscribe(ExtendUserPropertyFieldHandler::class);
         Event::subscribe(RainLabRegistrationHandler::class);
         Event::subscribe(UserIpAddressHandler::class);
+        //Account contact fields onto the cart row at login, registration and logout,
+        //so a signed-out visitor keeps the checkout prefill and the Meta identity
+        Event::subscribe(AccountCartIdentityHandler::class);
         //Cart component events
         Event::subscribe(CartComponentHandler::class);
         //Meta Purchase value = margin (order total minus izpl cost), via

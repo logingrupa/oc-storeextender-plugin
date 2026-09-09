@@ -33,32 +33,14 @@ class GuestCheckoutIdentityHandlerTest extends StoreExtenderUserPluginTestCase
         parent::setUp();
 
         $this->skipUnlessUserPlugin('RainLab.User');
-
-        Schema::create('lovata_orders_shopaholic_carts', function ($obTable) {
-            $obTable->increments('id');
-            $obTable->integer('user_id')->nullable();
-            $obTable->text('user_data')->nullable();
-            $obTable->timestamps();
-        });
-        Schema::create('lovata_orders_shopaholic_cart_positions', function ($obTable) {
-            $obTable->increments('id');
-            $obTable->integer('cart_id')->default(0);
-            $obTable->integer('item_id')->default(0);
-            $obTable->string('item_type')->default('Lovata\Shopaholic\Models\Offer');
-            $obTable->integer('quantity')->default(0);
-            $obTable->timestamps();
-            $obTable->timestamp('deleted_at')->nullable();
-        });
+        $this->createCartTables();
 
         MetapixelSettings::set(['account_identity_enabled' => true, 'account_phone_dial_code' => '371']);
     }
 
     public function tearDown(): void
     {
-        CartProcessor::$iTestCartID = null;
-        CartProcessor::forgetInstance();
-        Schema::dropIfExists('lovata_orders_shopaholic_carts');
-        Schema::dropIfExists('lovata_orders_shopaholic_cart_positions');
+        $this->dropCartTables();
 
         parent::tearDown();
     }
