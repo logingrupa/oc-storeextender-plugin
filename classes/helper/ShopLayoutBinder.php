@@ -3,6 +3,7 @@
 use Request;
 use BackendAuth;
 use Cms\Classes\ComponentManager;
+use Lovata\Toolbox\Classes\Helper\UserHelper;
 use Lovata\Shopaholic\Classes\Helper\CurrencyHelper;
 use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
 
@@ -38,6 +39,10 @@ class ShopLayoutBinder
         if (empty($obLayout)) {
             throw new \InvalidArgumentException('ShopLayoutBinder::bind() needs the layout object');
         }
+
+        // First, before any UserHelper read: CartStateReader and the
+        // ActivePriceHelper singleton both resolve the shopper through it
+        self::primeUserGuard();
 
         $obLayout['cart_is_available'] = false;
         $obLayout['showEditButton'] = false;
@@ -76,6 +81,22 @@ class ShopLayoutBinder
         } else {
             $obLayout['bPriceIncludesVAT'] = false;
         }
+    }
+
+    /**
+     * Load the session user into the auth guard. On RainLab.User the guard's
+     * getUser() answers only the user already loaded in this request, so a read
+     * through UserHelper before check() sees a guest.
+     * @return void
+     */
+    protected static function primeUserGuard()
+    {
+        $sAuthFacadeClass = UserHelper::instance()->getAuthFacade();
+        if (empty($sAuthFacadeClass)) {
+            return;
+        }
+
+        $sAuthFacadeClass::check();
     }
 
     /**
