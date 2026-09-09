@@ -1,6 +1,5 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Helper;
 
-use Illuminate\Support\Facades\DB;
 use October\Rain\Support\Traits\Singleton;
 
 use Lovata\Toolbox\Classes\Helper\UserHelper;
@@ -9,10 +8,9 @@ use Lovata\Toolbox\Classes\Helper\UserHelper;
  * Class UserPhoneLookup
  * @package Logingrupa\StoreExtender\Classes\Helper
  *
- * Answers one question: does any account already hold this phone number.
- *
- * It deliberately returns nothing but a boolean. The checkout form is public, so anything
- * richer would turn it into a lookup service that maps a phone number to a customer.
+ * Resolves the accounts holding a phone number. The public checkout check only
+ * ever exposes exists(): a boolean. findUsers() serves the server-side login by
+ * phone (PhoneLoginHandler), where the password check decides which match wins.
  *
  * Matching runs on "phone_short", the digits-and-plus form both user models derive from
  * "phone" on save. That column holds a comma delimited list, because accounts migrated from
@@ -41,22 +39,30 @@ class UserPhoneLookup
      */
     public function exists($sPhone)
     {
+        $obUserList = $this->findUsers($sPhone);
+
+        return $obUserList !== null && $obUserList->isNotEmpty();
+    }
+
+    /**
+     * Every live account whose phone list holds the number; null when the input is
+     * too short to ask or no user plugin is active.
+     * @param string $sPhone raw, as typed
+     * @return \October\Rain\Database\Collection|null
+     */
+    public function findUsers($sPhone)
+    {
         $sNormalized = $this->normalize($sPhone);
         if (!$this->isLongEnough($sNormalized)) {
-            return false;
+            return null;
         }
 
         $sUserModelClass = UserHelper::instance()->getUserModel();
         if (empty($sUserModelClass)) {
-            return false;
+            return null;
         }
 
-        $obUserModel = new $sUserModelClass();
-
-        return DB::table($obUserModel->getTable())
-            ->whereNull('deleted_at')
-            ->whereRaw('FIND_IN_SET(?, `phone_short`)', [$sNormalized])
-            ->exists();
+        return $sUserModelClass::whereRaw('FIND_IN_SET(?, `phone_short`)', [$sNormalized])->get();
     }
 
     /**

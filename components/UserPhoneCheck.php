@@ -12,11 +12,11 @@ use Logingrupa\StoreExtender\Classes\Helper\UserPhoneLookup;
  * Class UserPhoneCheck
  * @package Logingrupa\StoreExtender\Components
  *
- * Tells the checkout form whether the phone number just typed already belongs to an account,
- * so the visitor is offered a login instead of silently creating a duplicate.
+ * Tells the checkout form whether the phone number or email just typed already belongs to
+ * an account, so the visitor is offered a login instead of silently creating a duplicate.
  *
- * The response is a bare boolean. Because the endpoint is public it is also rate limited per
- * address: without that it would be a phone number enumeration oracle.
+ * Each response is a bare boolean. Because the endpoint is public it is also rate limited per
+ * address: without that it would be a phone number and email enumeration oracle.
  */
 class UserPhoneCheck extends ComponentBase
 {
@@ -30,7 +30,7 @@ class UserPhoneCheck extends ComponentBase
     {
         return [
             'name' => 'User phone check',
-            'description' => 'Answers whether a phone number already belongs to an account',
+            'description' => 'Answers whether a phone number or email already belongs to an account',
         ];
     }
 
@@ -39,11 +39,6 @@ class UserPhoneCheck extends ComponentBase
      */
     public function onCheckPhone()
     {
-        // A signed in visitor is not about to create a duplicate account.
-        if (!empty(UserHelper::instance()->getUser())) {
-            return ['exists' => false];
-        }
-
         $sPhone = (string) input('phone');
         $obLookup = UserPhoneLookup::instance();
 
@@ -52,9 +47,38 @@ class UserPhoneCheck extends ComponentBase
             return ['exists' => false];
         }
 
+        return $this->answer(fn (): bool => $obLookup->exists($sPhone));
+    }
+
+    /**
+     * @return array
+     */
+    public function onCheckEmail()
+    {
+        $sEmail = trim((string) input('email'));
+
+        // Not an address yet: never a match, not worth an attempt.
+        if (filter_var($sEmail, FILTER_VALIDATE_EMAIL) === false) {
+            return ['exists' => false];
+        }
+
+        return $this->answer(fn (): bool => !empty(UserHelper::instance()->findUserByEmail($sEmail)));
+    }
+
+    /**
+     * @param callable $fnExists
+     * @return array
+     */
+    protected function answer(callable $fnExists): array
+    {
+        // A signed in visitor is not about to create a duplicate account.
+        if (!empty(UserHelper::instance()->getUser())) {
+            return ['exists' => false];
+        }
+
         $this->assertNotThrottled();
 
-        return ['exists' => $obLookup->exists($sPhone)];
+        return ['exists' => (bool) $fnExists()];
     }
 
     /**
@@ -62,7 +86,7 @@ class UserPhoneCheck extends ComponentBase
      */
     protected function assertNotThrottled()
     {
-        $obLimiter = new RateLimiter('phone-check:'.Request::ip());
+        $obLimiter = new RateLimiter('account-check:'.Request::ip());
 
         if ($obLimiter->tooManyAttempts(self::RATE_LIMIT_ATTEMPTS)) {
             throw new ApplicationException('Too many lookups. Please try again in '.$obLimiter->availableIn().' seconds.');
