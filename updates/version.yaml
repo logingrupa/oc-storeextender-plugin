@@ -228,3 +228,5 @@
   - seed_slug_history_2026_09.php
 2.0.81:
   - 'The login form accepts a phone number in the email field (PhoneLoginHandler on rainlab.user.beforeAuthenticate): the checkout hands the typed phone to the login page, the password decides which of the accounts sharing that number signs in, and the matching email never leaves the server. UserPhoneCheck gained onCheckEmail with the same bare boolean and rate limit, so the checkout can offer a login for a known email as well.'
+2.0.82:
+  - 'OfferSheet: every product with more than one visible shade gets the sheet (the gate was INLINE_LIMIT, 12); INLINE_LIMIT still sizes the strip window and the batch caps.'
