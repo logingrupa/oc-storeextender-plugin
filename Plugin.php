@@ -61,6 +61,8 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
 use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
+use Logingrupa\StoreExtender\Classes\Event\Seo\SlugHistoryHandler;
+use Logingrupa\StoreExtender\Classes\Event\Seo\LegacyUrlRedirectHandler;
 use Logingrupa\StoreExtender\Classes\Event\Review\ReviewValidationHandler;
 
 //CartPosition events
@@ -90,6 +92,7 @@ use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
+use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
@@ -235,6 +238,8 @@ class Plugin extends PluginBase
         //the parent save no longer does it for them
         Event::subscribe(SatelliteCacheInvalidationHandler::class);
         Event::subscribe(EqualOldPriceHandler::class);
+        Event::subscribe(SlugHistoryHandler::class);
+        Event::subscribe(LegacyUrlRedirectHandler::class);
         Event::subscribe(ReviewValidationHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
@@ -682,6 +687,9 @@ class Plugin extends PluginBase
                 // schema.org Product JSON for the product page: offers only
                 // when a sellable offer exists, ratings only from real reviews
                 'product_json_ld' => [ProductStructuredData::class, 'render'],
+                // Cross-domain hreflang: does the other shop list this URL
+                // in its sitemap; fails closed when the sitemap is unreadable
+                'shop_has_url' => [SiblingShopSitemap::class, 'hasUrl'],
                 // Color Family storefront queries: the ?color= offer filter
                 // and the search-sheet family pill row
                 'color_family_offer_filter' => [ColorFamilyHelper::class, 'filterOfferIds'],
