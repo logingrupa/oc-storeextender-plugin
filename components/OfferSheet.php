@@ -34,7 +34,7 @@ class OfferSheet extends ComponentBase
     const CACHE_KEY_EPOCH = 'hr.sheet.epoch';
     const CACHE_TTL_MINUTES = 10;
 
-    /** Shades the product page shows inline before the sheet takes over */
+    /** Shades the product page strip windows to; the rest live in the sheet */
     const INLINE_LIMIT = 12;
 
     /** Shades kept before the selected one when the strip is windowed */
@@ -706,8 +706,9 @@ class OfferSheet extends ComponentBase
      * Data for the inline swatch row on the product page in color-family
      * order. Family filter active: ALL of that family's shades inline.
      * No filter: a window of N shades centered on the selected offer
-     * (5 before, 6 after). Products with few shades show everything inline
-     * and get no sheet trigger.
+     * (5 before, 6 after). Every multi-shade product gets the sheet trigger;
+     * with 12 shades or fewer the strip already holds them all, so the trigger
+     * is the 'All shades' opener alone and no +N chip is drawn.
      *
      * Only the PAGE render passes a selected offer, and only because a shared
      * /p/<slug>/<offer> link has to open with its shade on the strip. Every
@@ -729,7 +730,7 @@ class OfferSheet extends ComponentBase
     ): array {
         $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideOutOfStock);
         $iTotalCount = count($arVisibleList);
-        $bUseSheet = $iTotalCount > self::INLINE_LIMIT;
+        $bUseSheet = $iTotalCount > 1;
 
         $sActiveFamily = $bUseSheet
             ? $this->resolveActiveFamily($arVisibleList, $sFamilyFilter, $bOfferIsExplicit ? $iSelectedOfferId : 0)
