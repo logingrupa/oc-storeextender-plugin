@@ -27,9 +27,39 @@ class UserPhoneCheckTest extends StoreExtenderUserPluginTestCase
         return (new UserPhoneCheck())->onCheckPhone();
     }
 
+    protected function callEmailHandler($sEmail)
+    {
+        request()->server->set('REQUEST_METHOD', 'POST');
+        request()->setMethod('POST');
+        request()->request->replace(['email' => $sEmail]);
+
+        return (new UserPhoneCheck())->onCheckEmail();
+    }
+
     protected function limiter()
     {
-        return new RateLimiter('phone-check:'.request()->ip());
+        return new RateLimiter('account-check:'.request()->ip());
+    }
+
+    public function testKnownEmailAnswersTrueAndUnknownFalse()
+    {
+        \RainLab\User\Models\User::create([
+            'email'                 => 'taken@nc.test',
+            'first_name'            => 'Anna',
+            'password'              => 'Probe12345',
+            'password_confirmation' => 'Probe12345',
+        ]);
+
+        $this->assertSame(['exists' => true], $this->callEmailHandler(' taken@nc.test '));
+        $this->assertSame(['exists' => false], $this->callEmailHandler('free@nc.test'));
+        $this->assertSame(2, $this->limiter()->attempts(), 'both fields share one address budget');
+    }
+
+    public function testMalformedEmailAnswersFalseWithoutConsumingTheRateLimit()
+    {
+        $this->assertSame(['exists' => false], $this->callEmailHandler('not-an-address'));
+        $this->assertSame(['exists' => false], $this->callEmailHandler(''));
+        $this->assertSame(0, $this->limiter()->attempts());
     }
 
     public function testShortInputAnswersABareFalseWithoutConsumingTheRateLimit()

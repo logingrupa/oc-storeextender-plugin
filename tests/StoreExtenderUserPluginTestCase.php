@@ -2,8 +2,10 @@
 
 require_once __DIR__.'/StoreExtenderPluginTestCase.php';
 
+use Illuminate\Support\Facades\Schema;
 use System\Classes\UpdateManager;
 
+use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 use Lovata\Toolbox\Classes\Helper\UserHelper;
 
 /**
@@ -71,6 +73,42 @@ abstract class StoreExtenderUserPluginTestCase extends StoreExtenderPluginTestCa
         (new \Logingrupa\StoreExtender\Updates\UpdateTableUsersAddBuddiesColumns())->up();
         (new \Logingrupa\StoreExtender\Updates\UpdateTableUserGroupsAddPriceTypeId())->up();
         (new \Logingrupa\StoreExtender\Updates\CreateTableUserProperties())->up();
+    }
+
+    /**
+     * Hermetic cart tables for the listeners on rainlab.user.login/register/logout
+     * and the cart identity readers; the Shopaholic migration chain is not run here.
+     * @return void
+     */
+    protected function createCartTables()
+    {
+        Schema::create('lovata_orders_shopaholic_carts', function ($obTable) {
+            $obTable->increments('id');
+            $obTable->integer('user_id')->nullable();
+            $obTable->string('email')->nullable();
+            $obTable->text('user_data')->nullable();
+            $obTable->timestamps();
+        });
+        Schema::create('lovata_orders_shopaholic_cart_positions', function ($obTable) {
+            $obTable->increments('id');
+            $obTable->integer('cart_id')->default(0);
+            $obTable->integer('item_id')->default(0);
+            $obTable->string('item_type')->default('Lovata\Shopaholic\Models\Offer');
+            $obTable->integer('quantity')->default(0);
+            $obTable->timestamps();
+            $obTable->timestamp('deleted_at')->nullable();
+        });
+    }
+
+    /**
+     * @return void
+     */
+    protected function dropCartTables()
+    {
+        CartProcessor::$iTestCartID = null;
+        CartProcessor::forgetInstance();
+        Schema::dropIfExists('lovata_orders_shopaholic_carts');
+        Schema::dropIfExists('lovata_orders_shopaholic_cart_positions');
     }
 
     /**
