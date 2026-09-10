@@ -222,5 +222,11 @@
   - 'SafeAjaxResponse keeps only what Larajax 3.0 does not do. Larajax now reports the unintended exception and replaces its message with debug off, so the plugin was doing both a second time and every such exception reached the log twice. What is left is the Twig unwrap, since an exception thrown while rendering a partial arrives wrapped and would otherwise be classified as the wrapper, and a safeMessage() override that returns October error policy so the generic text is translated instead of the hard-coded "Server Error".'
 2.0.79:
   - 'Login, registration and logout copy the account name, last name, email and phone onto the account cart row (AccountCartIdentityHandler). A logged-in checkout never posts Cart::onSaveData, so the row of an account holder stayed empty and a signed-out visitor got neither the checkout prefill nor the Meta identity that a guest keeps from typing the same fields.'
+2.0.80:
+  - 'Dead catalogue URLs redirect instead of 404. A slug history table records every product and category slug change from whatever wrote it (backend, 1C import, console), and LegacyUrlRedirectHandler turns the 404 a catalogue or product page is about to serve into a 301: a retired product slug goes to its live slug, a category that was switched off, moved or renamed goes to its current path or the nearest active ancestor. Seeded with the seven product renames the Search Console 404 report of 2026-09-09 exposed, only where the new slug exists on the install.'
+  - create_table_slug_history.php
+  - seed_slug_history_2026_09.php
 2.0.81:
   - 'The login form accepts a phone number in the email field (PhoneLoginHandler on rainlab.user.beforeAuthenticate): the checkout hands the typed phone to the login page, the password decides which of the accounts sharing that number signs in, and the matching email never leaves the server. UserPhoneCheck gained onCheckEmail with the same bare boolean and rate limit, so the checkout can offer a login for a known email as well.'
+2.0.82:
+  - 'OfferSheet: every product with more than one visible shade gets the sheet (the gate was INLINE_LIMIT, 12); INLINE_LIMIT still sizes the strip window and the batch caps.'
