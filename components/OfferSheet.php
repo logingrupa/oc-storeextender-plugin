@@ -246,7 +246,11 @@ class OfferSheet extends ComponentBase
             'arOfferList' => $this->renderOfferBatchList(
                 $obProductItem,
                 array_map(fn ($iOfferId) => OfferItem::make($iOfferId), $arOfferIdList),
-                $this->readBatchPartialList()
+                $this->readBatchPartialList(),
+                // Display preference only (sold-out shades), mirrored from the
+                // rendered strip: it decides which list the swatch's global
+                // index is a position in
+                (bool) input('hide_oos')
             ),
             'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
@@ -269,13 +273,15 @@ class OfferSheet extends ComponentBase
      *
      * @param OfferItem[] $arOfferItemList
      * @param string[]    $arPartialPathList
+     * @param bool        $bHideSoldOut the flag the strip was rendered with
      *
      * @return array
      */
     protected function renderOfferBatchList(
         ProductItem $obProductItem,
         array $arOfferItemList,
-        array $arPartialPathList
+        array $arPartialPathList,
+        bool $bHideSoldOut
     ): array {
         if (empty($arOfferItemList) || empty($arPartialPathList)) {
             return [];
@@ -284,6 +290,9 @@ class OfferSheet extends ComponentBase
         // hoisted: the product's offer count is the same for all twelve shades,
         // and a value that cannot vary across a loop has no business inside it
         $iOfferTotalCount = $obProductItem->offer->count();
+        // hoisted for the same reason: one ordered row list serves every
+        // shade's global index lookup
+        $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
 
         $arOfferList = [];
         foreach ($arOfferItemList as $obOfferItem) {
@@ -294,7 +303,12 @@ class OfferSheet extends ComponentBase
                 'iOfferId' => $obOfferItem->id,
                 'arPartialList' => $this->renderOfferPartialList($obProductItem, $obOfferItem, $arPartialPathList),
                 'arImageList' => $this->getOfferImageList($obOfferItem),
-                'sSwatchHtml' => $this->renderSwatchHtml($obProductItem, $obOfferItem, $iOfferTotalCount),
+                'sSwatchHtml' => $this->renderSwatchHtml(
+                    $obProductItem,
+                    $obOfferItem,
+                    $iOfferTotalCount,
+                    $this->findVisibleRowIndex($arVisibleList, (int) $obOfferItem->id)
+                ),
             ];
         }
 
@@ -405,11 +419,19 @@ class OfferSheet extends ComponentBase
      * The total count is passed in rather than read here, because it is the same
      * for every shade in the batch. The partial only uses it to decide whether
      * SKU-<product> carries an offer suffix.
+     *
+     * The index is passed in for the opposite reason: it differs per shade, and
+     * it is a position in the ordered row list the CALLER built under the
+     * caller's own sold-out preference. A batch of one starts at that shade, so
+     * the partial's iFirstIndex is this shade's own global index.
+     *
+     * @param int $iFirstIndex position of this shade in the visible row list
      */
     protected function renderSwatchHtml(
         ProductItem $obProductItem,
         OfferItem $obOfferItem,
-        int $iOfferTotalCount
+        int $iOfferTotalCount,
+        int $iFirstIndex
     ): string {
         return trim((string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
             'obProduct' => $obProductItem,
@@ -417,6 +439,7 @@ class OfferSheet extends ComponentBase
             'iTotalCount' => $iOfferTotalCount,
             'bUseSheet' => false,
             'iSelectedOfferId' => 0,
+            'iFirstIndex' => $iFirstIndex,
         ]));
     }
 
@@ -521,7 +544,8 @@ class OfferSheet extends ComponentBase
                 ? $this->renderOfferBatchList(
                     $obProductItem,
                     array_slice($arSwatchData['arOfferItemList'], 0, self::INLINE_LIMIT),
-                    $this->readBatchPartialList()
+                    $this->readBatchPartialList(),
+                    $bHideSoldOut
                 )
                 : [],
             'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
@@ -564,6 +588,7 @@ class OfferSheet extends ComponentBase
             'iTotalCount' => $arSwatchData['iTotalCount'],
             'bUseSheet' => $arSwatchData['bUseSheet'],
             'iSelectedOfferId' => 0,
+            'iFirstIndex' => $arSwatchData['iFirstIndex'],
         ]);
         CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
 
@@ -719,7 +744,11 @@ class OfferSheet extends ComponentBase
      * Conflict rule for shared URLs: an EXPLICIT offer segment wins over the
      * family query param - the filter snaps to the offer's family.
      *
-     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, bUseSheet: bool, arFamilyChipList: array, sActiveFamily: string}
+     * iFirstIndex is where the rendered window starts in the visible row list.
+     * The strip labels number themselves from it, so a window opening on shade
+     * six numbers its first circle six and not zero.
+     *
+     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, iFirstIndex: int, bUseSheet: bool, arFamilyChipList: array, sActiveFamily: string}
      */
     public function getInlineSwatchData(
         ProductItem $obProductItem,
@@ -742,6 +771,9 @@ class OfferSheet extends ComponentBase
         return [
             'arOfferItemList' => $this->makeOfferItemList($arShownRowList),
             'iTotalCount' => $iTotalCount,
+            'iFirstIndex' => !empty($arShownRowList)
+                ? $this->findVisibleRowIndex($arVisibleList, (int) $arShownRowList[0]['iOfferId'])
+                : 0,
             'bUseSheet' => $bUseSheet,
             'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($obProductItem) : [],
             'sActiveFamily' => $sActiveFamily,
@@ -773,6 +805,29 @@ class OfferSheet extends ComponentBase
         }
 
         return $arVisibleList;
+    }
+
+    /**
+     * Position of one shade in the visible row list.
+     *
+     * The list is the ordered, sold-out-filtered one every strip window is a
+     * slice of, and its length is the counter denominator the page renders, so
+     * this position is the number a swatch label carries.
+     *
+     * An id that is not in the list answers 0, the same fallback
+     * getWindowedRowList() takes for an unknown selection: the ids come from
+     * the product's own row list, so a miss is a signal, not a state to design
+     * around.
+     */
+    protected function findVisibleRowIndex(array $arVisibleList, int $iOfferId): int
+    {
+        foreach ($arVisibleList as $iIndex => $arEntry) {
+            if ($arEntry['iOfferId'] === $iOfferId) {
+                return $iIndex;
+            }
+        }
+
+        return 0;
     }
 
     /**
