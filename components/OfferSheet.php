@@ -959,6 +959,8 @@ class OfferSheet extends ComponentBase
             (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
             (string) (PriceTypeHelper::instance()->getActivePriceTypeCode() ?: 'base'),
             $sColorVersion !== '' ? $sColorVersion : 'plain',
+            // Rendered offer URLs are page-relative from this phase on
+            (string) ($this->page ? $this->page->id : 'nopage'),
         ];
     }
 
