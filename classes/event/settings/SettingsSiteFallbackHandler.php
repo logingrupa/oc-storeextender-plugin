@@ -45,6 +45,7 @@ class SettingsSiteFallbackHandler
         \Lovata\Toolbox\Models\Settings::class,
         \Lovata\Shopaholic\Models\XmlImportSettings::class,
         \Logingrupa\GoodsReceivedShopaholic\Models\Settings::class,
+        \Lovata\MightySeo\Models\Settings::class,
     ];
 
     /**

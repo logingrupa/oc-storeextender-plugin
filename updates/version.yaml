@@ -232,3 +232,5 @@
   - 'OfferSheet: every product with more than one visible shade gets the sheet (the gate was INLINE_LIMIT, 12); INLINE_LIMIT still sizes the strip window and the batch caps.'
 2.0.83:
   - 'ClearShadowCartCookie stops the ancestor path list at the first URL segment a cookie path cannot hold (comma, semicolon, whitespace): the /api/v2/price-list/<tokens> pages 500ed for a browser carrying a broken cart cookie because Symfony refused the expiry cookie path.'
+2.0.84:
+  - 'SettingsSiteFallbackHandler also covers the MightySeo settings: the title prefix and suffix and the head/body snippets are site-scoped rows, so every non-primary site (en and ru on .lv) rendered titles without "| NAILS cosmetics" and without the analytics snippets.'
