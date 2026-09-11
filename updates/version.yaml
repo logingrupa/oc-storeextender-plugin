@@ -230,3 +230,5 @@
   - 'The login form accepts a phone number in the email field (PhoneLoginHandler on rainlab.user.beforeAuthenticate): the checkout hands the typed phone to the login page, the password decides which of the accounts sharing that number signs in, and the matching email never leaves the server. UserPhoneCheck gained onCheckEmail with the same bare boolean and rate limit, so the checkout can offer a login for a known email as well.'
 2.0.82:
   - 'OfferSheet: every product with more than one visible shade gets the sheet (the gate was INLINE_LIMIT, 12); INLINE_LIMIT still sizes the strip window and the batch caps.'
+2.0.83:
+  - 'ClearShadowCartCookie stops the ancestor path list at the first URL segment a cookie path cannot hold (comma, semicolon, whitespace): the /api/v2/price-list/<tokens> pages 500ed for a browser carrying a broken cart cookie because Symfony refused the expiry cookie path.'

@@ -37,6 +37,9 @@ class ClearShadowCartCookie
     /** @var int Sane bound: no shop URL nests deeper than this */
     const MAX_PATH_DEPTH = 6;
 
+    /** @var string Characters setcookie() and Symfony refuse in a cookie path */
+    const COOKIE_PATH_RESERVED_CHARS = ",; \t\r\n\v\f";
+
     /**
      * @param \Illuminate\Http\Request $obRequest
      * @param \Closure                 $obNext
@@ -136,6 +139,9 @@ class ClearShadowCartCookie
         $arPathList = [];
         $sPath = '';
         foreach ($arSegmentList as $sSegment) {
+            if (strpbrk($sSegment, self::COOKIE_PATH_RESERVED_CHARS) !== false) {
+                break; // setcookie() rejects such a path, so no cookie was ever stored under it
+            }
             $sPath .= '/'.$sSegment;
             $arPathList[] = $sPath;
         }
