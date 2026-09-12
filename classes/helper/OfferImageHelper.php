@@ -36,6 +36,8 @@ use October\Rain\Database\Attach\File;
  * Twig, registered in Plugin::registerMarkupTags():
  *   {{ offer_swatch_src(obOffer.preview_image) }}
  *   {{ offer_preview_src(obOffer.preview_image) }}
+ *   {{ offer_hero_src(obOffer.preview_image) }}
+ *   {{ offer_hero_warm_src(obOffer.preview_image) }}   empty unless warmed
  */
 class OfferImageHelper
 {
@@ -95,16 +97,60 @@ class OfferImageHelper
             return '';
         }
 
-        $arOptions = [
-            'mode'      => 'auto',
-            'quality'   => self::HERO_QUALITY,
-            'extension' => self::THUMB_EXTENSION,
-        ];
+        $arOptions = self::getHeroThumbOptions();
         if ((int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT) {
             return (string) $obImage->getThumb(self::HERO_SMALL_WIDTH, 'auto', $arOptions);
         }
 
         return (string) $obImage->getThumb(self::HERO_WIDTH, self::HERO_HEIGHT, $arOptions);
+    }
+
+    /**
+     * The resizer options of the hero slot. Public so a test can pin the shape,
+     * and shared so hero() and heroIfWarm() can never name a different
+     * derivative for the same picture.
+     *
+     * @return array{mode: string, quality: int, extension: string}
+     */
+    public static function getHeroThumbOptions(): array
+    {
+        return [
+            'mode'      => 'auto',
+            'quality'   => self::HERO_QUALITY,
+            'extension' => self::THUMB_EXTENSION,
+        ];
+    }
+
+    /**
+     * The hero URL when the derivative is already on disk, and an empty string
+     * when it is not.
+     *
+     * NEVER RESIZES. hero() above goes through File::getThumbUrl(), which
+     * generates a missing derivative inside the request that asked for it -
+     * measured at 167ms per picture, 36s for the 218 shades one rail render
+     * carries. This one looks the file up and gives up instead, so a caller that
+     * renders hundreds of labels costs one storage existence check each and the
+     * cold shades fall back to whatever picture the caller already had.
+     *
+     * Warming is storeextender:warm-offer-thumbs' job (PERF-05).
+     */
+    public static function heroIfWarm(?File $obImage): string
+    {
+        if ($obImage === null || !$obImage->isImage()) {
+            return '';
+        }
+
+        $arOptions = self::getHeroThumbOptions();
+        $bSmallSource = (int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT;
+        $iWidth = $bSmallSource ? self::HERO_SMALL_WIDTH : self::HERO_WIDTH;
+        $iHeight = $bSmallSource ? 0 : self::HERO_HEIGHT;
+
+        $sThumbFileName = $obImage->getThumbFilename($iWidth, $iHeight, $arOptions);
+        if (!$obImage->getDisk()->exists($obImage->getDiskPath($sThumbFileName))) {
+            return '';
+        }
+
+        return (string) $obImage->getPath($sThumbFileName);
     }
 
     /**

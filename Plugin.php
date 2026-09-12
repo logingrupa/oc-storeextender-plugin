@@ -691,6 +691,10 @@ class Plugin extends PluginBase
                 'offer_swatch_src' => [OfferImageHelper::class, 'swatch'],
                 'offer_preview_src' => [OfferImageHelper::class, 'preview'],
                 'offer_hero_src' => [OfferImageHelper::class, 'hero'],
+                // The same hero URL, but only when the derivative already
+                // exists: a template that renders hundreds of labels may not
+                // pay a resize per picture
+                'offer_hero_warm_src' => [OfferImageHelper::class, 'heroIfWarm'],
                 // Which offer a product-card fragment renders - decided in ONE
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render

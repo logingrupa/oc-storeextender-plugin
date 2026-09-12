@@ -18,6 +18,11 @@ use ReflectionClass;
  * slices the same row list, so a change to colour-family ordering cannot
  * reshuffle a page the shopper has already swiped past without failing here.
  *
+ * That slice has two lengths. A page that carries fragments stays at
+ * INLINE_LIMIT; a `rest` page carries every shade left and no fragments, which
+ * is the one request the phone rail makes. isWindowListComplete is what tells
+ * the client which of the two it received, so the second one is never asked for.
+ *
  * No CMS: the component is instantiated without its constructor, because
  * nothing here touches the controller or the component properties.
  */
@@ -235,6 +240,79 @@ class OfferSheetWindowTest extends TestCase
         // a page composed against the unfiltered list would carry these
         $this->assertNotContains(1002, $arWindowIdList);
         $this->assertNotContains(1005, $arWindowIdList);
+    }
+
+    public function testTheRestOfTheListIsOnePageFromTheHeadOfTheRenderedWindow()
+    {
+        $arRowList = $this->makeRowList(230); // ids 1000..1229
+
+        // the last shade the opening 12-shade strip renders
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1011, true]);
+
+        $this->assertCount(218, $arWindow);
+        $this->assertSame(1012, $arWindow[0]['iOfferId']);
+        $this->assertSame(1229, $arWindow[count($arWindow) - 1]['iOfferId']);
+        $this->assertSame(range(1012, 1229), $this->readOfferIdList($arWindow));
+    }
+
+    public function testTheRestOfTheListAfterTheLastShadeIsEmpty()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $this->assertSame([], $this->call('getWindowAfterRowList', [$arRowList, 1229, true]));
+    }
+
+    public function testTheRestOfTheListIsRefusedForAShadeTheListDoesNotHold()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $this->assertNull($this->call('getWindowAfterRowList', [$arRowList, 9999, true]));
+    }
+
+    public function testTheRestOfTheSoldOutFilteredListHoldsOnlyItsOwnMembers()
+    {
+        $arVisibleList = array_values(array_filter(
+            $this->makeRowList(60),
+            fn (array $arRow) => $arRow['iOfferId'] % 3 !== 0 // the sold-out shades are gone
+        ));
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arVisibleList, 1001, true]);
+        $arWindowIdList = $this->readOfferIdList($arWindow);
+
+        $this->assertCount(count($arVisibleList) - 2, $arWindow);
+        foreach ($arWindowIdList as $iOfferId) {
+            $this->assertContains($iOfferId, $this->readOfferIdList($arVisibleList));
+        }
+        // a page composed against the unfiltered list would carry these
+        $this->assertNotContains(1002, $arWindowIdList);
+        $this->assertNotContains(1059, $arWindowIdList);
+    }
+
+    public function testTheLastRestLabelIsNumberedOneBelowTheVisibleTotal()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1011, true]);
+        $iLastIndex = $this->call(
+            'findVisibleRowIndex',
+            [$arRowList, (int) $arWindow[count($arWindow) - 1]['iOfferId']]
+        );
+
+        $this->assertSame(count($arRowList) - 1, $iLastIndex);
+    }
+
+    public function testOnlyARestPageReportsTheListComplete()
+    {
+        $arRowList = $this->makeRowList(230);
+        $iAfterOfferId = 1011;
+
+        $arRestList = $this->call('getWindowAfterRowList', [$arRowList, $iAfterOfferId, true]);
+        $arPageList = $this->call('getWindowAfterRowList', [$arRowList, $iAfterOfferId]);
+
+        $this->assertTrue($this->call('isWindowListComplete', [$arRowList, $iAfterOfferId, $arRestList]));
+        $this->assertFalse($this->call('isWindowListComplete', [$arRowList, $iAfterOfferId, $arPageList]));
+        // the end of the list is complete as well, with nothing on the page
+        $this->assertTrue($this->call('isWindowListComplete', [$arRowList, 1229, []]));
     }
 
     public function testTheAppendedStripStartsNumberingWhereTheLoadedListEnded()

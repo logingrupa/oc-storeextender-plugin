@@ -126,6 +126,21 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
         $this->assertStringEndsWith('.product2', $sProduct2Key);
     }
 
+    /**
+     * The rest page and the 12-shade page continue from the SAME shade, and
+     * they are different markup: without the flag in the key the first of the
+     * two served would be handed to the other caller for ten minutes.
+     */
+    public function testARestWindowKeysApartFromATwelveShadeWindow()
+    {
+        $this->setPageId('product2');
+
+        $sPageKey = $this->callProtected('buildCacheKey', [['hr.window', 366, 4151, 0, 0]]);
+        $sRestKey = $this->callProtected('buildCacheKey', [['hr.window', 366, 4151, 0, 1]]);
+
+        $this->assertNotSame($sPageKey, $sRestKey);
+    }
+
     public function testTwoPagesKeyTheClientCacheDifferently()
     {
         $this->setPageId('product');

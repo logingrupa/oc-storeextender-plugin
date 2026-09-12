@@ -631,6 +631,11 @@ class OfferSheet extends ComponentBase
      * through one code path: the strip markup, the same fragment batch, the same
      * epoch token.
      *
+     * Two shapes of request: a 12-shade page with its fragment batch, which is
+     * what /p and the home pages ask for, and a `rest` page that carries every
+     * remaining shade with no fragments at all, which is what the phone rail
+     * asks for once.
+     *
      * @return array|null
      */
     public function onGetSwatchWindow()
@@ -643,6 +648,8 @@ class OfferSheet extends ComponentBase
         // rendered strip: an unmirrored flag pages in the shades the first
         // page hid
         $bHideSoldOut = (bool) input('hide_oos');
+        // One request for every shade left, strip only
+        $bRest = (bool) input('rest');
 
         $iAfterOfferId = $this->readWindowAfterOfferId($obProductItem);
         if ($iAfterOfferId < 1) {
@@ -650,13 +657,13 @@ class OfferSheet extends ComponentBase
         }
 
         $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
-        $arWindowRowList = $this->getWindowAfterRowList($arVisibleList, $iAfterOfferId);
+        $arWindowRowList = $this->getWindowAfterRowList($arVisibleList, $iAfterOfferId, $bRest);
         if ($arWindowRowList === null) {
             return null; // fail fast: sold out and hidden, so it holds no position here
         }
 
         $arWindowData = [
-            'arOfferItemList' => $this->makeOfferItemList($arWindowRowList),
+            'arRowList' => $arWindowRowList,
             'iTotalCount' => count($arVisibleList),
             'iFirstIndex' => !empty($arWindowRowList)
                 ? $this->findVisibleRowIndex($arVisibleList, (int) $arWindowRowList[0]['iOfferId'])
@@ -665,19 +672,43 @@ class OfferSheet extends ComponentBase
 
         return [
             'sAfterOfferId' => (string) $iAfterOfferId,
-            'sStripHtml' => $this->getSwatchWindowHtml($obProductItem, $iAfterOfferId, $bHideSoldOut, $arWindowData),
+            'sStripHtml' => $this->getSwatchWindowHtml(
+                $obProductItem,
+                $iAfterOfferId,
+                $bHideSoldOut,
+                $bRest,
+                $arWindowData
+            ),
             // The fragment batch is rendered here, outside every cache block
             // above: renderOfferBatchList carries per-visitor state and says so.
-            'arOfferList' => (bool) input('with_offers')
+            // A rest page never carries it, and the refusal is here rather than
+            // in the client: the fragment half of 218 shades measures 1.47 MB
+            // per visitor.
+            'arOfferList' => (!$bRest && (bool) input('with_offers'))
                 ? $this->renderOfferBatchList(
                     $obProductItem,
-                    $arWindowData['arOfferItemList'],
+                    $this->makeOfferItemList($arWindowRowList),
                     $this->readBatchPartialList(),
                     $bHideSoldOut
                 )
                 : [],
+            'bListComplete' => $this->isWindowListComplete($arVisibleList, $iAfterOfferId, $arWindowRowList),
             'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
+    }
+
+    /**
+     * Does this page reach the end of the visible list.
+     *
+     * Told from positions and not from an empty slice: a rest page ends ON the
+     * last shade and the client has to stop asking after it, without spending a
+     * round trip to be answered with nothing.
+     */
+    protected function isWindowListComplete(array $arVisibleList, int $iAfterOfferId, array $arWindowRowList): bool
+    {
+        $iAfterIndex = $this->findVisibleRowIndex($arVisibleList, $iAfterOfferId);
+
+        return $iAfterIndex + 1 + count($arWindowRowList) >= count($arVisibleList);
     }
 
     /**
@@ -688,15 +719,20 @@ class OfferSheet extends ComponentBase
      * nothing about the visitor beyond the render context the key already
      * carries. Selection is applied client-side.
      *
-     * @param array $arWindowData {arOfferItemList: OfferItem[], iTotalCount: int, iFirstIndex: int}
+     * A rest page keys apart from a 12-shade page with the same after-id: the
+     * two render a different number of labels, so they are different markup
+     * under the same product and position.
+     *
+     * @param array $arWindowData {arRowList: array, iTotalCount: int, iFirstIndex: int}
      */
     protected function getSwatchWindowHtml(
         ProductItem $obProductItem,
         int $iAfterOfferId,
         bool $bHideSoldOut,
+        bool $bRest,
         array $arWindowData
     ): string {
-        if (empty($arWindowData['arOfferItemList'])) {
+        if (empty($arWindowData['arRowList'])) {
             return ''; // the end of the list: nothing to render and nothing to key
         }
 
@@ -705,15 +741,20 @@ class OfferSheet extends ComponentBase
             $obProductItem->id,
             $iAfterOfferId,
             (int) $bHideSoldOut,
+            (int) $bRest,
         ]);
         $sStripHtml = CCache::get([self::CACHE_TAG_SHEET], $sCacheKey);
         if (!empty($sStripHtml)) {
             return $sStripHtml;
         }
 
+        // The items are materialized here and not by the caller, because a hit
+        // above needs none of them: 218 OfferItem::make measures 77ms. The
+        // fragment batch makes its own list of the same ids, which ItemStorage
+        // answers from this request's memory.
         $sStripHtml = (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
             'obProduct' => $obProductItem,
-            'arInlineOfferList' => $arWindowData['arOfferItemList'],
+            'arInlineOfferList' => $this->makeOfferItemList($arWindowData['arRowList']),
             'iTotalCount' => $arWindowData['iTotalCount'],
             // The page that requested this already renders the '+N' opener, so
             // an appended page must not bring a second one
@@ -1056,9 +1097,10 @@ class OfferSheet extends ComponentBase
      * rejected. An empty array is the end of the list, which is a valid last
      * page.
      *
+     * @param bool $bRest every remaining row rather than one page of them
      * @return array|null [['iOfferId' => int, 'sFamily' => string|null]]
      */
-    protected function getWindowAfterRowList(array $arVisibleList, int $iAfterOfferId): ?array
+    protected function getWindowAfterRowList(array $arVisibleList, int $iAfterOfferId, bool $bRest = false): ?array
     {
         $iAfterIndex = null;
         foreach ($arVisibleList as $iIndex => $arEntry) {
@@ -1071,11 +1113,13 @@ class OfferSheet extends ComponentBase
             return null;
         }
 
-        // One page is never longer than the client offer cache can HOLD: it
-        // caps at 24 entries (src/modules/offer-fragments.js), so two forward
-        // pages of INLINE_LIMIT fill it exactly and a longer page would evict
-        // the shades the shopper just swiped past
-        return array_slice($arVisibleList, $iAfterIndex + 1, self::INLINE_LIMIT);
+        // A page that carries FRAGMENTS is never longer than the client offer
+        // cache can hold: it caps at 24 entries
+        // (src/modules/offer-fragments.js), so two pages of INLINE_LIMIT fill
+        // it exactly and a longer page would evict the shades the shopper just
+        // swiped past. A rest page carries no fragments, so nothing bounds it
+        // but the list itself.
+        return array_slice($arVisibleList, $iAfterIndex + 1, $bRest ? null : self::INLINE_LIMIT);
     }
 
     /**
