@@ -107,6 +107,8 @@ class Plugin extends PluginBase
 {
     const MAIL_SALON_LEAD_MANAGER = 'logingrupa.storeextender::mail.salon_lead_manager';
     const MAIL_SALON_LEAD_APPLICANT = 'logingrupa.storeextender::mail.salon_lead_applicant';
+    const MAIL_MD_RESERVATION_DELETED = 'logingrupa.storeextender::mail.md_reservation_deleted';
+    const MAIL_MD_RESERVATION_REMINDER = 'logingrupa.storeextender::mail.md_reservation_reminder';
 
     public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
 
@@ -604,6 +606,8 @@ class Plugin extends PluginBase
             'user:recover_password' => 'logingrupa.storeextender::mail.recover_password',
             self::MAIL_SALON_LEAD_MANAGER => self::MAIL_SALON_LEAD_MANAGER,
             self::MAIL_SALON_LEAD_APPLICANT => self::MAIL_SALON_LEAD_APPLICANT,
+            self::MAIL_MD_RESERVATION_DELETED => self::MAIL_MD_RESERVATION_DELETED,
+            self::MAIL_MD_RESERVATION_REMINDER => self::MAIL_MD_RESERVATION_REMINDER,
         ];
     }
 

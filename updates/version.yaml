@@ -242,3 +242,6 @@
   - 'The mail palette is read from the root config/brand.php (brand.mail keys) instead of a hand-set row per shop, so every shop renders the theme colours; the existing rows and the cached CSS are dropped.'
   - update_table_system_mail_templates_retire_salon_lead_rows.php
   - update_mail_brand_setting_reset_to_config.php
+2.0.87:
+  - 'The Master Days attendee mails (reservation removed, attendance reminder) are plugin views with a Latvian variant (views/mail/md_reservation_*.htm), subjects included. They used to be sent under a misspelt code that only one shop carried as a database row, so the .lv page logged a failure for every mail. The rows are removed.'
+  - update_table_system_mail_templates_retire_md_reservation_rows.php
