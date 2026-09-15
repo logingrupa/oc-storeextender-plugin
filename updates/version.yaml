@@ -234,3 +234,6 @@
   - 'ClearShadowCartCookie stops the ancestor path list at the first URL segment a cookie path cannot hold (comma, semicolon, whitespace): the /api/v2/price-list/<tokens> pages 500ed for a browser carrying a broken cart cookie because Symfony refused the expiry cookie path.'
 2.0.84:
   - 'SettingsSiteFallbackHandler also covers the MightySeo settings: the title prefix and suffix and the head/body snippets are site-scoped rows, so every non-primary site (en and ru on .lv) rendered titles without "| NAILS cosmetics" and without the analytics snippets.'
+2.0.85:
+  - 'The mail header partial no longer holds a dead logo. It was a v1 database row pointing at the theme directory the shop used before the rename, so the logo was a 404 in every message, and it linked to one fixed country shop from all of them. Plugin::shareMailBrandLogo publishes brandLogoUrl and brandLogoLink, built from APP_URL and ACTIVE_THEME, and the migration rewrites the row to use them.'
+  - update_table_system_mail_partial_header_logo.php

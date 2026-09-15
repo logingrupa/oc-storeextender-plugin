@@ -3,6 +3,7 @@
 // use App;
 use File;
 use Lang;
+use Config;
 use Omnipay\Omnipay;
 use Yaml;
 use Event;
@@ -188,6 +189,7 @@ class Plugin extends PluginBase
         // Extend ThemeData/MLThemeData with dropdown option methods needed by theme
         // customization form. Hooks into form field building to guarantee methods exist
         // on whichever model class the form is using at render time.
+        $this->shareMailBrandLogo();
         $this->extendThemeDataDropdownMethods();
         $this->extendThemeOptionsController();
         $this->registerProductPageLookupType();
@@ -613,6 +615,24 @@ class Plugin extends PluginBase
                 'label' => 'logingrupa.storeextender::lang.color_sync.permission_label',
             ],
         ];
+    }
+
+    /**
+     * Share the mail logo URL and its link with every view.
+     *
+     * The mail header partial is a database row shared by all shops, so it cannot hold an
+     * absolute host or a theme directory name. The mailer Twig environment reads shared
+     * view variables, the same way the mail layout reads appName.
+     */
+    protected function shareMailBrandLogo()
+    {
+        $this->callAfterResolving('view', function ($obView) {
+            $sAppURL = rtrim((string) Config::get('app.url'), '/');
+            $sThemeDir = (string) Config::get('cms.active_theme');
+
+            $obView->share('brandLogoLink', $sAppURL);
+            $obView->share('brandLogoUrl', $sAppURL.'/themes/'.$sThemeDir.'/assets/images/logo.png');
+        });
     }
 
     /**
