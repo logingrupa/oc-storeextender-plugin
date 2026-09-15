@@ -105,6 +105,9 @@ use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
  */
 class Plugin extends PluginBase
 {
+    const MAIL_SALON_LEAD_MANAGER = 'logingrupa.storeextender::mail.salon_lead_manager';
+    const MAIL_SALON_LEAD_APPLICANT = 'logingrupa.storeextender::mail.salon_lead_applicant';
+
     public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
 
     /**
@@ -599,6 +602,8 @@ class Plugin extends PluginBase
     {
         return [
             'user:recover_password' => 'logingrupa.storeextender::mail.recover_password',
+            self::MAIL_SALON_LEAD_MANAGER => self::MAIL_SALON_LEAD_MANAGER,
+            self::MAIL_SALON_LEAD_APPLICANT => self::MAIL_SALON_LEAD_APPLICANT,
         ];
     }
 

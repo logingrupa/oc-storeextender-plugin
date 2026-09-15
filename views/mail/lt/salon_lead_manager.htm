@@ -1,0 +1,37 @@
+subject = "Salono paraiška - {{ salon_name|raw }}"
+description = "Salono paraiška iš svetainės, išsiųsta parduotuvės vadybininkams"
+==
+# {{ salon_name }}
+
+**Vardas ir pavardė**<br>
+{{ name }}
+
+**Elektroninis paštas**<br>
+[{{ email }}](mailto:{{ email }})
+
+**Telefono numeris**<br>
+<a href="tel:{{ phone|replace({' ': ''}) }}">{{ phone }}</a>
+
+**Salono adresas**<br>
+{{ salon_address }}
+
+**Manikiūro meistrų skaičius salone**<br>
+{{ number_of_masters }}
+
+**Su kokiais nagų priežiūros prekių ženklais dirba jūsų salonas?**<br>
+{{ current_product_list|nl2br }}
+
+**Ar jau dirbate su NAILS cosmetics produktais?**<br>
+{{ product_list|nl2br }}
+
+**Ar taip pat siūlote nagų priauginimą?**<br>
+{{ nail_extensions }}
+
+**Ar salone teikiamos kitos grožio procedūros? Kokios?**<br>
+{{ other_treatment_list|nl2br }}
+
+**Verslo profilio nuoroda**<br>
+{{ profile_link }}
+
+**Kiek NAILS cosmetics produktų planuojate pirkti per mėnesį?**<br>
+{{ order_plan }}
