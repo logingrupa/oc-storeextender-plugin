@@ -590,6 +590,12 @@ class OfferSheet extends ComponentBase
      * resolving the same thing twice per request to save nothing is exactly the
      * kind of hidden work this component has already been trimmed of once.
      *
+     * The sold-out filter is NOT cached, the rule getVisibleRowList states: an
+     * order drains a shade without rotating the epoch, so a filtered strip kept
+     * for ten minutes draws shades the shop no longer has. The flag stays in the
+     * key list anyway, at the value it can now hold, so every key already in a
+     * running cache keeps its exact name.
+     *
      * @param array $arSwatchData as getInlineSwatchData returns it
      */
     protected function getSwatchStripHtml(
@@ -598,6 +604,10 @@ class OfferSheet extends ComponentBase
         bool $bHideSoldOut,
         array $arSwatchData
     ): string {
+        if ($bHideSoldOut) {
+            return $this->renderSwatchStripPartial($obProductItem, $arSwatchData);
+        }
+
         $sCacheKey = $this->buildCacheKey([
             'hr.strip',
             $obProductItem->id,
@@ -609,7 +619,21 @@ class OfferSheet extends ComponentBase
             return $sStripHtml;
         }
 
-        $sStripHtml = (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
+        $sStripHtml = $this->renderSwatchStripPartial($obProductItem, $arSwatchData);
+        CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
+
+        return $sStripHtml;
+    }
+
+    /**
+     * The strip markup for one window of shades. No cache of its own: the two
+     * callers above decide whether the answer may be kept.
+     *
+     * @param array $arSwatchData as getInlineSwatchData returns it
+     */
+    protected function renderSwatchStripPartial(ProductItem $obProductItem, array $arSwatchData): string
+    {
+        return (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
             'obProduct' => $obProductItem,
             'arInlineOfferList' => $arSwatchData['arOfferItemList'],
             'iTotalCount' => $arSwatchData['iTotalCount'],
@@ -617,9 +641,6 @@ class OfferSheet extends ComponentBase
             'iSelectedOfferId' => 0,
             'iFirstIndex' => $arSwatchData['iFirstIndex'],
         ]);
-        CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
-
-        return $sStripHtml;
     }
 
     /**
@@ -735,6 +756,11 @@ class OfferSheet extends ComponentBase
      * two render a different number of labels, so they are different markup
      * under the same product and position.
      *
+     * The sold-out filter is NOT cached, for the reason the family strip above
+     * gives and the row list states: a page kept for ten minutes pages in shades
+     * that were sold while it sat there. The flag stays in the key list at the
+     * value it can now hold, so no existing key is renamed.
+     *
      * @param array $arWindowData {arRowList: array, iTotalCount: int, iFirstIndex: int|null}
      */
     protected function getSwatchWindowHtml(
@@ -746,6 +772,9 @@ class OfferSheet extends ComponentBase
     ): string {
         if (empty($arWindowData['arRowList'])) {
             return ''; // the end of the list: nothing to render and nothing to key
+        }
+        if ($bHideSoldOut) {
+            return $this->renderSwatchWindowPartial($obProductItem, $arWindowData);
         }
 
         $sCacheKey = $this->buildCacheKey([
@@ -760,11 +789,25 @@ class OfferSheet extends ComponentBase
             return $sStripHtml;
         }
 
-        // The items are materialized here and not by the caller, because a hit
-        // above needs none of them: 218 OfferItem::make measures 77ms. The
-        // fragment batch makes its own list of the same ids, which ItemStorage
-        // answers from this request's memory.
-        $sStripHtml = (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
+        $sStripHtml = $this->renderSwatchWindowPartial($obProductItem, $arWindowData);
+        CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
+
+        return $sStripHtml;
+    }
+
+    /**
+     * The strip markup for one appended page of shades.
+     *
+     * The items are materialized here and not by the caller, because a cache hit
+     * needs none of them: 218 OfferItem::make measures 77ms. The fragment batch
+     * makes its own list of the same ids, which ItemStorage answers from this
+     * request's memory.
+     *
+     * @param array $arWindowData {arRowList: array, iTotalCount: int, iFirstIndex: int|null}
+     */
+    protected function renderSwatchWindowPartial(ProductItem $obProductItem, array $arWindowData): string
+    {
+        return (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
             'obProduct' => $obProductItem,
             'arInlineOfferList' => $this->makeOfferItemList($arWindowData['arRowList']),
             'iTotalCount' => $arWindowData['iTotalCount'],
@@ -774,9 +817,6 @@ class OfferSheet extends ComponentBase
             'iSelectedOfferId' => 0,
             'iFirstIndex' => $arWindowData['iFirstIndex'],
         ]);
-        CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
-
-        return $sStripHtml;
     }
 
     /**
@@ -977,6 +1017,12 @@ class OfferSheet extends ComponentBase
      * hiding a shade requires its quantity, quantity lives on the OfferItem,
      * and it moves with every order - caching it under a ten minute TTL beside
      * markup that does not change would sell stock the shop no longer has.
+     *
+     * That is the rule for ALL THREE renders, not only this list. Only an
+     * import rotates the render epoch; an order that drains an offer does not.
+     * So getSwatchStripHtml and getSwatchWindowHtml render on this same slow
+     * path whenever the filter is on, and key nothing. Only hideTradeOffers
+     * products pay it, and they already pay for this list (T-3-71).
      *
      * @return array [['iOfferId' => int, 'sFamily' => string|null]]
      */

@@ -3,9 +3,11 @@
 require_once __DIR__ . '/../StoreExtenderPluginTestCase.php';
 require_once __DIR__ . '/../doubles/ShopLayoutDoubles.php';
 
+use Kharanenka\Helper\CCache;
 use Logingrupa\Storeextender\Components\OfferSheet;
 use Lovata\Shopaholic\Classes\Helper\CurrencyHelper;
 use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
+use Lovata\Shopaholic\Classes\Item\ProductItem;
 
 /**
  * The render-context dimensions, which decide what cached offer markup the
@@ -43,6 +45,9 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
     /** @var string What a render outside any page keys itself as */
     const NO_PAGE_SENTINEL = 'nopage';
 
+    /** @var string What the controller stub renders in place of the strip partial */
+    const RENDER_MARKER = '<!-- strip -->';
+
     protected OfferSheet $obComponent;
 
     protected \ReflectionClass $obReflection;
@@ -52,6 +57,19 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
         parent::setUp();
 
         $this->createShopLayoutStubTables();
+        // the window render materializes its rows through OfferItem::make, which
+        // queries; an empty table answers "no such offer" instead of erroring
+        $this->createStubTable('lovata_shopaholic_offers', function (\October\Rain\Database\Schema\Blueprint $obTable) {
+            $obTable->increments('id');
+            $obTable->integer('product_id')->default(0);
+            $obTable->boolean('active')->default(0);
+            $obTable->string('name')->nullable();
+            $obTable->string('code')->nullable();
+            $obTable->integer('quantity')->default(0);
+            $obTable->integer('sort_order')->nullable();
+            $obTable->softDeletes();
+            $obTable->timestamps();
+        });
 
         // Both helpers memoize their row set for the life of the process
         CurrencyHelper::forgetInstance();
@@ -99,6 +117,114 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
                 }
             }
         );
+    }
+
+    /**
+     * Stand a controller in front of the component. Only renderPartial is
+     * called, and what it returns is opaque to the caching decision, so a
+     * marker string is the whole fixture.
+     */
+    protected function setControllerStub(): void
+    {
+        $obProperty = $this->obReflection->getProperty('controller');
+        $obProperty->setAccessible(true);
+        $obProperty->setValue($this->obComponent, new class {
+            public function renderPartial(string $sPartial, array $arData = []): string
+            {
+                return OfferSheetCacheKeyTest::RENDER_MARKER;
+            }
+        });
+    }
+
+    /**
+     * The swatch data shape getInlineSwatchData answers with. No items: the
+     * partial is stubbed out, so nothing reads them.
+     */
+    protected function makeSwatchData(): array
+    {
+        return [
+            'arOfferItemList' => [],
+            'iTotalCount' => 230,
+            'bUseSheet' => true,
+            'iFirstIndex' => 0,
+        ];
+    }
+
+    /**
+     * A strip rendered with sold-out shades hidden is keyed nowhere.
+     *
+     * Only an import rotates the render epoch, so a filtered strip kept for ten
+     * minutes keeps drawing a shade an order drained minutes ago - the exact
+     * thing getVisibleRowList refuses to cache and the reason its list stays on
+     * the slow path. The strip has to keep the same promise (T-3-71).
+     */
+    public function testAStripWithSoldOutShadesHiddenIsNeverCached()
+    {
+        $this->setPageId('product2');
+        $this->setControllerStub();
+        $obProductItem = ProductItem::make(0);
+
+        $sHtml = $this->callProtected(
+            'getSwatchStripHtml',
+            [$obProductItem, '', true, $this->makeSwatchData()]
+        );
+
+        $this->assertSame(self::RENDER_MARKER, $sHtml);
+        $sCacheKey = $this->callProtected(
+            'buildCacheKey',
+            [['hr.strip', $obProductItem->id, 'head', 1]]
+        );
+        $this->assertEmpty(CCache::get([OfferSheet::CACHE_TAG_SHEET], $sCacheKey));
+    }
+
+    /**
+     * And the unfiltered strip is still cached, under the key it always had -
+     * the flag is still in the list, at the only value it can now carry.
+     */
+    public function testAnUnfilteredStripIsStillCachedUnderTheSameKey()
+    {
+        $this->setPageId('product2');
+        $this->setControllerStub();
+        $obProductItem = ProductItem::make(0);
+
+        $this->callProtected(
+            'getSwatchStripHtml',
+            [$obProductItem, '', false, $this->makeSwatchData()]
+        );
+
+        $sCacheKey = $this->callProtected(
+            'buildCacheKey',
+            [['hr.strip', $obProductItem->id, 'head', 0]]
+        );
+        $this->assertSame(self::RENDER_MARKER, CCache::get([OfferSheet::CACHE_TAG_SHEET], $sCacheKey));
+    }
+
+    /**
+     * The forward window keeps the same rule: a page rendered under the filter
+     * would append shades that sold while it sat in the cache.
+     */
+    public function testAWindowWithSoldOutShadesHiddenIsNeverCached()
+    {
+        $this->setPageId('product2');
+        $this->setControllerStub();
+        $obProductItem = ProductItem::make(0);
+        $arWindowData = [
+            'arRowList' => [['iOfferId' => 4152, 'sFamily' => null]],
+            'iTotalCount' => 230,
+            'iFirstIndex' => 12,
+        ];
+
+        $sHtml = $this->callProtected(
+            'getSwatchWindowHtml',
+            [$obProductItem, 4151, true, true, $arWindowData]
+        );
+
+        $this->assertSame(self::RENDER_MARKER, $sHtml);
+        $sCacheKey = $this->callProtected(
+            'buildCacheKey',
+            [['hr.window', $obProductItem->id, 4151, 1, 1]]
+        );
+        $this->assertEmpty(CCache::get([OfferSheet::CACHE_TAG_SHEET], $sCacheKey));
     }
 
     public function testThePageIsTheLastRenderContextDimension()
