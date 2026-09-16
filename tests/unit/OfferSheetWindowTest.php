@@ -329,4 +329,32 @@ class OfferSheetWindowTest extends TestCase
         );
         $this->assertSame(200, $iFirstIndex);
     }
+
+    /**
+     * A shade the visible list does not hold has NO position in it, and zero is
+     * a position: the strip would number it one of N and the hero would
+     * announce it. The sheet renders sold-out rows and they are tappable, so on
+     * a shop that hides sold-out shades the batch of one asks this question
+     * about a shade the list filtered out.
+     */
+    public function testAShadeOutsideTheVisibleListHasNoIndexAtAll()
+    {
+        $arRowList = $this->makeRowList(12);
+
+        $this->assertNull($this->call('findVisibleRowIndex', [$arRowList, 9999]));
+        $this->assertNull($this->call('findVisibleRowIndex', [[], 1000]));
+        // and the first shade of the list is still zero, not null
+        $this->assertSame(0, $this->call('findVisibleRowIndex', [$arRowList, 1000]));
+    }
+
+    /**
+     * The client must stop asking rather than page from a position that does
+     * not exist.
+     */
+    public function testAWindowAfterAShadeOutsideTheListIsComplete()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $this->assertTrue($this->call('isWindowListComplete', [$arRowList, 9999, []]));
+    }
 }

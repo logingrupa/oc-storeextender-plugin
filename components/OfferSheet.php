@@ -448,13 +448,17 @@ class OfferSheet extends ComponentBase
      * caller's own sold-out preference. A batch of one starts at that shade, so
      * the partial's iFirstIndex is this shade's own global index.
      *
-     * @param int $iFirstIndex position of this shade in the visible row list
+     * Null when the shade has no position in that list - a sold-out shade
+     * picked in the sheet on a shop that hides sold-out shades. The partial
+     * renders no position attribute for it, so nothing downstream numbers it.
+     *
+     * @param int|null $iFirstIndex position of this shade in the visible row list
      */
     protected function renderSwatchHtml(
         ProductItem $obProductItem,
         OfferItem $obOfferItem,
         int $iOfferTotalCount,
-        int $iFirstIndex
+        ?int $iFirstIndex
     ): string {
         return trim((string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
             'obProduct' => $obProductItem,
@@ -703,10 +707,18 @@ class OfferSheet extends ComponentBase
      * Told from positions and not from an empty slice: a rest page ends ON the
      * last shade and the client has to stop asking after it, without spending a
      * round trip to be answered with nothing.
+     *
+     * A shade the list does not hold has no position to page from, so the
+     * honest answer is that there is nothing more to ask for. onGetSwatchWindow
+     * has already refused that request (getWindowAfterRowList answers null for
+     * it), which is why this is a guard and not the normal path.
      */
     protected function isWindowListComplete(array $arVisibleList, int $iAfterOfferId, array $arWindowRowList): bool
     {
         $iAfterIndex = $this->findVisibleRowIndex($arVisibleList, $iAfterOfferId);
+        if ($iAfterIndex === null) {
+            return true;
+        }
 
         return $iAfterIndex + 1 + count($arWindowRowList) >= count($arVisibleList);
     }
@@ -723,7 +735,7 @@ class OfferSheet extends ComponentBase
      * two render a different number of labels, so they are different markup
      * under the same product and position.
      *
-     * @param array $arWindowData {arRowList: array, iTotalCount: int, iFirstIndex: int}
+     * @param array $arWindowData {arRowList: array, iTotalCount: int, iFirstIndex: int|null}
      */
     protected function getSwatchWindowHtml(
         ProductItem $obProductItem,
@@ -918,9 +930,11 @@ class OfferSheet extends ComponentBase
      *
      * iFirstIndex is where the rendered window starts in the visible row list.
      * The strip labels number themselves from it, so a window opening on shade
-     * six numbers its first circle six and not zero.
+     * six numbers its first circle six and not zero. It is null only if the
+     * first rendered row is not in that list, which is the fail-fast this
+     * component documents for an unknown id: the rows ARE slices of the list.
      *
-     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, iFirstIndex: int, bUseSheet: bool, arFamilyChipList: array, sActiveFamily: string}
+     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, iFirstIndex: int|null, bUseSheet: bool, arFamilyChipList: array, sActiveFamily: string}
      */
     public function getInlineSwatchData(
         ProductItem $obProductItem,
@@ -986,12 +1000,17 @@ class OfferSheet extends ComponentBase
      * slice of, and its length is the counter denominator the page renders, so
      * this position is the number a swatch label carries.
      *
-     * An id that is not in the list answers 0, the same fallback
-     * getWindowedRowList() takes for an unknown selection: the ids come from
-     * the product's own row list, so a miss is a signal, not a state to design
-     * around.
+     * An id that is not in the list answers NULL, because every integer here is
+     * a position and zero is the first one: the strip would number a missing
+     * shade one of N and the hero would announce it. It happens - the sheet
+     * renders sold-out rows and they are tappable, so on a shop that hides
+     * sold-out shades a batch of one asks this about a shade the list filtered
+     * out. Every caller has to carry the null through to the markup, where the
+     * position attribute is simply not rendered.
+     *
+     * @return int|null null when the list holds no such shade
      */
-    protected function findVisibleRowIndex(array $arVisibleList, int $iOfferId): int
+    protected function findVisibleRowIndex(array $arVisibleList, int $iOfferId): ?int
     {
         foreach ($arVisibleList as $iIndex => $arEntry) {
             if ($arEntry['iOfferId'] === $iOfferId) {
@@ -999,7 +1018,7 @@ class OfferSheet extends ComponentBase
             }
         }
 
-        return 0;
+        return null;
     }
 
     /**
