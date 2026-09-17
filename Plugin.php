@@ -441,6 +441,13 @@ class Plugin extends PluginBase
                 // exists: a template that renders hundreds of labels may not
                 // pay a resize per picture
                 'offer_hero_warm_src' => [OfferImageHelper::class, 'heroIfWarm'],
+                // The phone hero crop, 780x680: the three eager /p2 slides ask
+                // for this one and may pay a resize for it
+                'offer_hero_phone_src' => [OfferImageHelper::class, 'heroPhone'],
+                // The same phone URL as a lookup only, for the label list: the
+                // rest window can render 218 rows and may not pay a resize per
+                // picture, so a cold shade gets an empty string
+                'offer_hero_phone_warm_src' => [OfferImageHelper::class, 'heroPhoneIfWarm'],
                 // Which offer a product-card fragment renders - decided in ONE
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render

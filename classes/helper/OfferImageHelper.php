@@ -5,8 +5,8 @@ use October\Rain\Database\Attach\File;
 /**
  * The one place offer image derivative sizes are decided.
  *
- * Every offer picture on the storefront lands in one of two CSS boxes, so
- * there are two sizes here and no more. Sharing one size across call sites is
+ * Every offer picture on the storefront lands in a known CSS box, and each box
+ * gets one derivative size and no more. Sharing one size across call sites is
  * not tidiness: the product page swatch strip and the sheet rows draw the SAME
  * pictures, so a single swatch size means the sheet's 200 row images come out
  * of the browser cache the strip already filled.
@@ -25,6 +25,12 @@ use October\Rain\Database\Attach\File;
  *                 by the height: 240 CSS px desktop, ~260-280 on a phone
  *                 -> 600 fitted, 2.5x desktop and ~2.2x on a phone
  *
+ *   SLOT_HERO_PHONE  .pdp-hero__slide img      100vw wide and
+ *                                              min(calc(100vw - 50px), 340px)
+ *                                              tall, object-fit: cover
+ *                    on a 390px phone that box resolves to 390x340 CSS px
+ *                    -> 780x680 cropped, the box times DPR 2
+ *
  * ARITY MATTERS HERE. File::getThumb($width, $height, $options) takes three
  * arguments. Passing a mode string AND an options array - getThumb(50, 50,
  * 'crop', {'quality': 80, 'extension': 'webp'}) - is not an error in PHP: the
@@ -38,6 +44,8 @@ use October\Rain\Database\Attach\File;
  *   {{ offer_preview_src(obOffer.preview_image) }}
  *   {{ offer_hero_src(obOffer.preview_image) }}
  *   {{ offer_hero_warm_src(obOffer.preview_image) }}   empty unless warmed
+ *   {{ offer_hero_phone_src(obOffer.preview_image) }}
+ *   {{ offer_hero_phone_warm_src(obOffer.preview_image) }}   empty unless warmed
  */
 class OfferImageHelper
 {
@@ -61,6 +69,33 @@ class OfferImageHelper
     const HERO_QUALITY = 95;
     const HERO_MIN_SOURCE_HEIGHT = 300;
     const HERO_SMALL_WIDTH = 300;
+
+    /**
+     * Phone hero slide on /p2, cropped to the box a 390px phone measures.
+     *
+     * The box is `width: 100vw; height: min(calc(100vw - 50px), 340px);
+     * object-fit: cover` in _pdp-hero.scss, which resolves to 390x340 CSS px on
+     * a 390px viewport, so at DPR 2 the file is exactly 780x680. It is a CROP,
+     * not a fit, because the box is object-fit: cover; a fitted derivative would
+     * have needed 830px of width to cover the 680px height from a 1000x821
+     * source, and that is 830px of pixels the box never shows.
+     *
+     * Quality 95 was picked on 2026-09-17 from nine pictures encoded at 80, 85,
+     * 90 and 95 and read side by side at 390px DPR 2. The gate was colour
+     * crispness on the bottle gradient, not bytes: medians ran 5.8, 7.0, 9.4 and
+     * 14.6 KB against 66.1 KB for the 1000x821 slide file this replaces, so the
+     * most expensive candidate is still a 78 percent cut.
+     *
+     * CHANGING HERO_PHONE_QUALITY AFTER THE FIRST WARM RUN REGENERATES NOTHING,
+     * because quality is absent from File::getThumbFilename(): the name carries
+     * the dimensions and the mode only, so the warm lookup keeps finding the file
+     * the old quality wrote and hands it back. A revision needs every
+     * thumb_*_780_680_crop.webp deleted on every shop first.
+     */
+    const SLOT_HERO_PHONE = 'hero_phone';
+    const HERO_PHONE_WIDTH = 780;
+    const HERO_PHONE_HEIGHT = 680;
+    const HERO_PHONE_QUALITY = 95;
 
     const THUMB_QUALITY = 80;
     const THUMB_EXTENSION = 'webp';
@@ -146,6 +181,80 @@ class OfferImageHelper
         $iHeight = $bSmallSource ? 0 : self::HERO_HEIGHT;
 
         $sThumbFileName = $obImage->getThumbFilename($iWidth, $iHeight, $arOptions);
+        if (!$obImage->getDisk()->exists($obImage->getDiskPath($sThumbFileName))) {
+            return '';
+        }
+
+        return (string) $obImage->getPath($sThumbFileName);
+    }
+
+    /**
+     * Cropped picture for the /p2 phone hero slide. May resize inside the
+     * request, so only the eager slides call it: the opened slide and one
+     * neighbour on each side, three pictures per page at most.
+     *
+     * The small-source branch mirrors hero(): a source shorter than
+     * HERO_MIN_SOURCE_HEIGHT is served at HERO_SMALL_WIDTH rather than upscaled
+     * 2.7x into the 780x680 box. That branch names a 300-wide file
+     * heroPhoneIfWarm() never looks for, which is deliberate - the lookup twin
+     * gives up on a short source so the rail falls through to the 600px preview
+     * chain it already has.
+     */
+    public static function heroPhone(?File $obImage): string
+    {
+        if ($obImage === null) {
+            return '';
+        }
+
+        $arOptions = self::getHeroPhoneThumbOptions();
+        if ((int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT) {
+            return (string) $obImage->getThumb(self::HERO_SMALL_WIDTH, 'auto', $arOptions);
+        }
+
+        return (string) $obImage->getThumb(self::HERO_PHONE_WIDTH, self::HERO_PHONE_HEIGHT, $arOptions);
+    }
+
+    /**
+     * The resizer options of the phone hero slot. Public so a test can pin the
+     * shape, and shared so heroPhone() and heroPhoneIfWarm() can never name a
+     * different derivative for the same picture.
+     *
+     * @return array{mode: string, quality: int, extension: string}
+     */
+    public static function getHeroPhoneThumbOptions(): array
+    {
+        return [
+            'mode'      => 'crop',
+            'quality'   => self::HERO_PHONE_QUALITY,
+            'extension' => self::THUMB_EXTENSION,
+        ];
+    }
+
+    /**
+     * The phone hero URL when the derivative is already on disk, and an empty
+     * string when it is not.
+     *
+     * NEVER RESIZES, for the reason heroIfWarm() states above: the rail's rest
+     * window carries up to 218 labels and a generated derivative is 91-133 ms
+     * each, so one cold render through the generating twin would be a 20-29
+     * second request.
+     *
+     * A source shorter than HERO_MIN_SOURCE_HEIGHT gets an empty string instead
+     * of the 300px name heroPhone() writes, so a short picture falls through to
+     * the caller's existing 600px preview or 96px circle with no new code.
+     */
+    public static function heroPhoneIfWarm(?File $obImage): string
+    {
+        if ($obImage === null || !$obImage->isImage()) {
+            return '';
+        }
+
+        if ((int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT) {
+            return '';
+        }
+
+        $arOptions = self::getHeroPhoneThumbOptions();
+        $sThumbFileName = $obImage->getThumbFilename(self::HERO_PHONE_WIDTH, self::HERO_PHONE_HEIGHT, $arOptions);
         if (!$obImage->getDisk()->exists($obImage->getDiskPath($sThumbFileName))) {
             return '';
         }
