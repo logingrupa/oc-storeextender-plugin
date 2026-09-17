@@ -73,27 +73,49 @@ class ShippingLadder
     }
 
     /**
-     * The ladder regrouped for reading: one band per threshold interval
-     * ("under 60", "over 60") listing every tiered type's price inside it,
-     * and the single-tier types as unconditional lines.
+     * The ladder regrouped for reading, cheapest first. A group is one
+     * threshold interval ("under 60", "over 60") with every tiered type's
+     * price inside it, rows ascending by price, or one single-tier type on
+     * its own (from and to null). Groups order by their cheapest row; on a
+     * tie the single-tier group comes first, then the lower interval.
      * @param array $arLadder make() output
-     * @return array ['bands' => [['from' => float, 'to' => float|null, 'rows' => [['name' => string, 'price' => float], ...]], ...],
-     *                'always' => [['name' => string, 'price' => float], ...]]
+     * @return array [['from' => float|null, 'to' => float|null, 'rows' => [['name' => string, 'price' => float], ...]], ...]
      */
     public static function bands(array $arLadder): array
     {
-        $arTieredList = array_values(array_filter($arLadder, function ($arType) {
-            return count($arType['tiers']) > 1;
-        }));
-        $arAlwaysList = [];
+        $arTieredList = [];
+        $arGroupList = [];
         foreach ($arLadder as $arType) {
-            if (count($arType['tiers']) === 1) {
-                $arAlwaysList[] = ['name' => $arType['name'], 'price' => $arType['tiers'][0]['price']];
+            if (count($arType['tiers']) > 1) {
+                $arTieredList[] = $arType;
+                continue;
             }
+            $arGroupList[] = ['from' => null, 'to' => null, 'rows' => [['name' => $arType['name'], 'price' => $arType['tiers'][0]['price']]]];
         }
 
+        $arEdgeList = self::thresholdEdges($arTieredList);
+        foreach ($arEdgeList as $iIndex => $fFrom) {
+            $arGroupList[] = [
+                'from' => $fFrom,
+                'to'   => $arEdgeList[$iIndex + 1] ?? null,
+                'rows' => self::bandRows($arTieredList, $fFrom),
+            ];
+        }
+
+        usort($arGroupList, [self::class, 'compareGroups']);
+
+        return $arGroupList;
+    }
+
+    /**
+     * 0.0 plus every tier threshold, ascending; empty without tiered types.
+     * @param array $arTieredList
+     * @return float[]
+     */
+    protected static function thresholdEdges(array $arTieredList): array
+    {
         if (empty($arTieredList)) {
-            return ['bands' => [], 'always' => $arAlwaysList];
+            return [];
         }
 
         $arEdgeList = [0.0];
@@ -105,21 +127,29 @@ class ShippingLadder
         $arEdgeList = array_values(array_unique($arEdgeList, SORT_NUMERIC));
         sort($arEdgeList, SORT_NUMERIC);
 
-        $arBandList = [];
-        foreach ($arEdgeList as $iIndex => $fFrom) {
-            $arBandList[] = [
-                'from' => $fFrom,
-                'to'   => $arEdgeList[$iIndex + 1] ?? null,
-                'rows' => self::bandRows($arTieredList, $fFrom),
-            ];
-        }
-
-        return ['bands' => $arBandList, 'always' => $arAlwaysList];
+        return $arEdgeList;
     }
 
     /**
-     * Each tiered type's price at a subtotal: the last tier whose threshold
-     * the subtotal reaches.
+     * Cheapest row first; a single-tier group before an interval on a tie,
+     * a lower interval before a higher one.
+     * @param array $arGroupA
+     * @param array $arGroupB
+     * @return int
+     */
+    protected static function compareGroups(array $arGroupA, array $arGroupB): int
+    {
+        $iByPrice = $arGroupA['rows'][0]['price'] <=> $arGroupB['rows'][0]['price'];
+        if ($iByPrice !== 0) {
+            return $iByPrice;
+        }
+
+        return ($arGroupA['from'] ?? -1.0) <=> ($arGroupB['from'] ?? -1.0);
+    }
+
+    /**
+     * Each tiered type's price at a subtotal (the last tier whose threshold
+     * the subtotal reaches), ascending by price.
      * @param array $arTieredList
      * @param float $fSubtotal
      * @return array
@@ -136,6 +166,9 @@ class ShippingLadder
             }
             $arRowList[] = ['name' => $arType['name'], 'price' => $fPrice];
         }
+        usort($arRowList, function (array $arRowA, array $arRowB) {
+            return $arRowA['price'] <=> $arRowB['price'];
+        });
 
         return $arRowList;
     }
