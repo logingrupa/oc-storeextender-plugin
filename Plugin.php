@@ -73,6 +73,7 @@ use Logingrupa\StoreExtender\Classes\Middleware\DeviceVaryHeader;
 
 //Registration surfaces boot() delegates to, one class per responsibility
 use Logingrupa\StoreExtender\Classes\Registrar\PageLookupRegistrar;
+use Logingrupa\StoreExtender\Classes\Registrar\PaymentRedirectRegistrar;
 use Logingrupa\StoreExtender\Classes\Registrar\ShopaholicExtensionRegistrar;
 use Logingrupa\StoreExtender\Classes\Registrar\ThemeDataRegistrar;
 
@@ -268,70 +269,7 @@ class Plugin extends PluginBase
         //consumes exclusively moved settings keys (00-context.md Amendment 4).
 
         //Redirect to order checkout page instead of homepage after payment cancel/return
-        $this->addPaymentGatewayRedirectListeners();
-    }
-
-    /**
-     * Listen to Omnipay gateway cancel/return events and redirect
-     * back to the order checkout page instead of homepage.
-     */
-    protected function addPaymentGatewayRedirectListeners(): void
-    {
-        $fnGetCheckoutURL = function ($obOrder) {
-            if (empty($obOrder) || empty($obOrder->secret_key)) {
-                return null;
-            }
-
-            // Find CMS page with OrderPage component dynamically
-            $sPageName = $this->findOrderPage();
-
-            if (!empty($sPageName)) {
-                return \Cms\Classes\Page::url($sPageName, ['slug' => $obOrder->secret_key]);
-            }
-
-            return null;
-        };
-
-        Event::listen(
-            \Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::EVENT_GET_PAYMENT_GATEWAY_CANCEL_URL,
-            $fnGetCheckoutURL
-        );
-
-        Event::listen(
-            \Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::EVENT_GET_PAYMENT_GATEWAY_RETURN_URL,
-            $fnGetCheckoutURL
-        );
-    }
-
-    /**
-     * Find the first CMS page that has the OrderPage component.
-     * Skips proforma/print pages by preferring pages without :print param.
-     *
-     * @return string|null CMS page file name
-     */
-    protected function findOrderPage(): ?string
-    {
-        $obTheme = \Cms\Classes\Theme::getActiveTheme();
-        $arPages = \Cms\Classes\Page::listInTheme($obTheme);
-
-        $sFirstMatch = null;
-
-        foreach ($arPages as $obPage) {
-            $arComponents = $obPage->settings['components'] ?? [];
-
-            if (!isset($arComponents['OrderPage'])) {
-                continue;
-            }
-
-            // Skip proforma/print pages
-            if (str_contains($obPage->url, ':print')) {
-                continue;
-            }
-
-            return $obPage->getBaseFileName();
-        }
-
-        return $sFirstMatch;
+        PaymentRedirectRegistrar::addPaymentGatewayRedirectListeners();
     }
 
     /**
