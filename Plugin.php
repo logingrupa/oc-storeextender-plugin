@@ -267,8 +267,10 @@ class Plugin extends PluginBase
         //which throw on an outage, and Eloquent fires `saved` with no catch:
         //without the boundary below a queue hiccup would abort the import row
         //or the backend save that attached the picture.
+        //A re-save that wrote nothing dispatches nothing: `saved` fires before
+        //syncOriginal(), so isDirty() still says what this save wrote.
         Event::listen('eloquent.saved: System\Models\File', function ($obFile) {
-            if (!WarmDerivativesOnAttach::isWatched($obFile)) {
+            if (!WarmDerivativesOnAttach::isWatched($obFile) || !$obFile->isDirty()) {
                 return;
             }
             try {

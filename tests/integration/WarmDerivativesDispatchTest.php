@@ -2,6 +2,8 @@
 
 require_once __DIR__.'/../StoreExtenderPluginTestCase.php';
 
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Logingrupa\StoreExtender\Classes\Queue\WarmImageDerivatives;
@@ -65,6 +67,36 @@ class WarmDerivativesDispatchTest extends StoreExtenderPluginTestCase
         $this->saveFile(Product::class, 'preview_image');
 
         Queue::assertPushed(WarmImageDerivatives::class, 1);
+    }
+
+    /**
+     * Eloquent fires `saved` even when nothing was written, and a full 1C
+     * import re-saves thousands of File rows it did not touch. The uniqueness
+     * lock is released first, the way a worker that finished the first job
+     * releases it, so the second save is judged on its own.
+     */
+    public function testAReSaveThatWroteNothingEnqueuesNoSecondJob()
+    {
+        Queue::fake();
+        $obFile = $this->saveFile(Offer::class, 'preview_image');
+        (new UniqueLock(Cache::store()))->release(new WarmImageDerivatives((int) $obFile->id));
+
+        $obFile->save();
+        Queue::assertPushed(WarmImageDerivatives::class, 1);
+
+        // the import's update path: the same row, a new source file
+        $obFile->disk_name = 'picture-replaced.jpg';
+        $obFile->save();
+        Queue::assertPushed(WarmImageDerivatives::class, 2);
+    }
+
+    public function testASavedProductGalleryPictureEnqueuesNothing()
+    {
+        // the job has no slot list for it, so the dispatch would be wasted
+        Queue::fake();
+        $this->saveFile(Product::class, 'images');
+
+        Queue::assertNothingPushed();
     }
 
     public function testASavedAttachmentOfAnotherModelEnqueuesNothing()

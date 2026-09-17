@@ -19,31 +19,33 @@ use Lovata\Shopaholic\Models\Product;
  * the picture is cold while its id never changed. That is the case this exists
  * for, and it is an update.
  *
- * The rule is deliberately coarse: it names the two attachment types whose
- * pictures the storefront draws, and the two fields they hang on. Which slots a
- * picture is actually warmed in is the job's decision, read off the row it
- * loads, because the dispatch is a hint and the loaded row is the fact.
+ * The rule names the attachment types whose pictures the storefront draws and,
+ * per type, the fields the job has a slot list for. Which slots a picture is
+ * actually warmed in is still the job's decision, read off the row it loads,
+ * because the dispatch is a hint and the loaded row is the fact; this list only
+ * keeps a job off the queue when that decision is already known to be "none".
  */
 class WarmDerivativesOnAttach
 {
     /**
-     * The attachment types whose pictures are public storefront images.
+     * The attachment types whose pictures are public storefront images, and
+     * the attachOne and attachMany fields on each that a template ever names.
      *
-     * Everything else - a settings logo, an order attachment, a theme upload,
+     * The keys mirror WarmImageDerivatives::SLOT_LIST_MATRIX, and a Product
+     * `images` entry is absent for the same reason it is absent there: /p
+     * draws a product gallery entry at 700x570 and 100x100 and never in a
+     * slot the job can warm, so its dispatch would be a File::find() and a
+     * return, once per gallery picture per import.
+     *
+     * Every other type - a settings logo, an order attachment, a theme upload,
      * a backend user avatar - is out. Some of those are private attachments,
      * and System\Models\File::getThumbUrl() routes a private file's derivative
      * through the backend Files controller, so warming one blindly is how a
      * private attachment gets published.
      */
-    const WATCHED_TYPE_LIST = [
-        Offer::class,
-        Product::class,
-    ];
-
-    /** The attachOne and attachMany fields those pictures hang on */
     const WATCHED_FIELD_LIST = [
-        'preview_image',
-        'images',
+        Offer::class   => ['preview_image', 'images'],
+        Product::class => ['preview_image'],
     ];
 
     /**
@@ -58,11 +60,8 @@ class WarmDerivativesOnAttach
             return false;
         }
 
-        $sAttachmentType = $obFile->attachment_type ?? null;
-        if (!in_array($sAttachmentType, self::WATCHED_TYPE_LIST, true)) {
-            return false;
-        }
+        $arWatchedFieldList = self::WATCHED_FIELD_LIST[$obFile->attachment_type ?? ''] ?? [];
 
-        return in_array($obFile->field ?? null, self::WATCHED_FIELD_LIST, true);
+        return in_array($obFile->field ?? null, $arWatchedFieldList, true);
     }
 }

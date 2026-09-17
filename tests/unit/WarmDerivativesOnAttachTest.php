@@ -1,6 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Tests\Unit;
 
 use Logingrupa\StoreExtender\Classes\Event\Image\WarmDerivativesOnAttach;
+use Logingrupa\StoreExtender\Classes\Queue\WarmImageDerivatives;
 use Lovata\Shopaholic\Models\Offer;
 use Lovata\Shopaholic\Models\Product;
 use PHPUnit\Framework\TestCase;
@@ -58,13 +59,26 @@ class WarmDerivativesOnAttachTest extends TestCase
         ));
     }
 
-    public function testAProductGalleryPictureIsWatched()
+    public function testAProductGalleryPictureIsNotWatched()
     {
-        // watched by the listener, and warmed in no slot by the job: the type
-        // filter is coarse on purpose and the job owns the matrix
-        $this->assertTrue(WarmDerivativesOnAttach::isWatched(
+        // the job's matrix has no slot for it, so a dispatch would be a queue
+        // row whose whole work is a File::find() and a return
+        $this->assertFalse(WarmDerivativesOnAttach::isWatched(
             $this->makeSavedFile(Product::class, 'images')
         ));
+    }
+
+    /**
+     * The watch list and the job's slot matrix are two statements of one
+     * rule, and this is what keeps them from drifting apart: every watched
+     * field has a slot list, and every slot list is watched.
+     */
+    public function testTheWatchListAgreesWithTheJobsSlotMatrix()
+    {
+        $arWatchedFieldList = WarmDerivativesOnAttach::WATCHED_FIELD_LIST;
+        $arMatrixFieldList = array_map('array_keys', WarmImageDerivatives::SLOT_LIST_MATRIX);
+
+        $this->assertSame($arMatrixFieldList, $arWatchedFieldList);
     }
 
     public function testAnotherModelsAttachmentIsNotWatched()
