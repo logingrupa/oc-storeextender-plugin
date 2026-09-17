@@ -137,6 +137,46 @@ class ShippingLadderTest extends StoreExtenderPluginTestCase
         $this->assertSame([['from' => 0.0, 'price' => 6.9]], $arLadder[1]['tiers']);
     }
 
+    public function testBandsGroupTieredTypesPerThresholdAndListSingleTierTypesAsAlways()
+    {
+        $arLadder = ShippingLadder::make(
+            [new ShippingTypeStub(2, 'Pickup', 0.00), new ShippingTypeStub(1, 'Courier', 6.90), new ShippingTypeStub(6, 'DPD', 4.00), new ShippingTypeStub(5, 'Abroad', 24.00)],
+            [1 => [$this->positionTotalMechanism(1, 'fixed')], 6 => [$this->positionTotalMechanism(100, 'percent')]]
+        );
+
+        $this->assertSame([
+            'bands'  => [
+                ['from' => 0.0, 'to' => 60.0, 'rows' => [['name' => 'Courier', 'price' => 6.9], ['name' => 'DPD', 'price' => 4.0]]],
+                ['from' => 60.0, 'to' => null, 'rows' => [['name' => 'Courier', 'price' => 5.9], ['name' => 'DPD', 'price' => 0.0]]],
+            ],
+            'always' => [['name' => 'Pickup', 'price' => 0.0], ['name' => 'Abroad', 'price' => 24.0]],
+        ], ShippingLadder::bands($arLadder));
+    }
+
+    public function testBandsWithTwoThresholdsCarryTheMiddleInterval()
+    {
+        $arLadder = ShippingLadder::make(
+            [new ShippingTypeStub(1, 'Courier', 6.90)],
+            [1 => [$this->positionTotalMechanism(1, 'fixed', 40), $this->positionTotalMechanism(100, 'percent', 60)]]
+        );
+
+        $arBands = ShippingLadder::bands($arLadder)['bands'];
+
+        $this->assertSame([[0.0, 40.0], [40.0, 60.0], [60.0, null]], array_map(function ($arBand) {
+            return [$arBand['from'], $arBand['to']];
+        }, $arBands));
+        $this->assertSame([6.9, 5.9, 0.0], array_map(function ($arBand) {
+            return $arBand['rows'][0]['price'];
+        }, $arBands));
+    }
+
+    public function testBandsWithoutThresholdsListEverythingAsAlways()
+    {
+        $arLadder = ShippingLadder::make([new ShippingTypeStub(5, 'Abroad', 24.00)], []);
+
+        $this->assertSame(['bands' => [], 'always' => [['name' => 'Abroad', 'price' => 24.0]]], ShippingLadder::bands($arLadder));
+    }
+
     public function testDistinctThresholdsBecomeAscendingTiersAndEqualPricesCollapse()
     {
         $obAtForty = $this->positionTotalMechanism(1, 'fixed', 40);

@@ -73,6 +73,74 @@ class ShippingLadder
     }
 
     /**
+     * The ladder regrouped for reading: one band per threshold interval
+     * ("under 60", "over 60") listing every tiered type's price inside it,
+     * and the single-tier types as unconditional lines.
+     * @param array $arLadder make() output
+     * @return array ['bands' => [['from' => float, 'to' => float|null, 'rows' => [['name' => string, 'price' => float], ...]], ...],
+     *                'always' => [['name' => string, 'price' => float], ...]]
+     */
+    public static function bands(array $arLadder): array
+    {
+        $arTieredList = array_values(array_filter($arLadder, function ($arType) {
+            return count($arType['tiers']) > 1;
+        }));
+        $arAlwaysList = [];
+        foreach ($arLadder as $arType) {
+            if (count($arType['tiers']) === 1) {
+                $arAlwaysList[] = ['name' => $arType['name'], 'price' => $arType['tiers'][0]['price']];
+            }
+        }
+
+        if (empty($arTieredList)) {
+            return ['bands' => [], 'always' => $arAlwaysList];
+        }
+
+        $arEdgeList = [0.0];
+        foreach ($arTieredList as $arType) {
+            foreach ($arType['tiers'] as $arTier) {
+                $arEdgeList[] = $arTier['from'];
+            }
+        }
+        $arEdgeList = array_values(array_unique($arEdgeList, SORT_NUMERIC));
+        sort($arEdgeList, SORT_NUMERIC);
+
+        $arBandList = [];
+        foreach ($arEdgeList as $iIndex => $fFrom) {
+            $arBandList[] = [
+                'from' => $fFrom,
+                'to'   => $arEdgeList[$iIndex + 1] ?? null,
+                'rows' => self::bandRows($arTieredList, $fFrom),
+            ];
+        }
+
+        return ['bands' => $arBandList, 'always' => $arAlwaysList];
+    }
+
+    /**
+     * Each tiered type's price at a subtotal: the last tier whose threshold
+     * the subtotal reaches.
+     * @param array $arTieredList
+     * @param float $fSubtotal
+     * @return array
+     */
+    protected static function bandRows(array $arTieredList, float $fSubtotal): array
+    {
+        $arRowList = [];
+        foreach ($arTieredList as $arType) {
+            $fPrice = $arType['tiers'][0]['price'];
+            foreach ($arType['tiers'] as $arTier) {
+                if ($arTier['from'] <= $fSubtotal) {
+                    $fPrice = $arTier['price'];
+                }
+            }
+            $arRowList[] = ['name' => $arType['name'], 'price' => $fPrice];
+        }
+
+        return $arRowList;
+    }
+
+    /**
      * Keep the money-threshold mechanisms, warn once per excluded class.
      * @param array $arMechanismList
      * @param array $arWarnedClassList
