@@ -94,7 +94,7 @@ use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
  */
 class Plugin extends PluginBase
 {
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Lovata.CampaignsShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
 
     /**
      * Returns information about this plugin.
