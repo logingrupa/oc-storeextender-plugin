@@ -4,6 +4,7 @@ use Illuminate\Console\Command;
 use Logingrupa\StoreExtender\Classes\Helper\ImageWarmer;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Lovata\Shopaholic\Models\Offer;
+use Lovata\Shopaholic\Models\Product;
 
 /**
  * Generate the offer image derivatives ahead of traffic.
@@ -17,6 +18,8 @@ use Lovata\Shopaholic\Models\Offer;
  * WHICH derivatives a record needs is not decided here: ImageWarmer owns the
  * matrix, because the attach job asks the same question about a picture the
  * import just landed. This command owns the walk, the chunking and the counting.
+ *
+ * Two passes: every product preview picture first, then every offer picture.
  *
  * Bounded and resumable by design:
  *   - offers are walked in id order in chunks, never loaded all at once;
@@ -45,6 +48,9 @@ class WarmOfferThumbs extends Command
 
     /** @var string */
     protected $description = 'Pre-generate the sized offer image derivatives the storefront asks for';
+
+    /** @var int */
+    protected $iProductCount = 0;
 
     /** @var int */
     protected $iOfferCount = 0;
@@ -89,10 +95,12 @@ class WarmOfferThumbs extends Command
             $bDryRun ? ' (dry run)' : ''
         ));
 
+        $this->walkProductList($bDryRun);
         $this->walkOfferList($iFromId, $iLimit, $bDryRun);
 
         $this->line(sprintf(
-            'Done: %d offers, %d derivatives%s, %d skipped, %d failures, last offer id %d.',
+            'Done: %d products, %d offers, %d derivatives%s, %d skipped, %d failures, last offer id %d.',
+            $this->iProductCount,
             $this->iOfferCount,
             $this->iThumbCount,
             $bDryRun ? ' would be generated' : ' present',
@@ -109,6 +117,36 @@ class WarmOfferThumbs extends Command
         }
 
         return $this->iFailureCount > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Walk every product in id order, in chunks, warming both hero slots of its
+     * preview picture.
+     *
+     * Runs FIRST and unconditionally, before the offer walk and outside
+     * --from-id and --limit. Those two options mean "offer id" and "offers", and
+     * a pass that honoured them would either make them ambiguous or need a
+     * second pair of options. It costs nothing to leave them alone: 667 products
+     * at two derivatives each is seconds, and the pass has no resume need
+     * because a killed run repeats it for one file_exists per derivative.
+     */
+    protected function walkProductList(bool $bDryRun): void
+    {
+        Product::query()
+            ->with(['preview_image'])
+            ->orderBy('id')
+            ->chunkById(self::CHUNK_SIZE, function ($obProductChunk) use ($bDryRun) {
+                foreach ($obProductChunk as $obProduct) {
+                    $this->recordCounts(ImageWarmer::warmProductPictures($obProduct, $bDryRun));
+                    $this->iProductCount++;
+                }
+
+                $this->line(sprintf(
+                    '  %d products, %d derivatives',
+                    $this->iProductCount,
+                    $this->iThumbCount
+                ));
+            });
     }
 
     /**
