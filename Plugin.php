@@ -1,30 +1,13 @@
 <?php namespace Logingrupa\StoreExtender;
 
 // use App;
-use File;
 use Lang;
 use Omnipay\Omnipay;
-use Yaml;
 use Event;
 use Backend;
 use System\Classes\PluginBase;
-use System\Classes\PluginManager;
 
 // use Illuminate\Foundation\AliasLoader;
-use Lovata\Shopaholic\Models\Offer as ShopaholicOfferModel;
-use Lovata\Shopaholic\Models\Product as ShopaholicProductModel;
-use Lovata\Shopaholic\Models\Category as ShopaholicCategoryModel;
-use Lovata\OrdersShopaholic\Models\Order as ShopaholicOrderModel;
-use Lovata\Shopaholic\Models\Currency as ShopaholicCurrencyModel;
-use Lovata\Shopaholic\Controllers\Currencies as ShopaholicCurrenciesController;
-use Lovata\Shopaholic\Controllers\Products as ShopaholicProductsController;
-use Lovata\Shopaholic\Controllers\Offers as ShopaholicOffersController;
-use Lovata\Shopaholic\Classes\Item\ProductItem;
-use Lovata\Shopaholic\Classes\Item\OfferItem;
-use Lovata\Shopaholic\Classes\Item\CategoryItem;
-use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
-use Lovata\Shopaholic\Classes\Import\ImportProductModelFromXML;
-use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
 
 //Events
 use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
@@ -49,7 +32,6 @@ use Logingrupa\StoreExtender\Classes\Event\User\RainLabRegistrationHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\UserIpAddressHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\AccountCartIdentityHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\PhoneLoginHandler;
-use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
 
 //Cart component events
 use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
@@ -91,6 +73,8 @@ use Logingrupa\StoreExtender\Classes\Middleware\DeviceVaryHeader;
 
 //Registration surfaces boot() delegates to, one class per responsibility
 use Logingrupa\StoreExtender\Classes\Registrar\PageLookupRegistrar;
+use Logingrupa\StoreExtender\Classes\Registrar\ShopaholicExtensionRegistrar;
+use Logingrupa\StoreExtender\Classes\Registrar\ThemeDataRegistrar;
 
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
@@ -194,19 +178,19 @@ class Plugin extends PluginBase
         // Extend ThemeData/MLThemeData with dropdown option methods needed by theme
         // customization form. Hooks into form field building to guarantee methods exist
         // on whichever model class the form is using at render time.
-        $this->extendThemeDataDropdownMethods();
-        $this->extendThemeOptionsController();
+        ThemeDataRegistrar::extendThemeDataDropdownMethods();
+        ThemeDataRegistrar::extendThemeOptionsController();
         PageLookupRegistrar::registerProductPageLookupType();
         PageLookupRegistrar::registerSlugPageLookupTypes();
 
-        $this->extendShopaholicProductsController();
-        $this->extendShopaholicOffersController();
-        $this->extendShopaholicProductModel();
-        $this->extendShopaholicOfferModel();
-        $this->extendItemEagerLoading();
-        $this->extendCategoryChildrenMapReset();
-        $this->extendXMLImporter();
-        $this->extendShopaholicOrderModel();
+        ShopaholicExtensionRegistrar::extendShopaholicProductsController();
+        ShopaholicExtensionRegistrar::extendShopaholicOffersController();
+        ShopaholicExtensionRegistrar::extendShopaholicProductModel();
+        ShopaholicExtensionRegistrar::extendShopaholicOfferModel();
+        ShopaholicExtensionRegistrar::extendItemEagerLoading();
+        ShopaholicExtensionRegistrar::extendCategoryChildrenMapReset();
+        ShopaholicExtensionRegistrar::extendXMLImporter();
+        ShopaholicExtensionRegistrar::extendShopaholicOrderModel();
         Event::subscribe(ExtendPaymentGateway::class);
         Event::subscribe(ExtendMenuHandler::class);
         //Offer events: PASS 1 metadata + discount steps. The PASS 2 price
@@ -277,7 +261,7 @@ class Plugin extends PluginBase
         DeviceLayoutHandler::switchLayoutOnPageDisplay();
 
         //Extend currency form to allow more decimal places in rate field
-        $this->extendShopaholicCurrenciesController();
+        ShopaholicExtensionRegistrar::extendShopaholicCurrenciesController();
 
         //Auto-link products to target Tax entries during import: MOVED to
         //Logingrupa.CustomXMLImportPricing (ProductTaxAutoLinkHandler) - it
@@ -348,185 +332,6 @@ class Plugin extends PluginBase
         }
 
         return $sFirstMatch;
-    }
-
-    public function extendShopaholicProductsController()
-    {
-        ShopaholicProductsController::extendFormFields(function ($widget) {
-            // Prevent extending of related form instead of the intended ShopaholicProductModel form
-            if (!$widget->model instanceof ShopaholicProductModel) {
-                return;
-            }
-            $configTabFields = Yaml::parse(File::get(__DIR__ . '/config/shopaholic/addAditionalSettingsTab.yaml'));
-            $widget->addTabFields($configTabFields);
-        });
-    }
-
-    public function extendShopaholicOffersController()
-    {
-        ShopaholicOffersController::extendFormFields(function ($widget) {
-            // Prevent extending of related form instead of the intended ShopaholicProductModel form
-            if (!$widget->model instanceof ShopaholicOfferModel) {
-                return;
-            }
-            $widget->removeField('preview_image');
-            $widget->removeField('images');
-            $configTabFields = Yaml::parse(File::get(__DIR__ . '/config/shopaholic/addToImagesTabVideoPreview.yaml'));
-            $widget->addTabFields($configTabFields);
-        });
-    }
-
-    /**
-     * Eager load RainLab Translate 'translations' morphMany during Toolbox item
-     * priming. Without this every Product/Offer/Category model AND every attached
-     * MLFile image lazy-loads rainlab_translate_attributes one query per instance
-     * (350+ queries on a cold home page). 'translations' is defined by the
-     * TranslatableModel behavior constructor, so with() resolves it on models and
-     * on MLFile attachments alike. Warm path unaffected - cache hits never reach
-     * the query. Note: nested '<image>.translations' relies on preview_image and
-     * images NOT being listed in $translatable on the parent model (RainLab swaps
-     * the attachment class to MLFile only in that case).
-     */
-    /**
-     * CategoryItem primes its active children map once per request. A process
-     * that saves categories and then rebuilds items (backend save, XML import)
-     * would otherwise read the map it primed before the save.
-     */
-    public function extendCategoryChildrenMapReset()
-    {
-        ShopaholicCategoryModel::extend(function ($obModel) {
-            $obModel->bindEvent('model.afterSave', function () {
-                CategoryItem::clearActiveChildrenMap();
-            });
-
-            $obModel->bindEvent('model.afterDelete', function () {
-                CategoryItem::clearActiveChildrenMap();
-            });
-        });
-    }
-
-    public function extendItemEagerLoading()
-    {
-        // seo_container: MightySeo caches seo_param_id on every item and reads
-        // it via the morphOne relation - without eager loading that is one
-        // lovata_mighty_seo_params query per model during cold item builds
-        // (58 on one promo page). Eager loaded, collection builds batch it.
-        ProductItem::$arQueryWith = array_merge(ProductItem::$arQueryWith, [
-            'translations',
-            'preview_image.translations',
-            'images.translations',
-            'offer.translations',
-            'offer.preview_image.translations',
-            'offer.images.translations',
-            'seo_container',
-        ]);
-
-        OfferItem::$arQueryWith = array_merge(OfferItem::$arQueryWith, [
-            'translations',
-            'preview_image.translations',
-            'images.translations',
-        ]);
-
-        $arCategoryWith = [
-            'translations',
-            'preview_image.translations',
-            'icon.translations',
-            'images.translations',
-            'seo_container',
-        ];
-
-        // property_set is a PropertiesShopaholic relation, absent when that
-        // plugin is off - an unknown path here throws RelationNotFoundException
-        if (PluginManager::instance()->hasPlugin('Lovata.PropertiesShopaholic')) {
-            $arCategoryWith[] = 'property_set';
-        }
-
-        CategoryItem::$arQueryWith = array_merge(CategoryItem::$arQueryWith, $arCategoryWith);
-    }
-
-    public function extendShopaholicProductModel()
-    {
-        ShopaholicProductModel::extend(function ($obModel) {
-            $translatable = ['how_to', 'video_link', 'warning', 'ingredients'];
-            foreach ($translatable as $field) {
-                $obModel->translatable[] = $field;
-            }
-
-            $obModel->addCachedField(['how_to', 'video_link', 'hide_dropdown']);
-
-            $fillable = ['how_to', 'video_link', 'hide_dropdown'];
-            foreach ($fillable as $field) {
-                $obModel->fillable[] = $field;
-            }
-        });
-    }
-
-    public function extendShopaholicOfferModel()
-    {
-        ShopaholicOfferModel::extend(function ($obModel) {
-            $obModel->fillable[] = 'variation';
-            $obModel->fillable[] = 'preview_video';
-            // external_id feeds OfferColorGrouper (color-lab API join on 1C UUID)
-            $obModel->addCachedField(['variation', 'preview_video', 'external_id']);
-        });
-    }
-
-    public function extendXMLImporter()
-    {
-        Event::listen(ImportProductModelFromXML::EXTEND_FIELD_LIST, function ($arFieldList) {
-            $arCustumFields = [
-                'video_link' => 'Video link/Youtube ID',
-                'how_to' => 'How to - Step by step',
-                'popularity' => 'Popularity',
-                'search_synonym' => 'Search Synonym, tags',
-                'search_content' => 'Search Content, tags',
-                'hide_dropdown' => 'Hide dropdown and show variation images',
-                'source_vat_rate' => 'Source Tax Rate (НДС Ставка)',
-            ];
-            $arFieldList = array_merge($arFieldList, $arCustumFields);
-            return $arFieldList;
-        }, 900);
-
-        Event::listen(ImportCategoryModelFromXML::EXTEND_FIELD_LIST, function ($arFieldList) {
-            $arCustumFields = [
-                'search_synonym' => 'Search Synonym, tags',
-                'search_content' => 'Search Content, tags',
-            ];
-            $arFieldList = array_merge($arFieldList, $arCustumFields);
-            return $arFieldList;
-        }, 900);
-
-        Event::listen(ImportOfferModelFromXML::EXTEND_FIELD_LIST, function ($arFieldList) {
-            $arCustumFields = [
-                'variation' => 'Offer variation ID',
-            ];
-            $arFieldList = array_merge($arFieldList, $arCustumFields);
-            return $arFieldList;
-        }, 900);
-    }
-
-    public function extendShopaholicOrderModel()
-    {
-        ShopaholicOrderModel::extend(function ($obModel) {
-            $obModel->addCachedField(['manager_id', 'transaction_id']);
-        });
-    }
-
-    public function extendShopaholicCurrenciesController()
-    {
-        ShopaholicCurrenciesController::extendFormFields(function ($widget) {
-            if (!$widget->model instanceof ShopaholicCurrencyModel) {
-                return;
-            }
-
-            $widget->addFields([
-                'rate' => [
-                    'label' => 'lovata.shopaholic::lang.field.rate',
-                    'span'  => 'right',
-                    'type'  => 'text',
-                ],
-            ]);
-        });
     }
 
     /**
@@ -748,98 +553,6 @@ class Plugin extends PluginBase
         return [
             'Logingrupa\Storeextender\FormWidgets\VideoFormWidget' => 'VideoFormWidget',
         ];
-    }
-
-    /**
-     * extendThemeDataDropdownMethods hooks into form field building to add dynamic
-     * dropdown option methods to the theme customization model. This covers both
-     * ThemeData (primary form) and MLThemeData (RainLab Translate proxy), regardless
-     * of instantiation order.
-     */
-    protected function extendThemeDataDropdownMethods()
-    {
-        $fnAddDropdownMethods = function ($obModel) {
-            $obModel->addDynamicMethod('getPromoBlockLeftOptions', function () {
-                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getPromoBlockMiddleOptions', function () {
-                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getPromoBlockRightOptions', function () {
-                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getProductIdOptions', function () {
-                return \Lovata\Shopaholic\Models\Product::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryIdOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryLeftOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryMiddleOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryRightOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getTermsConditionsOptions', function () {
-                $arPages = \Cms\Classes\Page::sortBy('baseFileName')->lists('title', 'baseFileName');
-                if (class_exists('\\Rainlab\\Pages\\Classes\\Page')) {
-                    $arPages = $arPages + \Rainlab\Pages\Classes\Page::sortBy('title')->lists('title', 'baseFileName');
-                }
-                return $arPages;
-            });
-            $obModel->addDynamicMethod('getUserFieldsOptions', function () {
-                return UserPropertyHelper::instance()->getCodeNameList();
-            });
-            $obModel->addDynamicMethod('getShippingCodeOptions', function () {
-                return \Lovata\OrdersShopaholic\Models\ShippingType::lists('name', 'code');
-            });
-            $obModel->addDynamicMethod('getDefaultCurrencyCodeOptions', function () {
-                return \Lovata\Shopaholic\Models\Currency::where('active', true)
-                    ->lists('name', 'code');
-            });
-            $obModel->addDynamicMethod('getTranslatedOptions', function () {
-                return \System\Models\SiteDefinition::where('is_enabled', true)
-                    ->get()
-                    ->mapWithKeys(function ($obSite) {
-                        $sCode = strtolower(substr($obSite->code, 0, 2));
-                        return [$sCode => $obSite->name];
-                    })
-                    ->toArray();
-            });
-        };
-
-        // Class-level extend - methods are added at construction time, before form renders
-        \Cms\Models\ThemeData::extend($fnAddDropdownMethods);
-
-        if (class_exists('\RainLab\Translate\Models\MLThemeData')) {
-            \RainLab\Translate\Models\MLThemeData::extend($fnAddDropdownMethods);
-        }
-    }
-
-    /**
-     * extendThemeOptionsController adds the onGetProductPreviewImage AJAX handler
-     * to the ThemeOptions controller for product dropdown preview thumbnails.
-     */
-    protected function extendThemeOptionsController()
-    {
-        \Cms\Controllers\ThemeOptions::extend(function ($obController) {
-            $obController->addDynamicMethod('onGetProductPreviewImage', function () {
-                $iProductId = (int) post('product_id');
-
-                $obProduct = \Lovata\Shopaholic\Models\Product::with('preview_image')
-                    ->find($iProductId);
-
-                $sPreviewImageUrl = '';
-                if ($obProduct && $obProduct->preview_image) {
-                    $sPreviewImageUrl = $obProduct->preview_image->getThumb(300, 300, ['mode' => 'crop']);
-                }
-
-                return ['preview_image_url' => $sPreviewImageUrl];
-            });
-        });
     }
 
 }
