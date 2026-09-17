@@ -57,7 +57,9 @@ class WarmDerivativesDispatchTest extends StoreExtenderPluginTestCase
 
         Queue::assertPushed(WarmImageDerivatives::class, 1);
         Queue::assertPushed(WarmImageDerivatives::class, function ($obJob) use ($obFile) {
-            return $obJob->iFileId === (int) $obFile->id;
+            // afterCommit rides on the pushed job: the queue reads it off the
+            // instance, so a dispatcher that forgot the flag could not hide it
+            return $obJob->iFileId === (int) $obFile->id && $obJob->afterCommit === true;
         });
     }
 

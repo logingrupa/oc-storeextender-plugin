@@ -155,4 +155,15 @@ class WarmImageDerivativesJobTest extends TestCase
     {
         $this->assertSame('10505', (new WarmImageDerivatives(10505))->uniqueId());
     }
+
+    /**
+     * The push happens inside the model event, inside whatever transaction
+     * attached the picture. A job run before that commit finds no row and
+     * stops quietly, so the flag is set by the job itself and not left to a
+     * dispatcher to remember.
+     */
+    public function testTheJobWaitsForTheTransactionThatAttachedThePicture()
+    {
+        $this->assertTrue((new WarmImageDerivatives(10505))->afterCommit);
+    }
 }

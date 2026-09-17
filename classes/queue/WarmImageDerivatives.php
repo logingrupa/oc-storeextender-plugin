@@ -45,6 +45,12 @@ use Throwable;
  * job exists for is one owner attaching one picture and then looking at the
  * page. The job is idempotent and cheap when warm (one file_exists per
  * derivative), so this is queue fairness, not correctness.
+ *
+ * AFTER COMMIT, always. The dispatch happens inside the model event, which is
+ * inside whatever transaction attached the picture, and a worker that took
+ * the job before that transaction committed would find no row and stop
+ * quietly, indistinguishable from a picture that was deleted. The constructor
+ * sets the flag rather than the dispatcher, so every dispatch path is covered.
  */
 class WarmImageDerivatives implements ShouldQueue, ShouldBeUnique
 {
@@ -97,6 +103,9 @@ class WarmImageDerivatives implements ShouldQueue, ShouldBeUnique
                 'WarmImageDerivatives: a file id must be positive, got '.$iFileId
             );
         }
+        // assigned, not declared: the Queueable trait declares the property
+        // and PHP rejects a redeclaration with a different default
+        $this->afterCommit = true;
     }
 
     /**
