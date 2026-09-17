@@ -245,3 +245,6 @@
 2.0.87:
   - 'The Master Days attendee mails (reservation removed, attendance reminder) are plugin views with a Latvian variant (views/mail/md_reservation_*.htm), subjects included. They used to be sent under a misspelt code that only one shop carried as a database row, so the .lv page logged a failure for every mail. The rows are removed.'
   - update_table_system_mail_templates_retire_md_reservation_rows.php
+
+2.0.88:
+  - 'A static page asked for by another locale''s URL (the v1 shops served /ru/palidziba/kontakti, the page lives at /ru/pomosh/kontakty) answers 301 to its URL in that locale instead of the 404 page. LegacyUrlRedirectHandler resolves it from the page''s viewBag url and localeUrl set through LegacyStaticPageResolver.'

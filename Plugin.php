@@ -110,7 +110,7 @@ class Plugin extends PluginBase
     const MAIL_MD_RESERVATION_DELETED = 'logingrupa.storeextender::mail.md_reservation_deleted';
     const MAIL_MD_RESERVATION_REMINDER = 'logingrupa.storeextender::mail.md_reservation_reminder';
 
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User', 'RainLab.Pages'];
 
     /**
      * Returns information about this plugin.
