@@ -49,27 +49,29 @@ class ShippingLadder
     }
 
     /**
-     * Lowest subtotal at which a paid shipping type becomes free, null when
-     * no type does. A type with a 0.00 base (local pickup) is not free delivery.
+     * The paid shipping type that becomes free first and the subtotal that
+     * does it, null when no paid type ever does. A type with a 0.00 base
+     * (local pickup) is not free delivery. The nudge names the type: only
+     * this one goes free, not delivery as a whole.
      * @param array $arLadder make() output
-     * @return float|null
+     * @return array|null ['name' => string, 'from' => float]
      */
-    public static function freeShippingTarget(array $arLadder): ?float
+    public static function freeShipping(array $arLadder): ?array
     {
-        $fTarget = null;
+        $arFree = null;
         foreach ($arLadder as $arType) {
             if ($arType['base'] <= 0.0) {
                 continue;
             }
             foreach ($arType['tiers'] as $arTier) {
-                if ($arTier['price'] > 0.0) {
+                if ($arTier['price'] > 0.0 || ($arFree !== null && $arFree['from'] <= $arTier['from'])) {
                     continue;
                 }
-                $fTarget = $fTarget === null ? $arTier['from'] : min($fTarget, $arTier['from']);
+                $arFree = ['name' => $arType['name'], 'from' => $arTier['from']];
             }
         }
 
-        return $fTarget;
+        return $arFree;
     }
 
     /**

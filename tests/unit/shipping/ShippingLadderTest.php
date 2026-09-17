@@ -56,7 +56,7 @@ class ShippingLadderTest extends StoreExtenderPluginTestCase
             ['id' => 1, 'name' => 'Courier', 'base' => 6.9, 'tiers' => [['from' => 0.0, 'price' => 6.9], ['from' => 60.0, 'price' => 5.9]]],
             ['id' => 6, 'name' => 'DPD', 'base' => 4.0, 'tiers' => [['from' => 0.0, 'price' => 4.0], ['from' => 60.0, 'price' => 0.0]]],
         ], $arLadder);
-        $this->assertSame(60.0, ShippingLadder::freeShippingTarget($arLadder));
+        $this->assertSame(['name' => 'DPD', 'from' => 60.0], ShippingLadder::freeShipping($arLadder));
     }
 
     public function testZeroBasePickupIsNotFreeDelivery()
@@ -66,7 +66,7 @@ class ShippingLadderTest extends StoreExtenderPluginTestCase
         $arLadder = ShippingLadder::make([$obPickup], [2 => [$this->positionTotalMechanism(100, 'percent')]]);
 
         $this->assertSame([['from' => 0.0, 'price' => 0.0]], $arLadder[0]['tiers']);
-        $this->assertNull(ShippingLadder::freeShippingTarget($arLadder));
+        $this->assertNull(ShippingLadder::freeShipping($arLadder));
     }
 
     public function testTypeWithoutMechanismsHasOneTierAtBase()
@@ -74,7 +74,7 @@ class ShippingLadderTest extends StoreExtenderPluginTestCase
         $arLadder = ShippingLadder::make([new ShippingTypeStub(5, 'Abroad', 24.00)], []);
 
         $this->assertSame([['from' => 0.0, 'price' => 24.0]], $arLadder[0]['tiers']);
-        $this->assertNull(ShippingLadder::freeShippingTarget($arLadder));
+        $this->assertNull(ShippingLadder::freeShipping($arLadder));
     }
 
     public function testFinalMechanismStopsTheFold()
@@ -116,7 +116,7 @@ class ShippingLadderTest extends StoreExtenderPluginTestCase
         $arLadder = ShippingLadder::make([new ShippingTypeStub(6, 'DPD', 4.00)], [6 => [$obFree]]);
 
         $this->assertSame([['from' => 0.0, 'price' => 0.0]], $arLadder[0]['tiers']);
-        $this->assertSame(0.0, ShippingLadder::freeShippingTarget($arLadder));
+        $this->assertSame(['name' => 'DPD', 'from' => 0.0], ShippingLadder::freeShipping($arLadder));
     }
 
     public function testQuantityBasedMechanismsAreExcludedAndLoggedOncePerClass()
