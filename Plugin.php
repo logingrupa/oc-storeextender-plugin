@@ -44,6 +44,8 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 //Color Family property slug pinning
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
+use Logingrupa\StoreExtender\Classes\Event\Image\WarmDerivativesOnAttach;
+use Logingrupa\StoreExtender\Classes\Queue\WarmImageDerivatives;
 use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\SlugHistoryHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\LegacyUrlRedirectHandler;
@@ -253,6 +255,18 @@ class Plugin extends PluginBase
         Event::subscribe(StoreExtenderExtendProductFieldsHandler::class);
         Event::subscribe(StoreExtenderProductModelHandler::class);
         Event::subscribe(StoreExtenderExtendProductImport::class);
+
+        //A picture the 1C import attaches or re-attaches between deploys warms
+        //its own derivatives: one queued job per offer or product picture. The
+        //import grows no step, and the phone hero slide is never resized inside
+        //a visitor's request. In boot() and not register(), because the
+        //dispatcher has to exist before a listener can attach to it.
+        Event::listen('eloquent.saved: System\Models\File', function ($obFile) {
+            if (!WarmDerivativesOnAttach::isWatched($obFile)) {
+                return;
+            }
+            WarmImageDerivatives::dispatch((int) $obFile->id);
+        });
 
         //Currency rounding for NOK, SEK, DKK
         ExtendCurrencyConversion::swapCurrencyHelper();
