@@ -83,6 +83,25 @@ class WarmDerivativesDispatchTest extends StoreExtenderPluginTestCase
         Queue::assertNothingPushed();
     }
 
+    /**
+     * The dispatch runs inside Model::save(), which Eloquent fires with no
+     * catch of its own. A queue that is down must cost a warning and a cold
+     * derivative, never the row the import or the editor was writing.
+     */
+    public function testAQueueOutageIsLoggedAndThePictureStillSaves()
+    {
+        Log::spy();
+        Queue::shouldReceive('connection')->andThrow(new RuntimeException('redis is down'));
+
+        $obFile = $this->saveFile(Offer::class, 'preview_image');
+
+        $this->assertNotNull(File::find($obFile->id));
+        Log::shouldHaveReceived('warning')->once()->withArgs(function ($sMessage) use ($obFile) {
+            return strpos($sMessage, (string) $obFile->id) !== false
+                && strpos($sMessage, 'redis is down') !== false;
+        });
+    }
+
     public function testRetryExhaustionIsLoggedOnceAndSwallowed()
     {
         Log::spy();

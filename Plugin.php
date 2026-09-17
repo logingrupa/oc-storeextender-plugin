@@ -5,6 +5,8 @@ use Lang;
 use Omnipay\Omnipay;
 use Event;
 use Backend;
+use Throwable;
+use Illuminate\Support\Facades\Log;
 use System\Classes\PluginBase;
 
 // use Illuminate\Foundation\AliasLoader;
@@ -261,11 +263,23 @@ class Plugin extends PluginBase
         //import grows no step, and the phone hero slide is never resized inside
         //a visitor's request. In boot() and not register(), because the
         //dispatcher has to exist before a listener can attach to it.
+        //The dispatch acquires a cache lock and pushes to redis, both of
+        //which throw on an outage, and Eloquent fires `saved` with no catch:
+        //without the boundary below a queue hiccup would abort the import row
+        //or the backend save that attached the picture.
         Event::listen('eloquent.saved: System\Models\File', function ($obFile) {
             if (!WarmDerivativesOnAttach::isWatched($obFile)) {
                 return;
             }
-            WarmImageDerivatives::dispatch((int) $obFile->id);
+            try {
+                WarmImageDerivatives::dispatch((int) $obFile->id);
+            } catch (Throwable $obException) {
+                Log::warning(sprintf(
+                    'warm-image-derivatives: dispatch for file %d failed, the picture stays cold: %s',
+                    (int) $obFile->id,
+                    $obException->getMessage()
+                ));
+            }
         });
 
         //Currency rounding for NOK, SEK, DKK
