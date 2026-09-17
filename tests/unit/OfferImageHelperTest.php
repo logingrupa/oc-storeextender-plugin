@@ -1,6 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Tests\Unit;
 
 use InvalidArgumentException;
+use LogicException;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use October\Rain\Database\Attach\File;
 use PHPUnit\Framework\TestCase;
@@ -40,6 +41,84 @@ class OfferImageHelperTest extends TestCase
         };
         $obFile->id = $iId;
         $obFile->sFakeExtension = $sExtension;
+
+        return $obFile;
+    }
+
+    /**
+     * A File that records the geometry every getThumbUrl() call asks it for.
+     *
+     * October generates the derivative inside getThumbUrl(), which needs a
+     * storage disk and a stored source file, and a plain unit test has neither.
+     * The property these cases are about is the geometry the helper ASKS for, so
+     * the override records it and hands back a marker instead of a URL.
+     *
+     * height is an accessor on File (getHeightAttribute reads the source file
+     * through the Storage facade), so the fake source height overrides the
+     * accessor rather than setting an attribute the accessor would ignore.
+     */
+    protected function makeSizeRecordingFile(int $iId, int $iSourceHeight): File
+    {
+        $obFile = new class extends File {
+            /** @var int */
+            public $iFakeHeight = 0;
+
+            /** @var list<array{width: mixed, height: mixed}> */
+            public $arThumbRequestList = [];
+
+            public function getHeightAttribute()
+            {
+                return $this->iFakeHeight;
+            }
+
+            public function getThumbUrl($width, $height, $options = [])
+            {
+                $this->arThumbRequestList[] = ['width' => $width, 'height' => $height];
+
+                return 'recorded';
+            }
+        };
+        $obFile->id = $iId;
+        $obFile->iFakeHeight = $iSourceHeight;
+
+        return $obFile;
+    }
+
+    /**
+     * A File whose storage disk throws the moment it is touched.
+     *
+     * heroPhoneIfWarm() has to answer before it reaches storage twice: for a
+     * file that is not an image, and for a source shorter than the hero floor.
+     * A getDisk() that throws is the assertion itself, because those two cases
+     * only pass when the disk is never asked.
+     */
+    protected function makeDiskForbiddenFile(int $iId, bool $bIsImage, int $iSourceHeight): File
+    {
+        $obFile = new class extends File {
+            /** @var bool */
+            public $bFakeIsImage = true;
+
+            /** @var int */
+            public $iFakeHeight = 0;
+
+            public function isImage()
+            {
+                return $this->bFakeIsImage;
+            }
+
+            public function getHeightAttribute()
+            {
+                return $this->iFakeHeight;
+            }
+
+            public function getDisk()
+            {
+                throw new LogicException('heroPhoneIfWarm reached the storage disk');
+            }
+        };
+        $obFile->id = $iId;
+        $obFile->bFakeIsImage = $bIsImage;
+        $obFile->iFakeHeight = $iSourceHeight;
 
         return $obFile;
     }
@@ -134,5 +213,111 @@ class OfferImageHelperTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         OfferImageHelper::getThumbOptions('hero');
+    }
+
+    /**
+     * The measured phone box, pinned through October's own naming rule rather
+     * than a copy of it: 390x340 CSS px at DPR 2 is 780x680, and the mode is
+     * crop because the box is object-fit: cover.
+     */
+    public function testPhoneHeroOptionsProduceACroppedWebpDerivativeAtTheMeasuredBox()
+    {
+        $obFile = $this->makeFile(10505, 'png');
+
+        $sFileName = $obFile->getThumbFilename(
+            OfferImageHelper::HERO_PHONE_WIDTH,
+            OfferImageHelper::HERO_PHONE_HEIGHT,
+            OfferImageHelper::getHeroPhoneThumbOptions()
+        );
+
+        $this->assertSame('thumb_10505_780_680_crop.webp', $sFileName);
+    }
+
+    /**
+     * All three keys, because the arity defect the mode-string case above pins
+     * is exactly an options array arriving without its extension and quality.
+     */
+    public function testPhoneHeroOptionsCarryModeQualityAndExtension()
+    {
+        $arOptions = OfferImageHelper::getHeroPhoneThumbOptions();
+
+        $this->assertSame('crop', $arOptions['mode']);
+        $this->assertSame(OfferImageHelper::HERO_PHONE_QUALITY, $arOptions['quality']);
+        $this->assertSame('webp', $arOptions['extension']);
+    }
+
+    public function testMissingImageRendersNoPhoneHeroSource()
+    {
+        $this->assertSame('', OfferImageHelper::heroPhone(null));
+        $this->assertSame('', OfferImageHelper::heroPhoneIfWarm(null));
+    }
+
+    /**
+     * A file that is not an image has no derivative to find, so the lookup gives
+     * up before storage. The fixture's getDisk() throws, so this passes only if
+     * the disk was never asked.
+     */
+    public function testPhoneHeroWarmLookupSkipsANonImageWithoutTouchingTheDisk()
+    {
+        $obFile = $this->makeDiskForbiddenFile(10505, false, 821);
+
+        $this->assertSame('', OfferImageHelper::heroPhoneIfWarm($obFile));
+    }
+
+    /**
+     * A source shorter than the hero floor answers an empty string, so the
+     * caller falls through to the 600px preview or the 96px circle it already
+     * renders instead of pointing at a 780x680 file nothing writes for it. Same
+     * throwing getDisk(): the branch answers before the lookup.
+     */
+    public function testPhoneHeroWarmLookupGivesUpOnASourceShorterThanTheHeroFloor()
+    {
+        $obFile = $this->makeDiskForbiddenFile(10505, true, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
+
+        $this->assertSame('', OfferImageHelper::heroPhoneIfWarm($obFile));
+    }
+
+    /**
+     * The generating twin on that same short source asks for HERO_SMALL_WIDTH
+     * and a proportional height, so an eager slide never upscales a 299px source
+     * 2.7x into the 780x680 box.
+     */
+    public function testPhoneHeroDoesNotUpscaleASourceShorterThanTheHeroFloor()
+    {
+        $obFile = $this->makeSizeRecordingFile(10505, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
+
+        OfferImageHelper::heroPhone($obFile);
+
+        $this->assertSame(
+            [['width' => OfferImageHelper::HERO_SMALL_WIDTH, 'height' => 'auto']],
+            $obFile->arThumbRequestList
+        );
+    }
+
+    /**
+     * A full-size source goes to the measured box, and to it exactly once.
+     */
+    public function testPhoneHeroAsksForTheMeasuredBoxOnAFullSizeSource()
+    {
+        $obFile = $this->makeSizeRecordingFile(10505, 821);
+
+        OfferImageHelper::heroPhone($obFile);
+
+        $this->assertSame(
+            [['width' => OfferImageHelper::HERO_PHONE_WIDTH, 'height' => OfferImageHelper::HERO_PHONE_HEIGHT]],
+            $obFile->arThumbRequestList
+        );
+    }
+
+    /**
+     * The phone slot never joined assertSlot(). That guard is what stops
+     * getSlotSize() from answering 96 or 600 for a hero picture, and the case
+     * above it uses 'hero' as its unknown-slot fixture for the same reason.
+     */
+    public function testPhoneHeroSlotIsNotAGenericSlotName()
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        OfferImageHelper::getThumbOptions(OfferImageHelper::SLOT_HERO_PHONE);
     }
 }
