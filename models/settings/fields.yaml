@@ -1,0 +1,20 @@
+fields:
+    nudge_catalog_section:
+        label: 'logingrupa.storeextender::lang.settings.nudge_catalog_section'
+        comment: 'logingrupa.storeextender::lang.settings.nudge_catalog_section_comment'
+        type: section
+
+    nudge_catalog_min_missing:
+        label: 'logingrupa.storeextender::lang.settings.nudge_catalog_min_missing'
+        type: number
+        step: 0.01
+        min: 0
+        span: left
+
+    nudge_catalog_max_missing:
+        label: 'logingrupa.storeextender::lang.settings.nudge_catalog_max_missing'
+        comment: 'logingrupa.storeextender::lang.settings.nudge_catalog_max_missing_comment'
+        type: number
+        step: 0.01
+        min: 0
+        span: right

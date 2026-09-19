@@ -364,6 +364,10 @@ class Plugin extends PluginBase
                 'tab' => 'logingrupa.storeextender::lang.color_sync.permission_tab',
                 'label' => 'logingrupa.storeextender::lang.color_sync.permission_label',
             ],
+            'logingrupa.storeextender.settings' => [
+                'tab' => 'logingrupa.storeextender::lang.color_sync.permission_tab',
+                'label' => 'logingrupa.storeextender::lang.settings.permission_label',
+            ],
         ];
     }
 
@@ -383,6 +387,15 @@ class Plugin extends PluginBase
                 'url' => Backend::url('logingrupa/storeextender/colorsync'),
                 'order' => 520,
                 'permissions' => ['logingrupa.storeextender.color_sync'],
+            ],
+            'storefront' => [
+                'label' => 'logingrupa.storeextender::lang.settings.label',
+                'description' => 'logingrupa.storeextender::lang.settings.description',
+                'category' => 'lovata.shopaholic::lang.tab.settings',
+                'icon' => 'icon-shopping-basket',
+                'class' => \Logingrupa\StoreExtender\Models\Settings::class,
+                'order' => 530,
+                'permissions' => ['logingrupa.storeextender.settings'],
             ],
         ];
     }
