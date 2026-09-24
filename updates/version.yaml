@@ -257,3 +257,7 @@
 
 2.0.91:
   - 'Storefront settings model (system_settings code logingrupa_storeextender_settings, site-scoped through Multisite with an empty propagatable list, read through SettingsSiteFallbackHandler until a site saves its own row) behind the new permission logingrupa.storeextender.settings. Shipping ladder for the cart sheet built from the real promo mechanisms (ShippingMechanismCollector, ShippingLadder), grouped into subtotal bands and ordered cheapest first, naming the shipping type that goes free. Nudge catalog button window (NudgeCatalogButton) from the settings. Cart::getPositionTotalPriceValue dynamic method. Lovata.CampaignsShopaholic joins $require: the collector reads CampaignHelper.'
+
+2.0.92:
+  - 'The bank transfer payment method said the invoice is paid via the online bank. The shops have no bank link, so the preview text in every site locale (lv, lt, en, ru, nb-no) now says the invoice is paid by a manual bank transfer after the order is placed.'
+  - update_table_payment_methods_bank_preview_text.php
