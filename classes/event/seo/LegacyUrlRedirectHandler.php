@@ -1,18 +1,28 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event\Seo;
 
+use Url;
+use Site;
 use Request;
 use Redirect;
 use Cms\Classes\Page;
+use Cms\Classes\Theme;
 use Cms\Classes\Controller;
+use RainLab\Pages\Classes\Page as StaticPage;
 use Lovata\Toolbox\Classes\Component\ElementPage;
 use Lovata\Shopaholic\Components\CategoryPage;
 use Logingrupa\Storeextender\Components\CustomProductPage;
 use Logingrupa\StoreExtender\Classes\Helper\LegacyUrlResolver;
+use Logingrupa\StoreExtender\Classes\Helper\LegacyStaticPageResolver;
 
 /**
  * Turns the 404 a catalogue page is about to serve into a 301 when the
  * resolver knows where the URL went. Runs after the components resolved
  * their slugs and before the page renders, so a live URL costs nothing.
+ *
+ * A static page asked for by another locale's URL gets the same treatment,
+ * whether the request fell through to the theme 404 page or was caught by a
+ * catalogue route first: Toolbox builds its 404 from the nested run's content
+ * alone, so the redirect has to happen on the catalogue page itself.
  */
 class LegacyUrlRedirectHandler
 {
@@ -29,6 +39,15 @@ class LegacyUrlRedirectHandler
 
     protected function redirectFor(Controller $obController, Page $obPage)
     {
+        if (!$this->aboutToServe404($obPage)) {
+            return null;
+        }
+
+        $sStaticPageUrl = $this->staticPageTarget();
+        if ($sStaticPageUrl !== null) {
+            return Redirect::to($sStaticPageUrl, 301);
+        }
+
         $arParams = $obController->getRouter()->getParameters();
         $arNewParams = $this->productTarget($obPage) ?? $this->categoryTarget($obPage, $arParams);
         if ($arNewParams === null) {
@@ -36,6 +55,51 @@ class LegacyUrlRedirectHandler
         }
 
         return Redirect::to($obController->pageUrl($obPage->getBaseFileName(), $arNewParams, false), 301);
+    }
+
+    /**
+     * The theme 404 page, or a catalogue page whose slug found nothing.
+     */
+    protected function aboutToServe404(Page $obPage): bool
+    {
+        return $obPage->getBaseFileName() === '404'
+            || $this->missingComponent($obPage, CustomProductPage::class) !== null
+            || $this->missingComponent($obPage, CategoryPage::class) !== null;
+    }
+
+    /**
+     * The absolute URL of the static page the request stands for, in the
+     * active site's locale, or null.
+     */
+    protected function staticPageTarget(): ?string
+    {
+        $obSite = Site::getActiveSite();
+        $sPrefix = $obSite->is_prefixed ? LegacyStaticPageResolver::normalizeUrl((string) $obSite->route_prefix) : '';
+        $sPath = LegacyStaticPageResolver::stripPrefix(Request::path(), $sPrefix);
+        $sOwnUrl = (new LegacyStaticPageResolver)->resolve($sPath, (string) $obSite->locale, $this->staticPageUrlMaps());
+
+        return $sOwnUrl === null ? null : Url::to($sPrefix . $sOwnUrl);
+    }
+
+    /**
+     * One [locale => url] map per static page of the active theme, the
+     * viewBag url under the key base. RainLab Translate rewrites the loaded
+     * url to the active locale, the original attributes keep the base one.
+     * @return iterable<array<string, string>>
+     */
+    protected function staticPageUrlMaps(): iterable
+    {
+        foreach (StaticPage::listInTheme(Theme::getActiveTheme(), true) as $obStaticPage) {
+            $arViewBag = (array) array_get($obStaticPage->getOriginal(), 'viewBag', []);
+            $arUrlList = ['base' => LegacyStaticPageResolver::normalizeUrl((string) ($arViewBag['url'] ?? $obStaticPage->url))];
+            foreach ((array) ($arViewBag['localeUrl'] ?? []) as $sLocale => $sUrl) {
+                if (trim((string) $sUrl) !== '') {
+                    $arUrlList[$sLocale] = LegacyStaticPageResolver::normalizeUrl((string) $sUrl);
+                }
+            }
+
+            yield $arUrlList;
+        }
     }
 
     protected function productTarget(Page $obPage): ?array

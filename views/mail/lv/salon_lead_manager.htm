@@ -1,0 +1,37 @@
+subject = "Salona pieteikums - {{ salon_name|raw }}"
+description = "Salona pieteikums no mājaslapas, nosūtīts veikala menedžeriem"
+==
+# {{ salon_name }}
+
+**Vārds, uzvārds**<br>
+{{ name }}
+
+**E-pasts**<br>
+[{{ email }}](mailto:{{ email }})
+
+**Kontakttālrunis**<br>
+<a href="tel:{{ phone|replace({' ': ''}) }}">{{ phone }}</a>
+
+**Salona adrese**<br>
+{{ salon_address }}
+
+**Manikīra meistaru skaits salonā**<br>
+{{ number_of_masters }}
+
+**Ar kādiem nagu kopšanas zīmoliem strādā jūsu salons?**<br>
+{{ current_product_list|nl2br }}
+
+**Vai jau strādājat ar kādiem NAILS cosmetics produktiem?**<br>
+{{ product_list|nl2br }}
+
+**Vai jūs piedāvājat nagu pieaudzēšanu?**<br>
+{{ nail_extensions }}
+
+**Vai salonā ir pieejamas arī citas skaistumkopšanas procedūras? Kāda veida?**<br>
+{{ other_treatment_list|nl2br }}
+
+**Uzņēmuma profila saite**<br>
+{{ profile_link }}
+
+**Kāds ir vidējais aptuvenais mēnesī plānotais pasūtījumu lielums?**<br>
+{{ order_plan }}

@@ -2,6 +2,7 @@
 
 // use App;
 use Lang;
+use Config;
 use Omnipay\Omnipay;
 use Event;
 use Backend;
@@ -98,7 +99,12 @@ use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
  */
 class Plugin extends PluginBase
 {
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
+    const MAIL_SALON_LEAD_MANAGER = 'logingrupa.storeextender::mail.salon_lead_manager';
+    const MAIL_SALON_LEAD_APPLICANT = 'logingrupa.storeextender::mail.salon_lead_applicant';
+    const MAIL_MD_RESERVATION_DELETED = 'logingrupa.storeextender::mail.md_reservation_deleted';
+    const MAIL_MD_RESERVATION_REMINDER = 'logingrupa.storeextender::mail.md_reservation_reminder';
+
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User', 'RainLab.Pages'];
 
     /**
      * Returns information about this plugin.
@@ -183,6 +189,7 @@ class Plugin extends PluginBase
         // Extend ThemeData/MLThemeData with dropdown option methods needed by theme
         // customization form. Hooks into form field building to guarantee methods exist
         // on whichever model class the form is using at render time.
+        $this->shareMailBrandLogo();
         ThemeDataRegistrar::extendThemeDataDropdownMethods();
         ThemeDataRegistrar::extendThemeOptionsController();
         PageLookupRegistrar::registerProductPageLookupType();
@@ -379,6 +386,10 @@ class Plugin extends PluginBase
     {
         return [
             'user:recover_password' => 'logingrupa.storeextender::mail.recover_password',
+            self::MAIL_SALON_LEAD_MANAGER => self::MAIL_SALON_LEAD_MANAGER,
+            self::MAIL_SALON_LEAD_APPLICANT => self::MAIL_SALON_LEAD_APPLICANT,
+            self::MAIL_MD_RESERVATION_DELETED => self::MAIL_MD_RESERVATION_DELETED,
+            self::MAIL_MD_RESERVATION_REMINDER => self::MAIL_MD_RESERVATION_REMINDER,
         ];
     }
 
@@ -395,6 +406,24 @@ class Plugin extends PluginBase
                 'label' => 'logingrupa.storeextender::lang.color_sync.permission_label',
             ],
         ];
+    }
+
+    /**
+     * Share the mail logo URL and its link with every view.
+     *
+     * The mail header partial is a database row shared by all shops, so it cannot hold an
+     * absolute host or a theme directory name. The mailer Twig environment reads shared
+     * view variables, the same way the mail layout reads appName.
+     */
+    protected function shareMailBrandLogo()
+    {
+        $this->callAfterResolving('view', function ($obView) {
+            $sAppURL = rtrim((string) Config::get('app.url'), '/');
+            $sThemeDir = (string) Config::get('cms.active_theme');
+
+            $obView->share('brandLogoLink', $sAppURL);
+            $obView->share('brandLogoUrl', $sAppURL.'/themes/'.$sThemeDir.'/assets/images/logo.png');
+        });
     }
 
     /**

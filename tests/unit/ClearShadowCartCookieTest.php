@@ -131,6 +131,23 @@ class ClearShadowCartCookieTest extends TestCase
         $this->assertSame(['/lv'], $this->getExpiredCookiePathList($obResponse));
     }
 
+    public function testReservedCharSegmentEndsTheAncestorList()
+    {
+        // a comma cannot appear in a cookie path (setcookie() and Symfony
+        // reject it), so the list stops at the last storable ancestor
+        $obResponse = $this->runMiddleware(
+            new ClearShadowCartCookie(),
+            '/en/api/v2/price-list/xk4r:0,vm9p:0,h2wt:0,j5nq:1',
+            CartProcessor::COOKIE_NAME.'=a; '.CartProcessor::COOKIE_NAME.'=b',
+            'a'
+        );
+
+        $this->assertSame(
+            ['/en', '/en/api', '/en/api/v2', '/en/api/v2/price-list'],
+            $this->getExpiredCookiePathList($obResponse)
+        );
+    }
+
     public function testBrokenCookieOnRootUrlExpiresNothing()
     {
         // path=/ holds the healthy copy CartProcessor re-sets itself; the
