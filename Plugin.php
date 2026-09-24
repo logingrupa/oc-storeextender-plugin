@@ -90,6 +90,7 @@ use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
+use Logingrupa\StoreExtender\Classes\Helper\TextHighlighter;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
 use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
@@ -472,7 +473,7 @@ class Plugin extends PluginBase
             'filters' => [
                 // A global function, i.e str_plural()
                 'plural' => 'str_plural',
-                'highlight' => [$this, 'makeTextHighlighted'],
+                'highlight' => [TextHighlighter::class, 'highlight'],
                 // A local method, i.e $this->makeTextAllCaps()
                 'uppercase' => [$this, 'makeTextAllCaps'],
                 // Currency-aware price formatting (e.g., "225,-" for NOK)
@@ -534,17 +535,6 @@ class Plugin extends PluginBase
                 },
             ]
         ];
-    }
-
-    public function makeTextHighlighted($text, $terms)
-    {
-        if (!is_array($terms)) $terms = [$terms];
-        $highlight = array();
-        foreach ($terms as $term) {
-            $highlight[] = '<span class="highlight">' . $term . '</span>';
-        }
-        // dd(str_ireplace($terms, $highlight, $text));
-        return str_ireplace($terms, $highlight, $text);
     }
 
     public function makeTextAllCaps($text)

@@ -251,3 +251,6 @@
 
 2.0.89:
   - 'Phone product page helpers for /p2: OfferImageHelper hero, hero_phone (780x680 crop) and zoom slots with warm-only lookups and their Twig functions, offer batch endpoints and colour-family ordering for the shade strip and the sheet, Phase 4 review fixes.'
+
+2.0.90:
+  - 'The highlight Twig filter (TextHighlighter) escapes the name and the search term before wrapping the match in <span class="highlight">, and matches case- and accent-insensitively (sarkana marks Sarkanā) the way the search query does. Names carrying markup, five active 1C offers are named "(<Свойства не назначены>)", used to reach the category cards, the search cards and the search sheet unescaped through |raw.'
