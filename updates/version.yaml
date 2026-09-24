@@ -248,3 +248,6 @@
 
 2.0.88:
   - 'A static page asked for by another locale''s URL (the v1 shops served /ru/palidziba/kontakti, the page lives at /ru/pomosh/kontakty) answers 301 to its URL in that locale instead of the 404 page. LegacyUrlRedirectHandler resolves it from the page''s viewBag url and localeUrl set through LegacyStaticPageResolver.'
+
+2.0.89:
+  - 'Phone product page helpers for /p2: OfferImageHelper hero, hero_phone (780x680 crop) and zoom slots with warm-only lookups and their Twig functions, offer batch endpoints and colour-family ordering for the shade strip and the sheet, Phase 4 review fixes.'
