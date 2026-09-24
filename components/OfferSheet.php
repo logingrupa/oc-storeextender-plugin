@@ -246,7 +246,11 @@ class OfferSheet extends ComponentBase
             'arOfferList' => $this->renderOfferBatchList(
                 $obProductItem,
                 array_map(fn ($iOfferId) => OfferItem::make($iOfferId), $arOfferIdList),
-                $this->readBatchPartialList()
+                $this->readBatchPartialList(),
+                // Display preference only (sold-out shades), mirrored from the
+                // rendered strip: it decides which list the swatch's global
+                // index is a position in
+                (bool) input('hide_oos')
             ),
             'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
@@ -269,13 +273,15 @@ class OfferSheet extends ComponentBase
      *
      * @param OfferItem[] $arOfferItemList
      * @param string[]    $arPartialPathList
+     * @param bool        $bHideSoldOut the flag the strip was rendered with
      *
      * @return array
      */
     protected function renderOfferBatchList(
         ProductItem $obProductItem,
         array $arOfferItemList,
-        array $arPartialPathList
+        array $arPartialPathList,
+        bool $bHideSoldOut
     ): array {
         if (empty($arOfferItemList) || empty($arPartialPathList)) {
             return [];
@@ -284,6 +290,9 @@ class OfferSheet extends ComponentBase
         // hoisted: the product's offer count is the same for all twelve shades,
         // and a value that cannot vary across a loop has no business inside it
         $iOfferTotalCount = $obProductItem->offer->count();
+        // hoisted for the same reason: one ordered row list serves every
+        // shade's global index lookup
+        $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
 
         $arOfferList = [];
         foreach ($arOfferItemList as $obOfferItem) {
@@ -294,7 +303,12 @@ class OfferSheet extends ComponentBase
                 'iOfferId' => $obOfferItem->id,
                 'arPartialList' => $this->renderOfferPartialList($obProductItem, $obOfferItem, $arPartialPathList),
                 'arImageList' => $this->getOfferImageList($obOfferItem),
-                'sSwatchHtml' => $this->renderSwatchHtml($obProductItem, $obOfferItem, $iOfferTotalCount),
+                'sSwatchHtml' => $this->renderSwatchHtml(
+                    $obProductItem,
+                    $obOfferItem,
+                    $iOfferTotalCount,
+                    $this->findVisibleRowIndex($arVisibleList, (int) $obOfferItem->id)
+                ),
             ];
         }
 
@@ -322,6 +336,29 @@ class OfferSheet extends ComponentBase
         $arProductOfferIdList = array_map('intval', (array) $obProductItem->offer->getIDList());
 
         return array_values(array_intersect($arRequestedIdList, $arProductOfferIdList));
+    }
+
+    /**
+     * The shade a forward window starts after: numeric, and belonging to the
+     * requested product.
+     *
+     * The product check is the single-id form of the narrowing
+     * readBatchOfferIdList applies to a batch, and for the same reason: the id
+     * comes from the client, and an id from another product would select a
+     * position in a list it is not part of.
+     *
+     * @return int 0 when the request names nothing this product owns
+     */
+    protected function readWindowAfterOfferId(ProductItem $obProductItem): int
+    {
+        $iAfterOfferId = (int) input('after_offer_id');
+        if ($iAfterOfferId < 1) {
+            return 0;
+        }
+
+        $arProductOfferIdList = array_map('intval', (array) $obProductItem->offer->getIDList());
+
+        return in_array($iAfterOfferId, $arProductOfferIdList, true) ? $iAfterOfferId : 0;
     }
 
     /**
@@ -405,11 +442,23 @@ class OfferSheet extends ComponentBase
      * The total count is passed in rather than read here, because it is the same
      * for every shade in the batch. The partial only uses it to decide whether
      * SKU-<product> carries an offer suffix.
+     *
+     * The index is passed in for the opposite reason: it differs per shade, and
+     * it is a position in the ordered row list the CALLER built under the
+     * caller's own sold-out preference. A batch of one starts at that shade, so
+     * the partial's iFirstIndex is this shade's own global index.
+     *
+     * Null when the shade has no position in that list - a sold-out shade
+     * picked in the sheet on a shop that hides sold-out shades. The partial
+     * renders no position attribute for it, so nothing downstream numbers it.
+     *
+     * @param int|null $iFirstIndex position of this shade in the visible row list
      */
     protected function renderSwatchHtml(
         ProductItem $obProductItem,
         OfferItem $obOfferItem,
-        int $iOfferTotalCount
+        int $iOfferTotalCount,
+        ?int $iFirstIndex
     ): string {
         return trim((string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
             'obProduct' => $obProductItem,
@@ -417,6 +466,7 @@ class OfferSheet extends ComponentBase
             'iTotalCount' => $iOfferTotalCount,
             'bUseSheet' => false,
             'iSelectedOfferId' => 0,
+            'iFirstIndex' => $iFirstIndex,
         ]));
     }
 
@@ -521,7 +571,8 @@ class OfferSheet extends ComponentBase
                 ? $this->renderOfferBatchList(
                     $obProductItem,
                     array_slice($arSwatchData['arOfferItemList'], 0, self::INLINE_LIMIT),
-                    $this->readBatchPartialList()
+                    $this->readBatchPartialList(),
+                    $bHideSoldOut
                 )
                 : [],
             'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
@@ -539,6 +590,12 @@ class OfferSheet extends ComponentBase
      * resolving the same thing twice per request to save nothing is exactly the
      * kind of hidden work this component has already been trimmed of once.
      *
+     * The sold-out filter is NOT cached, the rule getVisibleRowList states: an
+     * order drains a shade without rotating the epoch, so a filtered strip kept
+     * for ten minutes draws shades the shop no longer has. The flag stays in the
+     * key list anyway, at the value it can now hold, so every key already in a
+     * running cache keeps its exact name.
+     *
      * @param array $arSwatchData as getInlineSwatchData returns it
      */
     protected function getSwatchStripHtml(
@@ -547,6 +604,10 @@ class OfferSheet extends ComponentBase
         bool $bHideSoldOut,
         array $arSwatchData
     ): string {
+        if ($bHideSoldOut) {
+            return $this->renderSwatchStripPartial($obProductItem, $arSwatchData);
+        }
+
         $sCacheKey = $this->buildCacheKey([
             'hr.strip',
             $obProductItem->id,
@@ -558,16 +619,204 @@ class OfferSheet extends ComponentBase
             return $sStripHtml;
         }
 
-        $sStripHtml = (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
+        $sStripHtml = $this->renderSwatchStripPartial($obProductItem, $arSwatchData);
+        CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
+
+        return $sStripHtml;
+    }
+
+    /**
+     * The strip markup for one window of shades. No cache of its own: the two
+     * callers above decide whether the answer may be kept.
+     *
+     * @param array $arSwatchData as getInlineSwatchData returns it
+     */
+    protected function renderSwatchStripPartial(ProductItem $obProductItem, array $arSwatchData): string
+    {
+        return (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
             'obProduct' => $obProductItem,
             'arInlineOfferList' => $arSwatchData['arOfferItemList'],
             'iTotalCount' => $arSwatchData['iTotalCount'],
             'bUseSheet' => $arSwatchData['bUseSheet'],
             'iSelectedOfferId' => 0,
+            'iFirstIndex' => $arSwatchData['iFirstIndex'],
         ]);
+    }
+
+    /**
+     * The next page of shades after a named one, rendered.
+     *
+     * Forward only. The window the page opens with already holds the shades
+     * before the selected one and the hero's swipe stops at its first slide, so
+     * a backward page has no caller; adding one would need a second cache
+     * dimension for markup nobody asks for.
+     *
+     * The answer is onGetSwatchStrip's key shape with the family slot replaced
+     * by the after-id, so the client applies a family switch and a forward page
+     * through one code path: the strip markup, the same fragment batch, the same
+     * epoch token.
+     *
+     * Two shapes of request: a 12-shade page with its fragment batch, which is
+     * what /p and the home pages ask for, and a `rest` page that carries every
+     * remaining shade with no fragments at all, which is what the phone rail
+     * asks for once.
+     *
+     * @return array|null
+     */
+    public function onGetSwatchWindow()
+    {
+        $obProductItem = $this->getProductItemFromRequest();
+        if ($obProductItem === null) {
+            return null;
+        }
+        // Display preference only (sold-out shades), mirrored from the
+        // rendered strip: an unmirrored flag pages in the shades the first
+        // page hid
+        $bHideSoldOut = (bool) input('hide_oos');
+        // One request for every shade left, strip only
+        $bRest = (bool) input('rest');
+
+        $iAfterOfferId = $this->readWindowAfterOfferId($obProductItem);
+        if ($iAfterOfferId < 1) {
+            return null; // fail fast: an id this product does not own
+        }
+
+        $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
+        $arWindowRowList = $this->getWindowAfterRowList($arVisibleList, $iAfterOfferId, $bRest);
+        if ($arWindowRowList === null) {
+            return null; // fail fast: sold out and hidden, so it holds no position here
+        }
+
+        $arWindowData = [
+            'arRowList' => $arWindowRowList,
+            'iTotalCount' => count($arVisibleList),
+            'iFirstIndex' => !empty($arWindowRowList)
+                ? $this->findVisibleRowIndex($arVisibleList, (int) $arWindowRowList[0]['iOfferId'])
+                : 0,
+        ];
+
+        return [
+            'sAfterOfferId' => (string) $iAfterOfferId,
+            'sStripHtml' => $this->getSwatchWindowHtml(
+                $obProductItem,
+                $iAfterOfferId,
+                $bHideSoldOut,
+                $bRest,
+                $arWindowData
+            ),
+            // The fragment batch is rendered here, outside every cache block
+            // above: renderOfferBatchList carries per-visitor state and says so.
+            // A rest page never carries it, and the refusal is here rather than
+            // in the client: the fragment half of 218 shades measures 1.47 MB
+            // per visitor.
+            'arOfferList' => (!$bRest && (bool) input('with_offers'))
+                ? $this->renderOfferBatchList(
+                    $obProductItem,
+                    $this->makeOfferItemList($arWindowRowList),
+                    $this->readBatchPartialList(),
+                    $bHideSoldOut
+                )
+                : [],
+            'bListComplete' => $this->isWindowListComplete($arVisibleList, $iAfterOfferId, $arWindowRowList),
+            'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
+        ];
+    }
+
+    /**
+     * Does this page reach the end of the visible list.
+     *
+     * Told from positions and not from an empty slice: a rest page ends ON the
+     * last shade and the client has to stop asking after it, without spending a
+     * round trip to be answered with nothing.
+     *
+     * A shade the list does not hold has no position to page from, so the
+     * honest answer is that there is nothing more to ask for. onGetSwatchWindow
+     * has already refused that request (getWindowAfterRowList answers null for
+     * it), which is why this is a guard and not the normal path.
+     */
+    protected function isWindowListComplete(array $arVisibleList, int $iAfterOfferId, array $arWindowRowList): bool
+    {
+        $iAfterIndex = $this->findVisibleRowIndex($arVisibleList, $iAfterOfferId);
+        if ($iAfterIndex === null) {
+            return true;
+        }
+
+        return $iAfterIndex + 1 + count($arWindowRowList) >= count($arVisibleList);
+    }
+
+    /**
+     * One appended page of swatches, cached like the family strip.
+     *
+     * Same two properties that make the family strip cacheable: the markup
+     * depends on the product, the after-id and the sold-out preference, and on
+     * nothing about the visitor beyond the render context the key already
+     * carries. Selection is applied client-side.
+     *
+     * A rest page keys apart from a 12-shade page with the same after-id: the
+     * two render a different number of labels, so they are different markup
+     * under the same product and position.
+     *
+     * The sold-out filter is NOT cached, for the reason the family strip above
+     * gives and the row list states: a page kept for ten minutes pages in shades
+     * that were sold while it sat there. The flag stays in the key list at the
+     * value it can now hold, so no existing key is renamed.
+     *
+     * @param array $arWindowData {arRowList: array, iTotalCount: int, iFirstIndex: int|null}
+     */
+    protected function getSwatchWindowHtml(
+        ProductItem $obProductItem,
+        int $iAfterOfferId,
+        bool $bHideSoldOut,
+        bool $bRest,
+        array $arWindowData
+    ): string {
+        if (empty($arWindowData['arRowList'])) {
+            return ''; // the end of the list: nothing to render and nothing to key
+        }
+        if ($bHideSoldOut) {
+            return $this->renderSwatchWindowPartial($obProductItem, $arWindowData);
+        }
+
+        $sCacheKey = $this->buildCacheKey([
+            'hr.window',
+            $obProductItem->id,
+            $iAfterOfferId,
+            (int) $bHideSoldOut,
+            (int) $bRest,
+        ]);
+        $sStripHtml = CCache::get([self::CACHE_TAG_SHEET], $sCacheKey);
+        if (!empty($sStripHtml)) {
+            return $sStripHtml;
+        }
+
+        $sStripHtml = $this->renderSwatchWindowPartial($obProductItem, $arWindowData);
         CCache::put([self::CACHE_TAG_SHEET], $sCacheKey, $sStripHtml, self::CACHE_TTL_MINUTES);
 
         return $sStripHtml;
+    }
+
+    /**
+     * The strip markup for one appended page of shades.
+     *
+     * The items are materialized here and not by the caller, because a cache hit
+     * needs none of them: 218 OfferItem::make measures 77ms. The fragment batch
+     * makes its own list of the same ids, which ItemStorage answers from this
+     * request's memory.
+     *
+     * @param array $arWindowData {arRowList: array, iTotalCount: int, iFirstIndex: int|null}
+     */
+    protected function renderSwatchWindowPartial(ProductItem $obProductItem, array $arWindowData): string
+    {
+        return (string) $this->controller->renderPartial('product/offer-swatches/offer-swatches-strip', [
+            'obProduct' => $obProductItem,
+            'arInlineOfferList' => $this->makeOfferItemList($arWindowData['arRowList']),
+            'iTotalCount' => $arWindowData['iTotalCount'],
+            // The page that requested this already renders the '+N' opener, so
+            // an appended page must not bring a second one
+            'bUseSheet' => false,
+            'iSelectedOfferId' => 0,
+            'iFirstIndex' => $arWindowData['iFirstIndex'],
+        ]);
     }
 
     /**
@@ -719,7 +968,13 @@ class OfferSheet extends ComponentBase
      * Conflict rule for shared URLs: an EXPLICIT offer segment wins over the
      * family query param - the filter snaps to the offer's family.
      *
-     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, bUseSheet: bool, arFamilyChipList: array, sActiveFamily: string}
+     * iFirstIndex is where the rendered window starts in the visible row list.
+     * The strip labels number themselves from it, so a window opening on shade
+     * six numbers its first circle six and not zero. It is null only if the
+     * first rendered row is not in that list, which is the fail-fast this
+     * component documents for an unknown id: the rows ARE slices of the list.
+     *
+     * @return array {arOfferItemList: OfferItem[], iTotalCount: int, iFirstIndex: int|null, bUseSheet: bool, arFamilyChipList: array, sActiveFamily: string}
      */
     public function getInlineSwatchData(
         ProductItem $obProductItem,
@@ -742,6 +997,9 @@ class OfferSheet extends ComponentBase
         return [
             'arOfferItemList' => $this->makeOfferItemList($arShownRowList),
             'iTotalCount' => $iTotalCount,
+            'iFirstIndex' => !empty($arShownRowList)
+                ? $this->findVisibleRowIndex($arVisibleList, (int) $arShownRowList[0]['iOfferId'])
+                : 0,
             'bUseSheet' => $bUseSheet,
             'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($obProductItem) : [],
             'sActiveFamily' => $sActiveFamily,
@@ -760,6 +1018,12 @@ class OfferSheet extends ComponentBase
      * and it moves with every order - caching it under a ten minute TTL beside
      * markup that does not change would sell stock the shop no longer has.
      *
+     * That is the rule for ALL THREE renders, not only this list. Only an
+     * import rotates the render epoch; an order that drains an offer does not.
+     * So getSwatchStripHtml and getSwatchWindowHtml render on this same slow
+     * path whenever the filter is on, and key nothing. Only hideTradeOffers
+     * products pay it, and they already pay for this list (T-3-71).
+     *
      * @return array [['iOfferId' => int, 'sFamily' => string|null]]
      */
     protected function getVisibleRowList(ProductItem $obProductItem, bool $bHideOutOfStock): array
@@ -773,6 +1037,34 @@ class OfferSheet extends ComponentBase
         }
 
         return $arVisibleList;
+    }
+
+    /**
+     * Position of one shade in the visible row list.
+     *
+     * The list is the ordered, sold-out-filtered one every strip window is a
+     * slice of, and its length is the counter denominator the page renders, so
+     * this position is the number a swatch label carries.
+     *
+     * An id that is not in the list answers NULL, because every integer here is
+     * a position and zero is the first one: the strip would number a missing
+     * shade one of N and the hero would announce it. It happens - the sheet
+     * renders sold-out rows and they are tappable, so on a shop that hides
+     * sold-out shades a batch of one asks this about a shade the list filtered
+     * out. Every caller has to carry the null through to the markup, where the
+     * position attribute is simply not rendered.
+     *
+     * @return int|null null when the list holds no such shade
+     */
+    protected function findVisibleRowIndex(array $arVisibleList, int $iOfferId): ?int
+    {
+        foreach ($arVisibleList as $iIndex => $arEntry) {
+            if ($arEntry['iOfferId'] === $iOfferId) {
+                return $iIndex;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -862,6 +1154,40 @@ class OfferSheet extends ComponentBase
     }
 
     /**
+     * One forward page: the rows after a named shade, nothing before it.
+     *
+     * Null and an empty array are different answers, and the caller depends on
+     * the difference. Null is an id the visible list does not hold - the shade
+     * is sold out while the request hides sold-out shades - and the request is
+     * rejected. An empty array is the end of the list, which is a valid last
+     * page.
+     *
+     * @param bool $bRest every remaining row rather than one page of them
+     * @return array|null [['iOfferId' => int, 'sFamily' => string|null]]
+     */
+    protected function getWindowAfterRowList(array $arVisibleList, int $iAfterOfferId, bool $bRest = false): ?array
+    {
+        $iAfterIndex = null;
+        foreach ($arVisibleList as $iIndex => $arEntry) {
+            if ($arEntry['iOfferId'] === $iAfterOfferId) {
+                $iAfterIndex = $iIndex;
+                break;
+            }
+        }
+        if ($iAfterIndex === null) {
+            return null;
+        }
+
+        // A page that carries FRAGMENTS is never longer than the client offer
+        // cache can hold: it caps at 24 entries
+        // (src/modules/offer-fragments.js), so two pages of INLINE_LIMIT fill
+        // it exactly and a longer page would evict the shades the shopper just
+        // swiped past. A rest page carries no fragments, so nothing bounds it
+        // but the list itself.
+        return array_slice($arVisibleList, $iAfterIndex + 1, $bRest ? null : self::INLINE_LIMIT);
+    }
+
+    /**
      * The epoch value, minted once and held until something rotates it.
      *
      * Folded into every render context key part list below, which is what
@@ -904,6 +1230,8 @@ class OfferSheet extends ComponentBase
             (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
             (string) (PriceTypeHelper::instance()->getActivePriceTypeCode() ?: 'base'),
             $sColorVersion !== '' ? $sColorVersion : 'plain',
+            // Rendered offer URLs are page-relative from this phase on
+            (string) ($this->page ? $this->page->id : 'nopage'),
         ];
     }
 

@@ -1,10 +1,10 @@
 <?php namespace Logingrupa\StoreExtender\Console;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
+use Logingrupa\StoreExtender\Classes\Helper\ImageWarmer;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Lovata\Shopaholic\Models\Offer;
-use Throwable;
+use Lovata\Shopaholic\Models\Product;
 
 /**
  * Generate the offer image derivatives ahead of traffic.
@@ -15,13 +15,19 @@ use Throwable;
  * import that adds a size - pays for every one of them. Run this once after
  * deploying and that visitor pays for none.
  *
+ * WHICH derivatives a record needs is not decided here: ImageWarmer owns the
+ * matrix, because the attach job asks the same question about a picture the
+ * import just landed. This command owns the walk, the chunking and the counting.
+ *
+ * Two passes: every product preview picture first, then every offer picture.
+ *
  * Bounded and resumable by design:
  *   - offers are walked in id order in chunks, never loaded all at once;
  *   - --from-id resumes a run that was killed, and the last id is printed
  *     every chunk so there is always something to resume from;
  *   - --limit caps a single run, so this can be spread over several windows;
- *   - a gallery deeper than GALLERY_IMAGE_CEILING is truncated and reported,
- *     rather than letting one bad record run unbounded.
+ *   - a gallery deeper than ImageWarmer::GALLERY_IMAGE_CEILING is truncated and
+ *     reported, rather than letting one bad record run unbounded.
  *
  * Already-generated derivatives cost one file_exists each: File::getThumbUrl
  * returns early when the file is there, so re-running is cheap and safe.
@@ -34,9 +40,6 @@ class WarmOfferThumbs extends Command
     /** Offers loaded per database chunk */
     const CHUNK_SIZE = 200;
 
-    /** Gallery pictures warmed per offer before the rest are reported and skipped */
-    const GALLERY_IMAGE_CEILING = 20;
-
     /** @var string */
     protected $signature = 'storeextender:warm-offer-thumbs
         {--from-id=0 : Resume from this offer id (inclusive)}
@@ -47,6 +50,9 @@ class WarmOfferThumbs extends Command
     protected $description = 'Pre-generate the sized offer image derivatives the storefront asks for';
 
     /** @var int */
+    protected $iProductCount = 0;
+
+    /** @var int */
     protected $iOfferCount = 0;
 
     /** @var int */
@@ -54,6 +60,9 @@ class WarmOfferThumbs extends Command
 
     /** @var int */
     protected $iFailureCount = 0;
+
+    /** @var int */
+    protected $iSkippedCount = 0;
 
     /** @var int */
     protected $iTruncatedGalleryCount = 0;
@@ -73,22 +82,29 @@ class WarmOfferThumbs extends Command
 
         $bDryRun = (bool) $this->option('dry-run');
         $this->line(sprintf(
-            'Warming offer thumbs: swatch %dpx, preview %dpx, hero %dx%d, %s%s',
+            'Warming offer thumbs: swatch %dpx, preview %dpx, hero %dx%d q%d, phone hero %dx%d q%d, %s%s',
             OfferImageHelper::SIZE_SWATCH,
             OfferImageHelper::SIZE_PREVIEW,
             OfferImageHelper::HERO_WIDTH,
             OfferImageHelper::HERO_HEIGHT,
+            OfferImageHelper::HERO_QUALITY,
+            OfferImageHelper::HERO_PHONE_WIDTH,
+            OfferImageHelper::HERO_PHONE_HEIGHT,
+            OfferImageHelper::HERO_PHONE_QUALITY,
             OfferImageHelper::THUMB_EXTENSION,
             $bDryRun ? ' (dry run)' : ''
         ));
 
+        $this->walkProductList($bDryRun);
         $this->walkOfferList($iFromId, $iLimit, $bDryRun);
 
         $this->line(sprintf(
-            'Done: %d offers, %d derivatives%s, %d failures, last offer id %d.',
+            'Done: %d products, %d offers, %d derivatives%s, %d skipped, %d failures, last offer id %d.',
+            $this->iProductCount,
             $this->iOfferCount,
             $this->iThumbCount,
             $bDryRun ? ' would be generated' : ' present',
+            $this->iSkippedCount,
             $this->iFailureCount,
             $this->iLastOfferId
         ));
@@ -96,11 +112,41 @@ class WarmOfferThumbs extends Command
             $this->warn(sprintf(
                 '%d offers have more than %d gallery pictures - the rest were skipped.',
                 $this->iTruncatedGalleryCount,
-                self::GALLERY_IMAGE_CEILING
+                ImageWarmer::GALLERY_IMAGE_CEILING
             ));
         }
 
         return $this->iFailureCount > 0 ? self::FAILURE : self::SUCCESS;
+    }
+
+    /**
+     * Walk every product in id order, in chunks, warming both hero slots of its
+     * preview picture.
+     *
+     * Runs FIRST and unconditionally, before the offer walk and outside
+     * --from-id and --limit. Those two options mean "offer id" and "offers", and
+     * a pass that honoured them would either make them ambiguous or need a
+     * second pair of options. It costs nothing to leave them alone: 667 products
+     * at two derivatives each is seconds, and the pass has no resume need
+     * because a killed run repeats it for one file_exists per derivative.
+     */
+    protected function walkProductList(bool $bDryRun): void
+    {
+        Product::query()
+            ->with(['preview_image'])
+            ->orderBy('id')
+            ->chunkById(self::CHUNK_SIZE, function ($obProductChunk) use ($bDryRun) {
+                foreach ($obProductChunk as $obProduct) {
+                    $this->recordCounts(ImageWarmer::warmProductPictures($obProduct, $bDryRun));
+                    $this->iProductCount++;
+                }
+
+                $this->line(sprintf(
+                    '  %d products, %d derivatives',
+                    $this->iProductCount,
+                    $this->iThumbCount
+                ));
+            });
     }
 
     /**
@@ -117,7 +163,7 @@ class WarmOfferThumbs extends Command
                     if ($iLimit > 0 && $this->iOfferCount >= $iLimit) {
                         return false; // limit reached: stop the walk
                     }
-                    $this->warmOffer($obOffer, $bDryRun);
+                    $this->recordCounts(ImageWarmer::warmOfferPictures($obOffer, $bDryRun));
                     $this->iOfferCount++;
                     $this->iLastOfferId = (int) $obOffer->id;
                 }
@@ -134,74 +180,15 @@ class WarmOfferThumbs extends Command
     }
 
     /**
-     * Both slots of the preview image, plus the preview slot of every gallery
-     * picture - the batch that a sheet open and a shade pick between them ask
-     * for.
+     * Fold one record's outcome counts into the run totals.
      *
-     * @param \Lovata\Shopaholic\Models\Offer $obOffer
+     * @param array{warmed: int, failed: int, skipped: int, truncated: int} $arCounts
      */
-    protected function warmOffer($obOffer, bool $bDryRun): void
+    protected function recordCounts(array $arCounts): void
     {
-        $obPreviewImage = $obOffer->preview_image;
-        $sPreviewFileKey = '';
-        if ($obPreviewImage !== null) {
-            $sPreviewFileKey = $obPreviewImage->file_name.'|'.$obPreviewImage->file_size;
-            $this->warmImage($obPreviewImage, OfferImageHelper::SLOT_SWATCH, $bDryRun, (int) $obOffer->id);
-            $this->warmImage($obPreviewImage, OfferImageHelper::SLOT_PREVIEW, $bDryRun, (int) $obOffer->id);
-            $this->warmImage($obPreviewImage, OfferImageHelper::SLOT_HERO, $bDryRun, (int) $obOffer->id);
-        }
-
-        $iGalleryIndex = 0;
-        foreach ($obOffer->images as $obImage) {
-            if ($iGalleryIndex >= self::GALLERY_IMAGE_CEILING) {
-                $this->iTruncatedGalleryCount++;
-                break;
-            }
-            // the import routinely re-attaches the preview photograph as a
-            // gallery entry; the sheet dedupes it away, so its derivative
-            // would be generated for nothing
-            if ($obImage->file_name.'|'.$obImage->file_size === $sPreviewFileKey) {
-                continue;
-            }
-            $this->warmImage($obImage, OfferImageHelper::SLOT_PREVIEW, $bDryRun, (int) $obOffer->id);
-            $iGalleryIndex++;
-        }
-    }
-
-    /**
-     * Generate one derivative. A single unreadable or unencodable source must
-     * not abort a 6819-offer run, so this is the one place that swallows -
-     * and it counts and reports every one it swallows.
-     *
-     * @param \October\Rain\Database\Attach\File $obImage
-     */
-    protected function warmImage($obImage, string $sSlot, bool $bDryRun, int $iOfferId): void
-    {
-        if ($bDryRun) {
-            $this->iThumbCount++;
-
-            return;
-        }
-
-        try {
-            $sUrl = match ($sSlot) {
-                OfferImageHelper::SLOT_SWATCH => OfferImageHelper::swatch($obImage),
-                OfferImageHelper::SLOT_HERO => OfferImageHelper::hero($obImage),
-                default => OfferImageHelper::preview($obImage),
-            };
-            if ($sUrl === '') {
-                throw new \RuntimeException('resizer returned an empty URL');
-            }
-            $this->iThumbCount++;
-        } catch (Throwable $obException) {
-            $this->iFailureCount++;
-            Log::warning(sprintf(
-                'warm-offer-thumbs: offer %d, file %s, slot %s: %s',
-                $iOfferId,
-                (string) $obImage->id,
-                $sSlot,
-                $obException->getMessage()
-            ));
-        }
+        $this->iThumbCount += $arCounts[ImageWarmer::OUTCOME_WARMED];
+        $this->iFailureCount += $arCounts[ImageWarmer::OUTCOME_FAILED];
+        $this->iSkippedCount += $arCounts[ImageWarmer::OUTCOME_SKIPPED];
+        $this->iTruncatedGalleryCount += $arCounts[ImageWarmer::COUNT_TRUNCATED];
     }
 }

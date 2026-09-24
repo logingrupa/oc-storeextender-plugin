@@ -14,6 +14,15 @@ use ReflectionClass;
  * dozen that actually render, which puts the whole decision inside reach of a
  * unit test.
  *
+ * The forward page (getWindowAfterRowList, what onGetSwatchWindow answers with)
+ * slices the same row list, so a change to colour-family ordering cannot
+ * reshuffle a page the shopper has already swiped past without failing here.
+ *
+ * That slice has two lengths. A page that carries fragments stays at
+ * INLINE_LIMIT; a `rest` page carries every shade left and no fragments, which
+ * is the one request the phone rail makes. isWindowListComplete is what tells
+ * the client which of the two it received, so the second one is never asked for.
+ *
  * No CMS: the component is instantiated without its constructor, because
  * nothing here touches the controller or the component properties.
  */
@@ -168,5 +177,184 @@ class OfferSheetWindowTest extends TestCase
 
         $this->assertCount(OfferSheet::INLINE_LIMIT, $arWindow);
         $this->assertSame(12, OfferSheet::INLINE_LIMIT);
+    }
+
+    public function testAForwardPageHoldsTheRowsAfterTheNamedShadeAndNothingBeforeIt()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1000]); // index 0
+
+        $this->assertSame(1001, $arWindow[0]['iOfferId']);
+        $this->assertSame(1012, $arWindow[count($arWindow) - 1]['iOfferId']);
+        $this->assertNotContains(1000, $this->readOfferIdList($arWindow));
+        $this->assertSame(range(1001, 1012), $this->readOfferIdList($arWindow));
+    }
+
+    public function testAForwardPageIsNeverLongerThanTheStripWindow()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1050]);
+
+        $this->assertCount(OfferSheet::INLINE_LIMIT, $arWindow);
+    }
+
+    public function testAForwardPageInsideTheLastShadesIsShortRatherThanPadded()
+    {
+        $arRowList = $this->makeRowList(230); // ids 1000..1229
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1224]);
+
+        $this->assertCount(5, $arWindow);
+        $this->assertSame(1229, $arWindow[count($arWindow) - 1]['iOfferId']);
+
+        // the last shade of all: a valid last page with nothing on it
+        $this->assertSame([], $this->call('getWindowAfterRowList', [$arRowList, 1229]));
+    }
+
+    public function testAShadeTheVisibleListDoesNotHoldIsRejectedRatherThanPagedFrom()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        // null, not an empty array: an empty array is the end of the list,
+        // which is an answer, and this is a request the handler must refuse
+        $this->assertNull($this->call('getWindowAfterRowList', [$arRowList, 9999]));
+        $this->assertNull($this->call('getWindowAfterRowList', [$arRowList, 0]));
+    }
+
+    public function testAForwardPageOfTheSoldOutFilteredListHoldsOnlyItsOwnMembers()
+    {
+        $arVisibleList = array_values(array_filter(
+            $this->makeRowList(60),
+            fn (array $arRow) => $arRow['iOfferId'] % 3 !== 0 // the sold-out shades are gone
+        ));
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arVisibleList, 1001]);
+        $arWindowIdList = $this->readOfferIdList($arWindow);
+
+        $this->assertCount(OfferSheet::INLINE_LIMIT, $arWindow);
+        foreach ($arWindowIdList as $iOfferId) {
+            $this->assertContains($iOfferId, $this->readOfferIdList($arVisibleList));
+        }
+        // a page composed against the unfiltered list would carry these
+        $this->assertNotContains(1002, $arWindowIdList);
+        $this->assertNotContains(1005, $arWindowIdList);
+    }
+
+    public function testTheRestOfTheListIsOnePageFromTheHeadOfTheRenderedWindow()
+    {
+        $arRowList = $this->makeRowList(230); // ids 1000..1229
+
+        // the last shade the opening 12-shade strip renders
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1011, true]);
+
+        $this->assertCount(218, $arWindow);
+        $this->assertSame(1012, $arWindow[0]['iOfferId']);
+        $this->assertSame(1229, $arWindow[count($arWindow) - 1]['iOfferId']);
+        $this->assertSame(range(1012, 1229), $this->readOfferIdList($arWindow));
+    }
+
+    public function testTheRestOfTheListAfterTheLastShadeIsEmpty()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $this->assertSame([], $this->call('getWindowAfterRowList', [$arRowList, 1229, true]));
+    }
+
+    public function testTheRestOfTheListIsRefusedForAShadeTheListDoesNotHold()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $this->assertNull($this->call('getWindowAfterRowList', [$arRowList, 9999, true]));
+    }
+
+    public function testTheRestOfTheSoldOutFilteredListHoldsOnlyItsOwnMembers()
+    {
+        $arVisibleList = array_values(array_filter(
+            $this->makeRowList(60),
+            fn (array $arRow) => $arRow['iOfferId'] % 3 !== 0 // the sold-out shades are gone
+        ));
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arVisibleList, 1001, true]);
+        $arWindowIdList = $this->readOfferIdList($arWindow);
+
+        $this->assertCount(count($arVisibleList) - 2, $arWindow);
+        foreach ($arWindowIdList as $iOfferId) {
+            $this->assertContains($iOfferId, $this->readOfferIdList($arVisibleList));
+        }
+        // a page composed against the unfiltered list would carry these
+        $this->assertNotContains(1002, $arWindowIdList);
+        $this->assertNotContains(1059, $arWindowIdList);
+    }
+
+    public function testTheLastRestLabelIsNumberedOneBelowTheVisibleTotal()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1011, true]);
+        $iLastIndex = $this->call(
+            'findVisibleRowIndex',
+            [$arRowList, (int) $arWindow[count($arWindow) - 1]['iOfferId']]
+        );
+
+        $this->assertSame(count($arRowList) - 1, $iLastIndex);
+    }
+
+    public function testOnlyARestPageReportsTheListComplete()
+    {
+        $arRowList = $this->makeRowList(230);
+        $iAfterOfferId = 1011;
+
+        $arRestList = $this->call('getWindowAfterRowList', [$arRowList, $iAfterOfferId, true]);
+        $arPageList = $this->call('getWindowAfterRowList', [$arRowList, $iAfterOfferId]);
+
+        $this->assertTrue($this->call('isWindowListComplete', [$arRowList, $iAfterOfferId, $arRestList]));
+        $this->assertFalse($this->call('isWindowListComplete', [$arRowList, $iAfterOfferId, $arPageList]));
+        // the end of the list is complete as well, with nothing on the page
+        $this->assertTrue($this->call('isWindowListComplete', [$arRowList, 1229, []]));
+    }
+
+    public function testTheAppendedStripStartsNumberingWhereTheLoadedListEnded()
+    {
+        $arRowList = $this->makeRowList(230);
+        $iAfterOfferId = 1199;
+
+        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, $iAfterOfferId]);
+        $iFirstIndex = $this->call('findVisibleRowIndex', [$arRowList, (int) $arWindow[0]['iOfferId']]);
+
+        $this->assertSame(
+            $this->call('findVisibleRowIndex', [$arRowList, $iAfterOfferId]) + 1,
+            $iFirstIndex
+        );
+        $this->assertSame(200, $iFirstIndex);
+    }
+
+    /**
+     * A shade the visible list does not hold has NO position in it, and zero is
+     * a position: the strip would number it one of N and the hero would
+     * announce it. The sheet renders sold-out rows and they are tappable, so on
+     * a shop that hides sold-out shades the batch of one asks this question
+     * about a shade the list filtered out.
+     */
+    public function testAShadeOutsideTheVisibleListHasNoIndexAtAll()
+    {
+        $arRowList = $this->makeRowList(12);
+
+        $this->assertNull($this->call('findVisibleRowIndex', [$arRowList, 9999]));
+        $this->assertNull($this->call('findVisibleRowIndex', [[], 1000]));
+        // and the first shade of the list is still zero, not null
+        $this->assertSame(0, $this->call('findVisibleRowIndex', [$arRowList, 1000]));
+    }
+
+    /**
+     * The client must stop asking rather than page from a position that does
+     * not exist.
+     */
+    public function testAWindowAfterAShadeOutsideTheListIsComplete()
+    {
+        $arRowList = $this->makeRowList(230);
+
+        $this->assertTrue($this->call('isWindowListComplete', [$arRowList, 9999, []]));
     }
 }

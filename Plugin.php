@@ -1,37 +1,23 @@
 <?php namespace Logingrupa\StoreExtender;
 
 // use App;
-use File;
 use Lang;
 use Config;
 use Omnipay\Omnipay;
-use Yaml;
 use Event;
 use Backend;
+use Throwable;
+use Illuminate\Support\Facades\Log;
 use System\Classes\PluginBase;
-use System\Classes\PluginManager;
 
 // use Illuminate\Foundation\AliasLoader;
-use Lovata\Shopaholic\Models\Offer as ShopaholicOfferModel;
-use Lovata\Shopaholic\Models\Product as ShopaholicProductModel;
-use Lovata\Shopaholic\Models\Category as ShopaholicCategoryModel;
-use Lovata\OrdersShopaholic\Models\Order as ShopaholicOrderModel;
-use Lovata\Shopaholic\Models\Currency as ShopaholicCurrencyModel;
-use Lovata\Shopaholic\Controllers\Currencies as ShopaholicCurrenciesController;
-use Lovata\Shopaholic\Controllers\Products as ShopaholicProductsController;
-use Lovata\Shopaholic\Controllers\Offers as ShopaholicOffersController;
-use Lovata\Shopaholic\Classes\Item\ProductItem;
-use Lovata\Shopaholic\Classes\Item\OfferItem;
-use Lovata\Shopaholic\Classes\Item\CategoryItem;
-use Lovata\Shopaholic\Classes\Import\ImportOfferModelFromXML;
-use Lovata\Shopaholic\Classes\Import\ImportProductModelFromXML;
-use Lovata\Shopaholic\Classes\Import\ImportCategoryModelFromXML;
 
 //Events
 use Logingrupa\StoreExtender\Classes\Event\ExtendPaymentGateway;
 use Logingrupa\StoreExtender\Classes\Event\ExtendMenuHandler;
 use Logingrupa\StoreExtender\Classes\Event\Category\PrimeCategoryTreeHandler;
 use Logingrupa\StoreExtender\Classes\Event\ExtendOfferHandler;
+use Logingrupa\StoreExtender\Classes\Event\Device\DeviceLayoutHandler;
 
 //Offer events
 use Logingrupa\StoreExtender\Classes\Event\Offer\ExtendOfferImportMetadata;
@@ -49,7 +35,6 @@ use Logingrupa\StoreExtender\Classes\Event\User\RainLabRegistrationHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\UserIpAddressHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\AccountCartIdentityHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\PhoneLoginHandler;
-use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
 
 //Cart component events
 use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
@@ -62,6 +47,8 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 //Color Family property slug pinning
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
+use Logingrupa\StoreExtender\Classes\Event\Image\WarmDerivativesOnAttach;
+use Logingrupa\StoreExtender\Classes\Queue\WarmImageDerivatives;
 use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\SlugHistoryHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\LegacyUrlRedirectHandler;
@@ -87,6 +74,13 @@ use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 
 //Cart cookie identity
 use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
+use Logingrupa\StoreExtender\Classes\Middleware\DeviceVaryHeader;
+
+//Registration surfaces boot() delegates to, one class per responsibility
+use Logingrupa\StoreExtender\Classes\Registrar\PageLookupRegistrar;
+use Logingrupa\StoreExtender\Classes\Registrar\PaymentRedirectRegistrar;
+use Logingrupa\StoreExtender\Classes\Registrar\ShopaholicExtensionRegistrar;
+use Logingrupa\StoreExtender\Classes\Registrar\ThemeDataRegistrar;
 
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
@@ -181,6 +175,7 @@ class Plugin extends PluginBase
         // Frontend only - the backend never resolves a guest cart.
         \Cms\Classes\CmsController::extend(function ($obController) {
             $obController->middleware(ClearShadowCartCookie::class);
+            $obController->middleware(DeviceVaryHeader::class);
         });
 
         $factory = Omnipay::getFactory();
@@ -195,19 +190,19 @@ class Plugin extends PluginBase
         // customization form. Hooks into form field building to guarantee methods exist
         // on whichever model class the form is using at render time.
         $this->shareMailBrandLogo();
-        $this->extendThemeDataDropdownMethods();
-        $this->extendThemeOptionsController();
-        $this->registerProductPageLookupType();
-        $this->registerSlugPageLookupTypes();
+        ThemeDataRegistrar::extendThemeDataDropdownMethods();
+        ThemeDataRegistrar::extendThemeOptionsController();
+        PageLookupRegistrar::registerProductPageLookupType();
+        PageLookupRegistrar::registerSlugPageLookupTypes();
 
-        $this->extendShopaholicProductsController();
-        $this->extendShopaholicOffersController();
-        $this->extendShopaholicProductModel();
-        $this->extendShopaholicOfferModel();
-        $this->extendItemEagerLoading();
-        $this->extendCategoryChildrenMapReset();
-        $this->extendXMLImporter();
-        $this->extendShopaholicOrderModel();
+        ShopaholicExtensionRegistrar::extendShopaholicProductsController();
+        ShopaholicExtensionRegistrar::extendShopaholicOffersController();
+        ShopaholicExtensionRegistrar::extendShopaholicProductModel();
+        ShopaholicExtensionRegistrar::extendShopaholicOfferModel();
+        ShopaholicExtensionRegistrar::extendItemEagerLoading();
+        ShopaholicExtensionRegistrar::extendCategoryChildrenMapReset();
+        ShopaholicExtensionRegistrar::extendXMLImporter();
+        ShopaholicExtensionRegistrar::extendShopaholicOrderModel();
         Event::subscribe(ExtendPaymentGateway::class);
         Event::subscribe(ExtendMenuHandler::class);
         //Offer events: PASS 1 metadata + discount steps. The PASS 2 price
@@ -270,261 +265,48 @@ class Plugin extends PluginBase
         Event::subscribe(StoreExtenderProductModelHandler::class);
         Event::subscribe(StoreExtenderExtendProductImport::class);
 
+        //A picture the 1C import attaches or re-attaches between deploys warms
+        //its own derivatives: one queued job per offer or product picture. The
+        //import grows no step, and the phone hero slide is never resized inside
+        //a visitor's request. In boot() and not register(), because the
+        //dispatcher has to exist before a listener can attach to it.
+        //The dispatch acquires a cache lock and pushes to redis, both of
+        //which throw on an outage, and Eloquent fires `saved` with no catch:
+        //without the boundary below a queue hiccup would abort the import row
+        //or the backend save that attached the picture.
+        //A re-save that wrote nothing dispatches nothing: `saved` fires before
+        //syncOriginal(), so isDirty() still says what this save wrote.
+        Event::listen('eloquent.saved: System\Models\File', function ($obFile) {
+            if (!WarmDerivativesOnAttach::isWatched($obFile) || !$obFile->isDirty()) {
+                return;
+            }
+            try {
+                WarmImageDerivatives::dispatch((int) $obFile->id);
+            } catch (Throwable $obException) {
+                Log::warning(sprintf(
+                    'warm-image-derivatives: dispatch for file %d failed, the picture stays cold: %s',
+                    (int) $obFile->id,
+                    $obException->getMessage()
+                ));
+            }
+        });
+
         //Currency rounding for NOK, SEK, DKK
         ExtendCurrencyConversion::swapCurrencyHelper();
         PrimeCategoryTreeHandler::primeOnPageDisplay();
 
+        //Phone layout branch for the product page - no-ops until a page named product2 exists
+        DeviceLayoutHandler::switchLayoutOnPageDisplay();
+
         //Extend currency form to allow more decimal places in rate field
-        $this->extendShopaholicCurrenciesController();
+        ShopaholicExtensionRegistrar::extendShopaholicCurrenciesController();
 
         //Auto-link products to target Tax entries during import: MOVED to
         //Logingrupa.CustomXMLImportPricing (ProductTaxAutoLinkHandler) - it
         //consumes exclusively moved settings keys (00-context.md Amendment 4).
 
         //Redirect to order checkout page instead of homepage after payment cancel/return
-        $this->addPaymentGatewayRedirectListeners();
-    }
-
-    /**
-     * Listen to Omnipay gateway cancel/return events and redirect
-     * back to the order checkout page instead of homepage.
-     */
-    protected function addPaymentGatewayRedirectListeners(): void
-    {
-        $fnGetCheckoutURL = function ($obOrder) {
-            if (empty($obOrder) || empty($obOrder->secret_key)) {
-                return null;
-            }
-
-            // Find CMS page with OrderPage component dynamically
-            $sPageName = $this->findOrderPage();
-
-            if (!empty($sPageName)) {
-                return \Cms\Classes\Page::url($sPageName, ['slug' => $obOrder->secret_key]);
-            }
-
-            return null;
-        };
-
-        Event::listen(
-            \Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::EVENT_GET_PAYMENT_GATEWAY_CANCEL_URL,
-            $fnGetCheckoutURL
-        );
-
-        Event::listen(
-            \Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::EVENT_GET_PAYMENT_GATEWAY_RETURN_URL,
-            $fnGetCheckoutURL
-        );
-    }
-
-    /**
-     * Find the first CMS page that has the OrderPage component.
-     * Skips proforma/print pages by preferring pages without :print param.
-     *
-     * @return string|null CMS page file name
-     */
-    protected function findOrderPage(): ?string
-    {
-        $obTheme = \Cms\Classes\Theme::getActiveTheme();
-        $arPages = \Cms\Classes\Page::listInTheme($obTheme);
-
-        $sFirstMatch = null;
-
-        foreach ($arPages as $obPage) {
-            $arComponents = $obPage->settings['components'] ?? [];
-
-            if (!isset($arComponents['OrderPage'])) {
-                continue;
-            }
-
-            // Skip proforma/print pages
-            if (str_contains($obPage->url, ':print')) {
-                continue;
-            }
-
-            return $obPage->getBaseFileName();
-        }
-
-        return $sFirstMatch;
-    }
-
-    public function extendShopaholicProductsController()
-    {
-        ShopaholicProductsController::extendFormFields(function ($widget) {
-            // Prevent extending of related form instead of the intended ShopaholicProductModel form
-            if (!$widget->model instanceof ShopaholicProductModel) {
-                return;
-            }
-            $configTabFields = Yaml::parse(File::get(__DIR__ . '/config/shopaholic/addAditionalSettingsTab.yaml'));
-            $widget->addTabFields($configTabFields);
-        });
-    }
-
-    public function extendShopaholicOffersController()
-    {
-        ShopaholicOffersController::extendFormFields(function ($widget) {
-            // Prevent extending of related form instead of the intended ShopaholicProductModel form
-            if (!$widget->model instanceof ShopaholicOfferModel) {
-                return;
-            }
-            $widget->removeField('preview_image');
-            $widget->removeField('images');
-            $configTabFields = Yaml::parse(File::get(__DIR__ . '/config/shopaholic/addToImagesTabVideoPreview.yaml'));
-            $widget->addTabFields($configTabFields);
-        });
-    }
-
-    /**
-     * Eager load RainLab Translate 'translations' morphMany during Toolbox item
-     * priming. Without this every Product/Offer/Category model AND every attached
-     * MLFile image lazy-loads rainlab_translate_attributes one query per instance
-     * (350+ queries on a cold home page). 'translations' is defined by the
-     * TranslatableModel behavior constructor, so with() resolves it on models and
-     * on MLFile attachments alike. Warm path unaffected - cache hits never reach
-     * the query. Note: nested '<image>.translations' relies on preview_image and
-     * images NOT being listed in $translatable on the parent model (RainLab swaps
-     * the attachment class to MLFile only in that case).
-     */
-    /**
-     * CategoryItem primes its active children map once per request. A process
-     * that saves categories and then rebuilds items (backend save, XML import)
-     * would otherwise read the map it primed before the save.
-     */
-    public function extendCategoryChildrenMapReset()
-    {
-        ShopaholicCategoryModel::extend(function ($obModel) {
-            $obModel->bindEvent('model.afterSave', function () {
-                CategoryItem::clearActiveChildrenMap();
-            });
-
-            $obModel->bindEvent('model.afterDelete', function () {
-                CategoryItem::clearActiveChildrenMap();
-            });
-        });
-    }
-
-    public function extendItemEagerLoading()
-    {
-        // seo_container: MightySeo caches seo_param_id on every item and reads
-        // it via the morphOne relation - without eager loading that is one
-        // lovata_mighty_seo_params query per model during cold item builds
-        // (58 on one promo page). Eager loaded, collection builds batch it.
-        ProductItem::$arQueryWith = array_merge(ProductItem::$arQueryWith, [
-            'translations',
-            'preview_image.translations',
-            'images.translations',
-            'offer.translations',
-            'offer.preview_image.translations',
-            'offer.images.translations',
-            'seo_container',
-        ]);
-
-        OfferItem::$arQueryWith = array_merge(OfferItem::$arQueryWith, [
-            'translations',
-            'preview_image.translations',
-            'images.translations',
-        ]);
-
-        $arCategoryWith = [
-            'translations',
-            'preview_image.translations',
-            'icon.translations',
-            'images.translations',
-            'seo_container',
-        ];
-
-        // property_set is a PropertiesShopaholic relation, absent when that
-        // plugin is off - an unknown path here throws RelationNotFoundException
-        if (PluginManager::instance()->hasPlugin('Lovata.PropertiesShopaholic')) {
-            $arCategoryWith[] = 'property_set';
-        }
-
-        CategoryItem::$arQueryWith = array_merge(CategoryItem::$arQueryWith, $arCategoryWith);
-    }
-
-    public function extendShopaholicProductModel()
-    {
-        ShopaholicProductModel::extend(function ($obModel) {
-            $translatable = ['how_to', 'video_link', 'warning', 'ingredients'];
-            foreach ($translatable as $field) {
-                $obModel->translatable[] = $field;
-            }
-
-            $obModel->addCachedField(['how_to', 'video_link', 'hide_dropdown']);
-
-            $fillable = ['how_to', 'video_link', 'hide_dropdown'];
-            foreach ($fillable as $field) {
-                $obModel->fillable[] = $field;
-            }
-        });
-    }
-
-    public function extendShopaholicOfferModel()
-    {
-        ShopaholicOfferModel::extend(function ($obModel) {
-            $obModel->fillable[] = 'variation';
-            $obModel->fillable[] = 'preview_video';
-            // external_id feeds OfferColorGrouper (color-lab API join on 1C UUID)
-            $obModel->addCachedField(['variation', 'preview_video', 'external_id']);
-        });
-    }
-
-    public function extendXMLImporter()
-    {
-        Event::listen(ImportProductModelFromXML::EXTEND_FIELD_LIST, function ($arFieldList) {
-            $arCustumFields = [
-                'video_link' => 'Video link/Youtube ID',
-                'how_to' => 'How to - Step by step',
-                'popularity' => 'Popularity',
-                'search_synonym' => 'Search Synonym, tags',
-                'search_content' => 'Search Content, tags',
-                'hide_dropdown' => 'Hide dropdown and show variation images',
-                'source_vat_rate' => 'Source Tax Rate (НДС Ставка)',
-            ];
-            $arFieldList = array_merge($arFieldList, $arCustumFields);
-            return $arFieldList;
-        }, 900);
-
-        Event::listen(ImportCategoryModelFromXML::EXTEND_FIELD_LIST, function ($arFieldList) {
-            $arCustumFields = [
-                'search_synonym' => 'Search Synonym, tags',
-                'search_content' => 'Search Content, tags',
-            ];
-            $arFieldList = array_merge($arFieldList, $arCustumFields);
-            return $arFieldList;
-        }, 900);
-
-        Event::listen(ImportOfferModelFromXML::EXTEND_FIELD_LIST, function ($arFieldList) {
-            $arCustumFields = [
-                'variation' => 'Offer variation ID',
-            ];
-            $arFieldList = array_merge($arFieldList, $arCustumFields);
-            return $arFieldList;
-        }, 900);
-    }
-
-    public function extendShopaholicOrderModel()
-    {
-        ShopaholicOrderModel::extend(function ($obModel) {
-            $obModel->addCachedField(['manager_id', 'transaction_id']);
-        });
-    }
-
-    public function extendShopaholicCurrenciesController()
-    {
-        ShopaholicCurrenciesController::extendFormFields(function ($widget) {
-            if (!$widget->model instanceof ShopaholicCurrencyModel) {
-                return;
-            }
-
-            $widget->addFields([
-                'rate' => [
-                    'label' => 'lovata.shopaholic::lang.field.rate',
-                    'span'  => 'right',
-                    'type'  => 'text',
-                ],
-            ]);
-        });
+        PaymentRedirectRegistrar::addPaymentGatewayRedirectListeners();
     }
 
     /**
@@ -707,11 +489,24 @@ class Plugin extends PluginBase
                 },
                 // Script/style tags for a Vite entry built into the active theme
                 'vite_entry' => [ViteAssetHelper::class, 'renderEntry'],
+                // A CSS-only Vite entry (a .scss rollup input) as a stylesheet link
+                'vite_style' => [ViteAssetHelper::class, 'renderStyle'],
                 // Sized offer image derivatives - the ONLY way a template is
                 // allowed to size an offer picture, so the sizes stay in one place
                 'offer_swatch_src' => [OfferImageHelper::class, 'swatch'],
                 'offer_preview_src' => [OfferImageHelper::class, 'preview'],
                 'offer_hero_src' => [OfferImageHelper::class, 'hero'],
+                // The same hero URL, but only when the derivative already
+                // exists: a template that renders hundreds of labels may not
+                // pay a resize per picture
+                'offer_hero_warm_src' => [OfferImageHelper::class, 'heroIfWarm'],
+                // The phone hero crop, 780x680: the three eager /p2 slides ask
+                // for this one and may pay a resize for it
+                'offer_hero_phone_src' => [OfferImageHelper::class, 'heroPhone'],
+                // The same phone URL as a lookup only, for the label list: the
+                // rest window can render 218 rows and may not pay a resize per
+                // picture, so a cold shade gets an empty string
+                'offer_hero_phone_warm_src' => [OfferImageHelper::class, 'heroPhoneIfWarm'],
                 // Which offer a product-card fragment renders - decided in ONE
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render
@@ -762,358 +557,6 @@ class Plugin extends PluginBase
         return [
             'Logingrupa\Storeextender\FormWidgets\VideoFormWidget' => 'VideoFormWidget',
         ];
-    }
-
-    /**
-     * extendThemeDataDropdownMethods hooks into form field building to add dynamic
-     * dropdown option methods to the theme customization model. This covers both
-     * ThemeData (primary form) and MLThemeData (RainLab Translate proxy), regardless
-     * of instantiation order.
-     */
-    protected function extendThemeDataDropdownMethods()
-    {
-        $fnAddDropdownMethods = function ($obModel) {
-            $obModel->addDynamicMethod('getPromoBlockLeftOptions', function () {
-                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getPromoBlockMiddleOptions', function () {
-                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getPromoBlockRightOptions', function () {
-                return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getProductIdOptions', function () {
-                return \Lovata\Shopaholic\Models\Product::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryIdOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryLeftOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryMiddleOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getCategoryRightOptions', function () {
-                return \Lovata\Shopaholic\Models\Category::lists('name', 'id');
-            });
-            $obModel->addDynamicMethod('getTermsConditionsOptions', function () {
-                $arPages = \Cms\Classes\Page::sortBy('baseFileName')->lists('title', 'baseFileName');
-                if (class_exists('\\Rainlab\\Pages\\Classes\\Page')) {
-                    $arPages = $arPages + \Rainlab\Pages\Classes\Page::sortBy('title')->lists('title', 'baseFileName');
-                }
-                return $arPages;
-            });
-            $obModel->addDynamicMethod('getUserFieldsOptions', function () {
-                return UserPropertyHelper::instance()->getCodeNameList();
-            });
-            $obModel->addDynamicMethod('getShippingCodeOptions', function () {
-                return \Lovata\OrdersShopaholic\Models\ShippingType::lists('name', 'code');
-            });
-            $obModel->addDynamicMethod('getDefaultCurrencyCodeOptions', function () {
-                return \Lovata\Shopaholic\Models\Currency::where('active', true)
-                    ->lists('name', 'code');
-            });
-            $obModel->addDynamicMethod('getTranslatedOptions', function () {
-                return \System\Models\SiteDefinition::where('is_enabled', true)
-                    ->get()
-                    ->mapWithKeys(function ($obSite) {
-                        $sCode = strtolower(substr($obSite->code, 0, 2));
-                        return [$sCode => $obSite->name];
-                    })
-                    ->toArray();
-            });
-        };
-
-        // Class-level extend - methods are added at construction time, before form renders
-        \Cms\Models\ThemeData::extend($fnAddDropdownMethods);
-
-        if (class_exists('\RainLab\Translate\Models\MLThemeData')) {
-            \RainLab\Translate\Models\MLThemeData::extend($fnAddDropdownMethods);
-        }
-    }
-
-    /**
-     * extendThemeOptionsController adds the onGetProductPreviewImage AJAX handler
-     * to the ThemeOptions controller for product dropdown preview thumbnails.
-     */
-    protected function extendThemeOptionsController()
-    {
-        \Cms\Controllers\ThemeOptions::extend(function ($obController) {
-            $obController->addDynamicMethod('onGetProductPreviewImage', function () {
-                $iProductId = (int) post('product_id');
-
-                $obProduct = \Lovata\Shopaholic\Models\Product::with('preview_image')
-                    ->find($iProductId);
-
-                $sPreviewImageUrl = '';
-                if ($obProduct && $obProduct->preview_image) {
-                    $sPreviewImageUrl = $obProduct->preview_image->getThumb(300, 300, ['mode' => 'crop']);
-                }
-
-                return ['preview_image_url' => $sPreviewImageUrl];
-            });
-        });
-    }
-
-    /**
-     * registerProductPageLookupType registers a "shop-product" type for the
-     * pagefinder widget so individual products can be selected as link targets.
-     */
-    protected function registerProductPageLookupType()
-    {
-        // Register shop-product type on both event sets (same pattern as RainLab Pages)
-        Event::listen(['cms.pageLookup.listTypes', 'pages.menuitem.listTypes'], function () {
-            return ['shop-product' => 'Product'];
-        });
-
-        Event::listen(['cms.pageLookup.getTypeInfo', 'pages.menuitem.getTypeInfo'], function ($sType) {
-            if ($sType !== 'shop-product') {
-                return;
-            }
-
-            $arReferences = \Lovata\Shopaholic\Models\Product::lists('name', 'id');
-
-            $obTheme = \Cms\Classes\Theme::getActiveTheme();
-            $obPageList = \Cms\Classes\Page::listInTheme($obTheme, true);
-            $arCmsPages = [];
-            foreach ($obPageList as $obPage) {
-                if (!$obPage->hasComponent('CustomProductPage')) {
-                    continue;
-                }
-
-                $arPropertyList = $obPage->getComponentProperties('CustomProductPage');
-                if (!isset($arPropertyList['slug']) || !preg_match('/{{\s*:/', $arPropertyList['slug'])) {
-                    continue;
-                }
-
-                $arCmsPages[] = $obPage;
-            }
-
-            return [
-                'references' => $arReferences,
-                'cmsPages' => $arCmsPages,
-            ];
-        });
-
-        Event::listen(['cms.pageLookup.resolveItem', 'pages.menuitem.resolveItem'], function ($sType, $obItem, $sURL) {
-            if ($sType !== 'shop-product') {
-                return;
-            }
-
-            if (empty($obItem->reference)) {
-                return [];
-            }
-
-            $obProductItem = \Lovata\Shopaholic\Classes\Item\ProductItem::make($obItem->reference);
-            if ($obProductItem->isEmpty()) {
-                return [];
-            }
-
-            // Build URL via Page::url() because getPageUrl() fails when the
-            // ProductPage component is aliased as "CustomProductPage ProductPage"
-            // - Lovata's PageHelper regex only matches keys starting with "ProductPage".
-            $sPageUrl = \Cms\Classes\Page::url(
-                $obItem->cmsPage ?: 'product',
-                ['slug' => $obProductItem->slug]
-            );
-
-            return [
-                'title' => $obProductItem->name,
-                'url' => $sPageUrl,
-                'isActive' => $sPageUrl == $sURL,
-                'mtime' => $obProductItem->updated_at,
-            ];
-        });
-
-        // Mirror Shopaholic's category/catalog types to cms.pageLookup.* events
-        // (Shopaholic only registers on pages.menuitem.* - pagefinder needs both)
-        $arShopaholicMenuTypes = [
-            \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::class,
-            \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::class,
-            \Lovata\Shopaholic\Classes\Helper\AllCategoriesMenuType::MENU_TYPE => \Lovata\Shopaholic\Classes\Helper\AllCategoriesMenuType::class,
-        ];
-
-        Event::listen('cms.pageLookup.listTypes', function () {
-            return [
-                \Lovata\Shopaholic\Classes\Helper\CatalogMenuType::MENU_TYPE => 'lovata.shopaholic::lang.menu.shop_catalog',
-                \Lovata\Shopaholic\Classes\Helper\CategoryMenuType::MENU_TYPE => 'lovata.shopaholic::lang.menu.shop_category',
-                \Lovata\Shopaholic\Classes\Helper\AllCategoriesMenuType::MENU_TYPE => 'lovata.shopaholic::lang.menu.all_shop_categories',
-            ];
-        });
-
-        Event::listen('cms.pageLookup.getTypeInfo', function ($sType) use ($arShopaholicMenuTypes) {
-            if (!isset($arShopaholicMenuTypes[$sType])) {
-                return;
-            }
-            return (new $arShopaholicMenuTypes[$sType]())->getMenuTypeInfo();
-        });
-
-        Event::listen('cms.pageLookup.resolveItem', function ($sType, $obItem, $sURL) use ($arShopaholicMenuTypes) {
-            if (!isset($arShopaholicMenuTypes[$sType])) {
-                return;
-            }
-            return (new $arShopaholicMenuTypes[$sType]())->resolveMenuItem($obItem, $sURL);
-        });
-    }
-
-    /**
-     * registerSlugPageLookupTypes registers slug-keyed pagefinder types for
-     * products and promo blocks.
-     *
-     * The id-keyed "shop-product" type has to load the whole ProductItem -
-     * offers, images, categories - only to read one field, its slug. Measured
-     * on the home page's seven campaign banners that is 140 queries on a cold
-     * cache, 20 per banner, against 0 for these types: the route takes a slug
-     * and the stored reference already IS the slug, so nothing has to be
-     * loaded to build the URL.
-     *
-     * Slugs are also stable across environments where ids are not, so one
-     * theme-data record works on local, .lv, .no and .lt alike.
-     *
-     * @return void
-     */
-    protected function registerSlugPageLookupTypes(): void
-    {
-        $arTypeList = [
-            'shop-product-slug' => [
-                'label'    => 'Product (by slug)',
-                'page'     => 'product',
-                'model'    => \Lovata\Shopaholic\Models\Product::class,
-                'listType' => 'shop-product-slug',
-            ],
-            'shop-promo-block-slug' => [
-                'label'    => 'Promo block (by slug)',
-                'page'     => 'promo-block-page',
-                'model'    => \Lovata\Shopaholic\Models\PromoBlock::class,
-                'listType' => 'shop-promo-block-slug',
-            ],
-        ];
-
-        Event::listen(['cms.pageLookup.listTypes', 'pages.menuitem.listTypes'], function () use ($arTypeList) {
-            return array_map(function ($arType) {
-                return $arType['label'];
-            }, $arTypeList);
-        });
-
-        Event::listen(['cms.pageLookup.getTypeInfo', 'pages.menuitem.getTypeInfo'], function ($sType) use ($arTypeList) {
-            if (!isset($arTypeList[$sType])) {
-                return;
-            }
-
-            // The backend dropdown is keyed by slug, so what the editor picks is
-            // what gets stored - no id ever enters the value
-            $sModelClass = $arTypeList[$sType]['model'];
-            $arReferences = $sModelClass::orderBy('name')->pluck('name', 'slug')->all();
-
-            return [
-                'references'    => $arReferences,
-                'nesting'       => false,
-                'dynamicItems'  => false,
-            ];
-        });
-
-        Event::listen(['cms.pageLookup.resolveItem', 'pages.menuitem.resolveItem'], function ($sType, $obItem, $sURL) use ($arTypeList) {
-            if (!isset($arTypeList[$sType])) {
-                return;
-            }
-
-            $sSlug = (string) ($obItem->reference ?? '');
-            if ($sSlug === '') {
-                return [];
-            }
-
-            // No model load: Page::url resolves the route in the ACTIVE locale,
-            // which is what makes one stored value render /lv/, /en/ and /ru/
-            // links from the same repeater row
-            $sPageUrl = \Cms\Classes\Page::url(
-                $obItem->cmsPage ?: $arTypeList[$sType]['page'],
-                ['slug' => $sSlug]
-            );
-
-            return [
-                'title'    => $sSlug,
-                'url'      => $sPageUrl,
-                'isActive' => $sPageUrl == $sURL,
-            ];
-        });
-
-        $this->registerCategorySlugPageLookupType();
-    }
-
-    /**
-     * registerCategorySlugPageLookupType registers a slug-keyed pagefinder
-     * type for shop categories.
-     *
-     * Shopaholic's own id-keyed shop-category type is listed on the pagefinder
-     * events but its resolver throws (getFileName() on null), so banners kept
-     * absolute https://nailscosmetics.lv/lv/... URLs instead - which send an
-     * /en/ or /ru/ visitor to the Latvian page, and on any other server off
-     * the site entirely.
-     *
-     * The catalog route takes the whole ancestor chain
-     * (:main_category/:category?/:sub_category?/:sub2_category?), so unlike
-     * the product and promo block types this one has to load the category to
-     * learn its parents. One indexed slug lookup per banner, memoized per
-     * request, against the category tree the menu already primed.
-     *
-     * @return void
-     */
-    protected function registerCategorySlugPageLookupType(): void
-    {
-        $sType = 'shop-category-slug';
-
-        Event::listen(['cms.pageLookup.listTypes', 'pages.menuitem.listTypes'], function () use ($sType) {
-            return [$sType => 'Category (by slug)'];
-        });
-
-        Event::listen(['cms.pageLookup.getTypeInfo', 'pages.menuitem.getTypeInfo'], function ($sRequestedType) use ($sType) {
-            if ($sRequestedType !== $sType) {
-                return;
-            }
-
-            return [
-                'references'   => ShopaholicCategoryModel::orderBy('name')->pluck('name', 'slug')->all(),
-                'nesting'      => false,
-                'dynamicItems' => false,
-            ];
-        });
-
-        Event::listen(['cms.pageLookup.resolveItem', 'pages.menuitem.resolveItem'], function ($sRequestedType, $obItem, $sURL) use ($sType) {
-            if ($sRequestedType !== $sType) {
-                return;
-            }
-
-            $sSlug = (string) ($obItem->reference ?? '');
-            if ($sSlug === '') {
-                return [];
-            }
-
-            static $arCategoryIdList = [];
-            if (!array_key_exists($sSlug, $arCategoryIdList)) {
-                $arCategoryIdList[$sSlug] = ShopaholicCategoryModel::getBySlug($sSlug)->value('id');
-            }
-
-            if (empty($arCategoryIdList[$sSlug])) {
-                return [];
-            }
-
-            $obCategoryItem = CategoryItem::make($arCategoryIdList[$sSlug]);
-            if ($obCategoryItem->isEmpty()) {
-                return [];
-            }
-
-            // getPageUrl builds the ancestor params and resolves the route in
-            // the ACTIVE locale, so one stored value renders /lv/, /en/ and
-            // /ru/ links from the same repeater row
-            $sPageUrl = $obCategoryItem->getPageUrl($obItem->cmsPage ?: 'catalog');
-
-            return [
-                'title'    => $obCategoryItem->name,
-                'url'      => $sPageUrl,
-                'isActive' => $sPageUrl == $sURL,
-            ];
-        });
     }
 
 }
