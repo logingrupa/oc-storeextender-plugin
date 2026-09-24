@@ -55,4 +55,14 @@
         'never' => 'never',
         'unknown' => 'unknown',
     ],
+    'settings' => [
+        'label' => 'Storefront',
+        'description' => 'Cart and delivery nudge settings of this site.',
+        'permission_label' => 'Manage storefront settings',
+        'nudge_catalog_section' => 'Free-delivery nudge: catalog button',
+        'nudge_catalog_section_comment' => 'The nudge offers a button to the catalog, cheapest first from the missing amount, while that amount sits between these two values. Amounts are in the currency of this site.',
+        'nudge_catalog_min_missing' => 'Show from (missing amount)',
+        'nudge_catalog_max_missing' => 'Show up to (missing amount)',
+        'nudge_catalog_max_missing_comment' => 'Empty or 0 switches the button off.',
+    ],
 ];

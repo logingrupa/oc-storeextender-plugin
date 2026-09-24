@@ -105,7 +105,7 @@ class Plugin extends PluginBase
     const MAIL_MD_RESERVATION_DELETED = 'logingrupa.storeextender::mail.md_reservation_deleted';
     const MAIL_MD_RESERVATION_REMINDER = 'logingrupa.storeextender::mail.md_reservation_reminder';
 
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User', 'RainLab.Pages'];
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Lovata.CampaignsShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User', 'RainLab.Pages'];
 
     /**
      * Returns information about this plugin.
@@ -406,6 +406,10 @@ class Plugin extends PluginBase
                 'tab' => 'logingrupa.storeextender::lang.color_sync.permission_tab',
                 'label' => 'logingrupa.storeextender::lang.color_sync.permission_label',
             ],
+            'logingrupa.storeextender.settings' => [
+                'tab' => 'logingrupa.storeextender::lang.color_sync.permission_tab',
+                'label' => 'logingrupa.storeextender::lang.settings.permission_label',
+            ],
         ];
     }
 
@@ -443,6 +447,15 @@ class Plugin extends PluginBase
                 'url' => Backend::url('logingrupa/storeextender/colorsync'),
                 'order' => 520,
                 'permissions' => ['logingrupa.storeextender.color_sync'],
+            ],
+            'storefront' => [
+                'label' => 'logingrupa.storeextender::lang.settings.label',
+                'description' => 'logingrupa.storeextender::lang.settings.description',
+                'category' => 'lovata.shopaholic::lang.tab.settings',
+                'icon' => 'icon-shopping-basket',
+                'class' => \Logingrupa\StoreExtender\Models\Settings::class,
+                'order' => 530,
+                'permissions' => ['logingrupa.storeextender.settings'],
             ],
         ];
     }

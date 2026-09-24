@@ -55,4 +55,14 @@
         'never' => 'nekad',
         'unknown' => 'nezināms',
     ],
+    'settings' => [
+        'label' => 'Veikala skats',
+        'description' => 'Šīs vietnes groza un piegādes atgādinājuma iestatījumi.',
+        'permission_label' => 'Pārvaldīt veikala skata iestatījumus',
+        'nudge_catalog_section' => 'Bezmaksas piegādes atgādinājums: kataloga poga',
+        'nudge_catalog_section_comment' => 'Atgādinājums rāda pogu uz katalogu, lētākās preces vispirms, sākot no trūkstošās summas, kamēr šī summa ir starp abām vērtībām. Summas ir šīs vietnes valūtā.',
+        'nudge_catalog_min_missing' => 'Rādīt no (trūkstošā summa)',
+        'nudge_catalog_max_missing' => 'Rādīt līdz (trūkstošā summa)',
+        'nudge_catalog_max_missing_comment' => 'Tukšs vai 0 izslēdz pogu.',
+    ],
 ];

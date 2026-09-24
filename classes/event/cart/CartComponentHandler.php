@@ -58,6 +58,10 @@ class CartComponentHandler
 
                 return self::savedUserData($obCartModel ? $obCartModel->user_data : null);
             });
+
+            $obCart->addDynamicMethod('getPositionTotalPriceValue', function (): float {
+                return (float) CartProcessor::instance()->getCartPositionTotalPriceData()->price_value;
+            });
         });
     }
 

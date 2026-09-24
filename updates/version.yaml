@@ -254,3 +254,6 @@
 
 2.0.90:
   - 'The highlight Twig filter (TextHighlighter) escapes the name and the search term before wrapping the match in <span class="highlight">, and matches case- and accent-insensitively (sarkana marks Sarkanā) the way the search query does. Names carrying markup, five active 1C offers are named "(<Свойства не назначены>)", used to reach the category cards, the search cards and the search sheet unescaped through |raw.'
+
+2.0.91:
+  - 'Storefront settings model (system_settings code logingrupa_storeextender_settings, site-scoped through Multisite with an empty propagatable list, read through SettingsSiteFallbackHandler until a site saves its own row) behind the new permission logingrupa.storeextender.settings. Shipping ladder for the cart sheet built from the real promo mechanisms (ShippingMechanismCollector, ShippingLadder), grouped into subtotal bands and ordered cheapest first, naming the shipping type that goes free. Nudge catalog button window (NudgeCatalogButton) from the settings. Cart::getPositionTotalPriceValue dynamic method. Lovata.CampaignsShopaholic joins $require: the collector reads CampaignHelper.'
