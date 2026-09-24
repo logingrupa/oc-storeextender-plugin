@@ -1,0 +1,37 @@
+subject = "Salongsøknad - {{ salon_name|raw }}"
+description = "En salongsøknad fra nettsiden, sendt til butikkens ansvarlige"
+==
+# {{ salon_name }}
+
+**Navn og etternavn**<br>
+{{ name }}
+
+**E-post**<br>
+[{{ email }}](mailto:{{ email }})
+
+**Telefonnummer**<br>
+<a href="tel:{{ phone|replace({' ': ''}) }}">{{ phone }}</a>
+
+**Salongadresse**<br>
+{{ salon_address }}
+
+**Antall manikyrister i salongen**<br>
+{{ number_of_masters }}
+
+**Hvilke neglepleiemerker bruker salongen din?**<br>
+{{ current_product_list|nl2br }}
+
+**Bruker dere allerede noen NAILS cosmetics-produkter?**<br>
+{{ product_list|nl2br }}
+
+**Tilbyr dere også negleforlengelser?**<br>
+{{ nail_extensions }}
+
+**Er det andre skjønnhetsbehandlinger tilgjengelig i salongen? Hvilke?**<br>
+{{ other_treatment_list|nl2br }}
+
+**Lenke til bedriftsprofilen**<br>
+{{ profile_link }}
+
+**Hvor mye planlegger du å kjøpe NAI_S cosmetics-produkter per måned?**<br>
+{{ order_plan }}

@@ -1,0 +1,37 @@
+subject = "Salon application - {{ salon_name|raw }}"
+description = "A salon application from the website, sent to the shop managers"
+==
+# {{ salon_name }}
+
+**Name and surname**<br>
+{{ name }}
+
+**Email**<br>
+[{{ email }}](mailto:{{ email }})
+
+**Phone number**<br>
+<a href="tel:{{ phone|replace({' ': ''}) }}">{{ phone }}</a>
+
+**Salon address**<br>
+{{ salon_address }}
+
+**Number of manicure masters in salon**<br>
+{{ number_of_masters }}
+
+**What nail care brands does your salon work with?**<br>
+{{ current_product_list|nl2br }}
+
+**Are you already working with any NAILS cosmetics products?**<br>
+{{ product_list|nl2br }}
+
+**Do you also offer nail extensions?**<br>
+{{ nail_extensions }}
+
+**Are there other beauty treatments available at the salon? What kind?**<br>
+{{ other_treatment_list|nl2br }}
+
+**Please enter your business profile link**<br>
+{{ profile_link }}
+
+**How much do you plan to buy NAI_S cosmetics products per month?**<br>
+{{ order_plan }}

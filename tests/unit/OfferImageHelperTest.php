@@ -123,6 +123,57 @@ class OfferImageHelperTest extends TestCase
         return $obFile;
     }
 
+    /**
+     * A File whose storage disk answers "that derivative exists" to whatever
+     * it is asked, and records what it was asked. Both path helpers stay
+     * October's own, so a case built on this pins the exact disk path the
+     * lookup checks and the exact URL it hands back, partition directory and
+     * derivative name included - the two things that drift silently, because
+     * a drifted lookup answers '' and the caller falls back without a log.
+     */
+    protected function makeWarmFile(int $iId, int $iSourceHeight): File
+    {
+        $obFile = new class extends File {
+            /** @var int */
+            public $iFakeHeight = 0;
+
+            /** @var list<string> every disk path the lookup asked about */
+            public $arExistsAskList = [];
+
+            public function isImage()
+            {
+                return true;
+            }
+
+            public function getHeightAttribute()
+            {
+                return $this->iFakeHeight;
+            }
+
+            public function getDisk()
+            {
+                return new class($this) {
+                    public function __construct(private File $obFile)
+                    {
+                    }
+
+                    public function exists(string $sPath): bool
+                    {
+                        $this->obFile->arExistsAskList[] = $sPath;
+
+                        return true;
+                    }
+                };
+            }
+        };
+        $obFile->id = $iId;
+        $obFile->disk_name = 'abcdefghij.jpg';
+        $obFile->is_public = true;
+        $obFile->iFakeHeight = $iSourceHeight;
+
+        return $obFile;
+    }
+
     public function testSwatchOptionsProduceACroppedWebpDerivative()
     {
         $obFile = $this->makeFile(10505, 'png');
@@ -307,6 +358,57 @@ class OfferImageHelperTest extends TestCase
             [['width' => OfferImageHelper::HERO_PHONE_WIDTH, 'height' => OfferImageHelper::HERO_PHONE_HEIGHT]],
             $obFile->arThumbRequestList
         );
+    }
+
+    /**
+     * The branch the phase exists for: the derivative is on disk, so the
+     * lookup hands back its URL. The disk path it checked and the URL it
+     * returned both name the file the generating twin writes, down to the
+     * partition directory, so a drift in either would fail here rather than
+     * silently fall every phone slide back to the 600px preview.
+     */
+    public function testPhoneHeroWarmLookupReturnsThePathOnceTheDerivativeExists()
+    {
+        $obFile = $this->makeWarmFile(10505, 821);
+
+        $sUrl = OfferImageHelper::heroPhoneIfWarm($obFile);
+
+        $this->assertSame(
+            'http://localhost/storage/uploads/public/abc/def/ghi/thumb_10505_780_680_crop.webp',
+            $sUrl
+        );
+        $this->assertSame(['public/abc/def/ghi/thumb_10505_780_680_crop.webp'], $obFile->arExistsAskList);
+    }
+
+    public function testHeroWarmLookupReturnsThePathOnceTheDerivativeExists()
+    {
+        $obFile = $this->makeWarmFile(10505, 821);
+
+        $sUrl = OfferImageHelper::heroIfWarm($obFile);
+
+        $this->assertSame(
+            'http://localhost/storage/uploads/public/abc/def/ghi/thumb_10505_1000_821_auto.webp',
+            $sUrl
+        );
+        $this->assertSame(['public/abc/def/ghi/thumb_10505_1000_821_auto.webp'], $obFile->arExistsAskList);
+    }
+
+    /**
+     * Unlike the phone twin, hero() serves a short source at HERO_SMALL_WIDTH
+     * and heroIfWarm() looks for that file: 300 wide, height auto, which
+     * October writes as 0 in the name.
+     */
+    public function testHeroWarmLookupNamesTheSmallSourceDerivativeOnAShortSource()
+    {
+        $obFile = $this->makeWarmFile(10505, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
+
+        $sUrl = OfferImageHelper::heroIfWarm($obFile);
+
+        $this->assertSame(
+            'http://localhost/storage/uploads/public/abc/def/ghi/thumb_10505_300_0_auto.webp',
+            $sUrl
+        );
+        $this->assertSame(['public/abc/def/ghi/thumb_10505_300_0_auto.webp'], $obFile->arExistsAskList);
     }
 
     /**

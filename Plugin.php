@@ -2,9 +2,12 @@
 
 // use App;
 use Lang;
+use Config;
 use Omnipay\Omnipay;
 use Event;
 use Backend;
+use Throwable;
+use Illuminate\Support\Facades\Log;
 use System\Classes\PluginBase;
 
 // use Illuminate\Foundation\AliasLoader;
@@ -44,6 +47,8 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 //Color Family property slug pinning
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
+use Logingrupa\StoreExtender\Classes\Event\Image\WarmDerivativesOnAttach;
+use Logingrupa\StoreExtender\Classes\Queue\WarmImageDerivatives;
 use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\SlugHistoryHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\LegacyUrlRedirectHandler;
@@ -85,6 +90,7 @@ use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
+use Logingrupa\StoreExtender\Classes\Helper\TextHighlighter;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
 use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
@@ -94,7 +100,12 @@ use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
  */
 class Plugin extends PluginBase
 {
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Lovata.CampaignsShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User'];
+    const MAIL_SALON_LEAD_MANAGER = 'logingrupa.storeextender::mail.salon_lead_manager';
+    const MAIL_SALON_LEAD_APPLICANT = 'logingrupa.storeextender::mail.salon_lead_applicant';
+    const MAIL_MD_RESERVATION_DELETED = 'logingrupa.storeextender::mail.md_reservation_deleted';
+    const MAIL_MD_RESERVATION_REMINDER = 'logingrupa.storeextender::mail.md_reservation_reminder';
+
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Lovata.CampaignsShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User', 'RainLab.Pages'];
 
     /**
      * Returns information about this plugin.
@@ -179,6 +190,7 @@ class Plugin extends PluginBase
         // Extend ThemeData/MLThemeData with dropdown option methods needed by theme
         // customization form. Hooks into form field building to guarantee methods exist
         // on whichever model class the form is using at render time.
+        $this->shareMailBrandLogo();
         ThemeDataRegistrar::extendThemeDataDropdownMethods();
         ThemeDataRegistrar::extendThemeOptionsController();
         PageLookupRegistrar::registerProductPageLookupType();
@@ -253,6 +265,32 @@ class Plugin extends PluginBase
         Event::subscribe(StoreExtenderExtendProductFieldsHandler::class);
         Event::subscribe(StoreExtenderProductModelHandler::class);
         Event::subscribe(StoreExtenderExtendProductImport::class);
+
+        //A picture the 1C import attaches or re-attaches between deploys warms
+        //its own derivatives: one queued job per offer or product picture. The
+        //import grows no step, and the phone hero slide is never resized inside
+        //a visitor's request. In boot() and not register(), because the
+        //dispatcher has to exist before a listener can attach to it.
+        //The dispatch acquires a cache lock and pushes to redis, both of
+        //which throw on an outage, and Eloquent fires `saved` with no catch:
+        //without the boundary below a queue hiccup would abort the import row
+        //or the backend save that attached the picture.
+        //A re-save that wrote nothing dispatches nothing: `saved` fires before
+        //syncOriginal(), so isDirty() still says what this save wrote.
+        Event::listen('eloquent.saved: System\Models\File', function ($obFile) {
+            if (!WarmDerivativesOnAttach::isWatched($obFile) || !$obFile->isDirty()) {
+                return;
+            }
+            try {
+                WarmImageDerivatives::dispatch((int) $obFile->id);
+            } catch (Throwable $obException) {
+                Log::warning(sprintf(
+                    'warm-image-derivatives: dispatch for file %d failed, the picture stays cold: %s',
+                    (int) $obFile->id,
+                    $obException->getMessage()
+                ));
+            }
+        });
 
         //Currency rounding for NOK, SEK, DKK
         ExtendCurrencyConversion::swapCurrencyHelper();
@@ -349,6 +387,10 @@ class Plugin extends PluginBase
     {
         return [
             'user:recover_password' => 'logingrupa.storeextender::mail.recover_password',
+            self::MAIL_SALON_LEAD_MANAGER => self::MAIL_SALON_LEAD_MANAGER,
+            self::MAIL_SALON_LEAD_APPLICANT => self::MAIL_SALON_LEAD_APPLICANT,
+            self::MAIL_MD_RESERVATION_DELETED => self::MAIL_MD_RESERVATION_DELETED,
+            self::MAIL_MD_RESERVATION_REMINDER => self::MAIL_MD_RESERVATION_REMINDER,
         ];
     }
 
@@ -369,6 +411,24 @@ class Plugin extends PluginBase
                 'label' => 'logingrupa.storeextender::lang.settings.permission_label',
             ],
         ];
+    }
+
+    /**
+     * Share the mail logo URL and its link with every view.
+     *
+     * The mail header partial is a database row shared by all shops, so it cannot hold an
+     * absolute host or a theme directory name. The mailer Twig environment reads shared
+     * view variables, the same way the mail layout reads appName.
+     */
+    protected function shareMailBrandLogo()
+    {
+        $this->callAfterResolving('view', function ($obView) {
+            $sAppURL = rtrim((string) Config::get('app.url'), '/');
+            $sThemeDir = (string) Config::get('cms.active_theme');
+
+            $obView->share('brandLogoLink', $sAppURL);
+            $obView->share('brandLogoUrl', $sAppURL.'/themes/'.$sThemeDir.'/assets/images/logo.png');
+        });
     }
 
     /**
@@ -426,7 +486,7 @@ class Plugin extends PluginBase
             'filters' => [
                 // A global function, i.e str_plural()
                 'plural' => 'str_plural',
-                'highlight' => [$this, 'makeTextHighlighted'],
+                'highlight' => [TextHighlighter::class, 'highlight'],
                 // A local method, i.e $this->makeTextAllCaps()
                 'uppercase' => [$this, 'makeTextAllCaps'],
                 // Currency-aware price formatting (e.g., "225,-" for NOK)
@@ -488,17 +548,6 @@ class Plugin extends PluginBase
                 },
             ]
         ];
-    }
-
-    public function makeTextHighlighted($text, $terms)
-    {
-        if (!is_array($terms)) $terms = [$terms];
-        $highlight = array();
-        foreach ($terms as $term) {
-            $highlight[] = '<span class="highlight">' . $term . '</span>';
-        }
-        // dd(str_ireplace($terms, $highlight, $text));
-        return str_ireplace($terms, $highlight, $text);
     }
 
     public function makeTextAllCaps($text)

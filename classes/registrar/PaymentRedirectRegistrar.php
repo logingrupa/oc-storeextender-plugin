@@ -45,17 +45,15 @@ class PaymentRedirectRegistrar
     }
 
     /**
-     * Find the first CMS page that has the OrderPage component.
-     * Skips proforma/print pages by preferring pages without :print param.
+     * Find the first CMS page that has the OrderPage component, skipping the
+     * pages whose URL carries :print (the proforma and print views).
      *
-     * @return string|null CMS page file name
+     * @return string|null CMS page file name, null when the theme has none
      */
     public static function findOrderPage(): ?string
     {
         $obTheme = \Cms\Classes\Theme::getActiveTheme();
         $arPages = \Cms\Classes\Page::listInTheme($obTheme);
-
-        $sFirstMatch = null;
 
         foreach ($arPages as $obPage) {
             $arComponents = $obPage->settings['components'] ?? [];
@@ -72,6 +70,6 @@ class PaymentRedirectRegistrar
             return $obPage->getBaseFileName();
         }
 
-        return $sFirstMatch;
+        return null;
     }
 }

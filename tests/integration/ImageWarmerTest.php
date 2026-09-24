@@ -3,6 +3,7 @@
 require_once __DIR__.'/../StoreExtenderPluginTestCase.php';
 
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Log;
 use Logingrupa\StoreExtender\Classes\Helper\ImageWarmer;
 use Lovata\Shopaholic\Models\Offer;
 use Lovata\Shopaholic\Models\Product;
@@ -207,6 +208,30 @@ class ImageWarmerTest extends StoreExtenderPluginTestCase
         $this->assertSame(4, $arCounts[ImageWarmer::OUTCOME_FAILED]);
         $this->assertSame(1, $arCounts[ImageWarmer::OUTCOME_WARMED]);
         $this->assertSame([self::PREVIEW_ASK], $obGalleryImage->arAskList);
+    }
+
+    /**
+     * warmPicture() is public and takes any list. A slot it does not know must
+     * be a counted, logged failure - in a dry run as well - and never a fall
+     * through to one of the real derivatives reported as warmed.
+     */
+    public function testAnUnknownSlotIsCountedAsAFailureAndAskedForNothing()
+    {
+        Log::spy();
+        $obPreviewImage = $this->makeRecordingFile(10505);
+
+        $arCounts = ImageWarmer::warmPicture($obPreviewImage, ['banner'], false, 'offer 4200');
+        $arDryRunCounts = ImageWarmer::warmPicture($obPreviewImage, ['banner'], true, 'offer 4200');
+
+        $this->assertSame([], $obPreviewImage->arAskList);
+        $this->assertSame(1, $arCounts[ImageWarmer::OUTCOME_FAILED]);
+        $this->assertSame(0, $arCounts[ImageWarmer::OUTCOME_WARMED]);
+        $this->assertSame(1, $arDryRunCounts[ImageWarmer::OUTCOME_FAILED]);
+        $this->assertSame(0, $arDryRunCounts[ImageWarmer::OUTCOME_WARMED]);
+        Log::shouldHaveReceived('warning')->twice()->withArgs(function ($sMessage) {
+            return strpos($sMessage, 'offer 4200') !== false
+                && strpos($sMessage, 'slot banner') !== false;
+        });
     }
 
     public function testDryRunCountsTheSameSlotsWithoutAskingTheResizer()

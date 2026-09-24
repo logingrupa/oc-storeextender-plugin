@@ -45,6 +45,16 @@ class SettingsSiteFallbackCoverageTest extends TestCase
         );
     }
 
+    public function testMightySeoSettingsIsCoveredSoEverySiteRendersTheTitleSuffix()
+    {
+        $this->assertContains(
+            \Lovata\MightySeo\Models\Settings::class,
+            SettingsSiteFallbackHandler::AR_SETTINGS_MODEL_LIST,
+            'SeoToolbox reads seo_title_prefix/suffix and the head/body snippets from this model;'
+                . ' without the fallback the en and ru sites of nailscosmetics.lv render no "| NAILS cosmetics".'
+        );
+    }
+
     public function testEveryCoveredModelIsActuallySiteScoped()
     {
         $this->assertNotEmpty(SettingsSiteFallbackHandler::AR_SETTINGS_MODEL_LIST);

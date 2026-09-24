@@ -206,6 +206,11 @@ class ImageWarmer
      * logs every one it swallows, naming the record, the file id, the slot and
      * the message. Everywhere else, fail fast.
      *
+     * A slot name outside the four is an UnhandledMatchError, counted and
+     * logged like any other failure and in a dry run too: warmPicture() is
+     * public and takes any list, and a mistyped slot that fell through to one
+     * of the real derivatives would report the wrong file as warmed.
+     *
      * @return string one of OUTCOME_WARMED, OUTCOME_FAILED, OUTCOME_SKIPPED
      */
     protected static function warmImage(File $obImage, string $sSlot, bool $bDryRun, string $sRecordLabel): string
@@ -214,16 +219,17 @@ class ImageWarmer
             if ($sSlot === OfferImageHelper::SLOT_HERO_PHONE && !self::isPhoneHeroSource($obImage)) {
                 return self::OUTCOME_SKIPPED;
             }
+            $fnRender = match ($sSlot) {
+                OfferImageHelper::SLOT_SWATCH     => OfferImageHelper::swatch(...),
+                OfferImageHelper::SLOT_PREVIEW    => OfferImageHelper::preview(...),
+                OfferImageHelper::SLOT_HERO       => OfferImageHelper::hero(...),
+                OfferImageHelper::SLOT_HERO_PHONE => OfferImageHelper::heroPhone(...),
+            };
             if ($bDryRun) {
                 return self::OUTCOME_WARMED;
             }
 
-            $sUrl = match ($sSlot) {
-                OfferImageHelper::SLOT_SWATCH => OfferImageHelper::swatch($obImage),
-                OfferImageHelper::SLOT_HERO => OfferImageHelper::hero($obImage),
-                OfferImageHelper::SLOT_HERO_PHONE => OfferImageHelper::heroPhone($obImage),
-                default => OfferImageHelper::preview($obImage),
-            };
+            $sUrl = $fnRender($obImage);
             if ($sUrl === '') {
                 throw new RuntimeException('resizer returned an empty URL');
             }

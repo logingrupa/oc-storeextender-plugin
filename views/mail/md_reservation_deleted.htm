@@ -1,0 +1,21 @@
+subject = "About your Master Days reservation ({{ location_name|raw }})"
+description = "Tells a Master Days attendee that their reservation was removed and how to register again"
+==
+Hello, {{ name|default('dear customer') }}!
+
+Your registration for the **Master Days "{{ location_name }}" has been removed.**
+
+This can happen for one of these reasons:
+
+1. You cancelled your participation in the Master Days;
+2. You did not confirm your registration within the given time, so it was removed automatically.
+
+If you would still like to take part in the Master Days, please register again while places are available:
+
+[Register again]({{ register_link|raw }})
+
+You can check the status of your reservation here if needed:
+[Check reservation]({{ checker_link|raw }})
+
+Have a lovely day,<br>
+NAI_S cosmetics
