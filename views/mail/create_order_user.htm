@@ -1,0 +1,4 @@
+subject = "{{ 'Your order No.'|_ }} {{ order_number }} {{ 'has been received'|_ }}"
+description = "Order confirmation sent to the customer"
+==
+{% partial 'orderDetails' order=order %}

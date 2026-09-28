@@ -1,0 +1,4 @@
+subject = "{{ 'NEW ORDER'|_ }} - {{ order_number }} | {{ order.currency_symbol }}{{ order.total_price }}"
+description = "New order notification sent to the shop managers"
+==
+{% partial 'orderDetails' order=order %}

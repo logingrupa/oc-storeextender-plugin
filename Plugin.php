@@ -105,6 +105,9 @@ class Plugin extends PluginBase
     const MAIL_MD_RESERVATION_DELETED = 'logingrupa.storeextender::mail.md_reservation_deleted';
     const MAIL_MD_RESERVATION_REMINDER = 'logingrupa.storeextender::mail.md_reservation_reminder';
 
+    const MAIL_ORDER_CREATED_USER = 'lovata.ordersshopaholic::mail.create_order_user';
+    const MAIL_ORDER_CREATED_MANAGER = 'lovata.ordersshopaholic::mail.create_order_manager';
+
     public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Lovata.CampaignsShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User', 'RainLab.Pages'];
 
     /**
@@ -366,6 +369,7 @@ class Plugin extends PluginBase
             'product' => 'logingrupa.storeextender::mail.product',
             'orderSummary' => 'logingrupa.storeextender::mail.ordersummary',
             'buttons' => 'logingrupa.storeextender::mail.buttons',
+            'orderDetails' => 'logingrupa.storeextender::mail.orderdetails',
         ];
     }
 
@@ -381,12 +385,20 @@ class Plugin extends PluginBase
      * Note: a DB row with code='user:recover_password' in system_mail_templates takes
      * precedence over this file and is never localized from views.
      *
+     * The two order mails carry Lovata codes on purpose: Lovata.OrdersShopaholic sends
+     * those codes and registers them with a description, not a view path, so
+     * MailTemplate::findOrMakeTemplate() finds no view and the mail dies the moment the
+     * shop's hand-written database row is gone. Pointing the codes at our views makes the
+     * three shops render one template from git instead of three drifting rows.
+     *
      * @return array
      */
     public function registerMailTemplates()
     {
         return [
             'user:recover_password' => 'logingrupa.storeextender::mail.recover_password',
+            self::MAIL_ORDER_CREATED_USER => 'logingrupa.storeextender::mail.create_order_user',
+            self::MAIL_ORDER_CREATED_MANAGER => 'logingrupa.storeextender::mail.create_order_manager',
             self::MAIL_SALON_LEAD_MANAGER => self::MAIL_SALON_LEAD_MANAGER,
             self::MAIL_SALON_LEAD_APPLICANT => self::MAIL_SALON_LEAD_APPLICANT,
             self::MAIL_MD_RESERVATION_DELETED => self::MAIL_MD_RESERVATION_DELETED,
