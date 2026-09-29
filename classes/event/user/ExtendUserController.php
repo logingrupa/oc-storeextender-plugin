@@ -11,18 +11,13 @@ use Lovata\Toolbox\Classes\Event\AbstractBackendFieldHandler;
 class ExtendUserController extends AbstractBackendFieldHandler
 {
     /**
-     * Extend backend fields
+     * The primary group alone sets the price tier and the secondary groups mirror it,
+     * so the form offers the primary group only.
      * @param \Backend\Widgets\Form $obWidget
      */
     protected function extendFields($obWidget)
     {
-        $obWidget->addTabFields([
-            'groups' => [
-                'label' => 'logingrupa.storeextender::lang.group.list_title',
-                'tab' => $this->getTabName(),
-                'type' => 'relation',
-            ],
-        ]);
+        $obWidget->removeField('groups');
     }
 
     /**
@@ -41,14 +36,5 @@ class ExtendUserController extends AbstractBackendFieldHandler
     protected function getControllerClass(): string
     {
         return (string) UserHelper::instance()->getUserController();
-    }
-
-    /**
-     * Adding the field to a tab that does not exist would render it in a tab of its own.
-     * @return string
-     */
-    protected function getTabName(): string
-    {
-        return 'Account';
     }
 }

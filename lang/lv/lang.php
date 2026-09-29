@@ -6,19 +6,10 @@
     ],
     'menu' => [
         'user_property' => 'Lietotaju ipasibas',
-        'group' => 'Groups',
     ],
     'user_property' => [
         'list_title' => 'Lietotaju ipasibas',
         'name' => 'Lietotaja ipasiba',
-    ],
-    'user' => [
-        'list_title' => 'Lietotaji',
-        'name' => 'Lietotaji',
-    ],
-    'group' => [
-        'list_title' => 'Groups',
-        'name' => 'Group',
     ],
     'message' => [
         'e_email_required' => 'E-pasta lauks ir obligāts',

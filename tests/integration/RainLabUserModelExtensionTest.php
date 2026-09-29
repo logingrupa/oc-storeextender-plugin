@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__.'/../StoreExtenderUserPluginTestCase.php';
+require_once __DIR__.'/../doubles/PriceTierGroupFixtures.php';
 
 use Illuminate\Support\Facades\Log;
 
@@ -15,6 +16,8 @@ use RainLab\User\Models\UserGroup;
  */
 class RainLabUserModelExtensionTest extends StoreExtenderUserPluginTestCase
 {
+    use PriceTierGroupFixtures;
+
     public function setUp(): void
     {
         parent::setUp();
@@ -150,70 +153,96 @@ class RainLabUserModelExtensionTest extends StoreExtenderUserPluginTestCase
         $this->assertSame('Paroles apstiprinājums nesakrīt.', $sPlainMessage);
     }
 
-    public function testSchoolNamePropertyAttachesTheGroupOnSave()
+    public function testSchoolWithPriceTypeBecomesThePrimaryGroup()
     {
-        $obGroup = UserGroup::create(['name' => 'Kolonna', 'code' => 'kolonna']);
+        $arGroupIDList = $this->createPriceTierGroups();
 
-        $obUser = User::create([
-            'email'                 => 'school@nc.test',
-            'password'              => 'Probe12345',
-            'password_confirmation' => 'Probe12345',
-            'property'              => ['school-name' => 'kolonna'],
-        ]);
+        $obUser = $this->createUser('school@nc.test', ['school-name' => 'kolonna']);
 
-        $this->assertTrue(
-            $obUser->groups()->where('code', 'kolonna')->exists(),
-            'UserModelHandler must attach the school group after save'
-        );
-
-        $this->assertSame(
-            $obGroup->id,
-            (int) $obUser->fresh()->primary_group_id,
-            'The chosen school must replace the seeded registered group as primary'
-        );
-
-        // A second save must not detach it (syncWithoutDetaching contract)
-        $obUser->save();
-        $this->assertTrue($obUser->groups()->where('id', $obGroup->id)->exists());
+        $this->assertSame($arGroupIDList['kolonna'], (int) $obUser->fresh()->primary_group_id);
+        $this->assertSame([$arGroupIDList['kolonna']], $this->getGroupIDList($obUser));
     }
 
     public function testChangingSchoolMovesThePrimaryGroup()
     {
-        UserGroup::create(['name' => 'Kolonna', 'code' => 'kolonna']);
-        $obNewSchool = UserGroup::create(['name' => 'Studija', 'code' => 'studija']);
-
-        $obUser = User::create([
-            'email'                 => 'school-change@nc.test',
-            'password'              => 'Probe12345',
-            'password_confirmation' => 'Probe12345',
-            'property'              => ['school-name' => 'kolonna'],
-        ]);
+        $arGroupIDList = $this->createPriceTierGroups();
+        $obUser = $this->createUser('school-change@nc.test', ['school-name' => 'kolonna']);
 
         $obUser->property = ['school-name' => 'studija'];
         $obUser->save();
 
-        $this->assertSame($obNewSchool->id, (int) $obUser->fresh()->primary_group_id);
+        $this->assertSame($arGroupIDList['studija'], (int) $obUser->fresh()->primary_group_id);
+        $this->assertSame([$arGroupIDList['studija']], $this->getGroupIDList($obUser));
     }
 
-    public function testUnrelatedSaveLeavesTheSchoolGroupsAlone()
+    public function testSchoolNeverReplacesAManagerSetTier()
     {
-        $obGroup = UserGroup::create(['name' => 'Kolonna', 'code' => 'kolonna']);
+        // Owner ruling 2026-09-29
+        $arGroupIDList = $this->createPriceTierGroups();
+        $obUser = $this->createUser('distributor-school@nc.test');
+        $obUser->primary_group_id = $arGroupIDList['distributor'];
+        $obUser->save();
 
-        $obUser = User::create([
-            'email'                 => 'school-unrelated@nc.test',
-            'password'              => 'Probe12345',
-            'password_confirmation' => 'Probe12345',
-            'property'              => ['school-name' => 'kolonna'],
-        ]);
+        $obUser->property = ['school-name' => 'studija'];
+        $obUser->save();
 
-        // A backend admin took the group away; a checkout phone update must not put it back
-        $obUser->groups()->detach($obGroup->id);
+        $this->assertSame($arGroupIDList['distributor'], (int) $obUser->fresh()->primary_group_id);
+    }
+
+    public function testManagerSetTierWinsOverASchoolChosenInTheSameSave()
+    {
+        $arGroupIDList = $this->createPriceTierGroups();
+        $obUser = $this->createUser('same-save@nc.test');
+
+        $obUser->primary_group_id = $arGroupIDList['vairum'];
+        $obUser->property = ['school-name' => 'studija'];
+        $obUser->save();
+
+        $this->assertSame($arGroupIDList['vairum'], (int) $obUser->fresh()->primary_group_id);
+    }
+
+    public function testSchoolWithoutPriceTypeLeavesThePrimaryGroupAlone()
+    {
+        $arGroupIDList = $this->createPriceTierGroups();
+        UserGroup::create(['name' => 'Akademija', 'code' => 'akademija']);
+        $obUser = $this->createUser('school-no-price@nc.test');
+        $obUser->primary_group_id = $arGroupIDList['salona'];
+        $obUser->save();
+
+        $obUser->property = ['school-name' => 'akademija'];
+        $obUser->save();
+
+        $this->assertSame($arGroupIDList['salona'], (int) $obUser->fresh()->primary_group_id);
+    }
+
+    public function testUnrelatedSaveKeepsTheManagerSetPrimaryGroup()
+    {
+        $this->createPriceTierGroups();
+        $obUser = $this->createUser('school-unrelated@nc.test', ['school-name' => 'kolonna']);
+
+        // A manager moved the user to retail; a checkout phone update must not restore the school tier
+        $iRegisteredGroupID = UserGroup::getRegisteredGroup()->id;
+        $obUser->primary_group_id = $iRegisteredGroupID;
+        $obUser->save();
 
         $obUser = $obUser->fresh();
         $obUser->phone = '+371 26111222';
         $obUser->save();
 
-        $this->assertFalse($obUser->groups()->where('id', $obGroup->id)->exists());
+        $this->assertSame($iRegisteredGroupID, (int) $obUser->fresh()->primary_group_id);
+        $this->assertSame([$iRegisteredGroupID], $this->getGroupIDList($obUser));
+    }
+
+    public function testChangingThePrimaryGroupLeavesItAsTheOnlySecondaryGroup()
+    {
+        $arGroupIDList = $this->createPriceTierGroups();
+        $obUser = $this->createUser('pivot-mirror@nc.test');
+        $obUser->groups()->attach([$arGroupIDList['authorized'], $arGroupIDList['salona']]);
+
+        $obUser->primary_group_id = $arGroupIDList['distributor'];
+        $obUser->save();
+
+        $this->assertSame([$arGroupIDList['distributor']], $this->getGroupIDList($obUser));
     }
 
     public function testUnknownSchoolCodeWarnsOnlyWhenItChanges()
@@ -246,9 +275,32 @@ class RainLabUserModelExtensionTest extends StoreExtenderUserPluginTestCase
             'password_confirmation' => 'Probe12345',
         ]);
 
-        $this->assertSame(
-            UserGroup::getRegisteredGroup()->id,
-            (int) $obUser->fresh()->primary_group_id
-        );
+        $iRegisteredGroupID = UserGroup::getRegisteredGroup()->id;
+        $this->assertSame($iRegisteredGroupID, (int) $obUser->fresh()->primary_group_id);
+        $this->assertSame([$iRegisteredGroupID], $this->getGroupIDList($obUser));
+    }
+
+    /**
+     * @param string $sEmail
+     * @param array  $arProperty
+     * @return User
+     */
+    protected function createUser($sEmail, $arProperty = [])
+    {
+        return User::create([
+            'email'                 => $sEmail,
+            'password'              => 'Probe12345',
+            'password_confirmation' => 'Probe12345',
+            'property'              => $arProperty,
+        ]);
+    }
+
+    /**
+     * @param User $obUser
+     * @return array<int>
+     */
+    protected function getGroupIDList($obUser)
+    {
+        return $obUser->groups()->pluck('id')->map('intval')->all();
     }
 }

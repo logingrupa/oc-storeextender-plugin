@@ -28,9 +28,13 @@ class UserModelHandler
     {
         $this->addValidationRules($obElement);
 
-        // afterSave also fires on create, so one binding covers registration and later edits
+        // Both save events also fire on create, so they cover registration and later edits
+        $obElement->bindEvent('model.beforeSave', function () use ($obElement) {
+            $this->applySchoolPriceGroup($obElement);
+        });
+
         $obElement->bindEvent('model.afterSave', function () use ($obElement) {
-            $this->attachUserToGroup($obElement);
+            $this->mirrorPrimaryGroup($obElement);
         });
     }
 
@@ -55,38 +59,50 @@ class UserModelHandler
     }
 
     /**
-     * Runs only when the school changed: every other save (login stamp, checkout phone,
-     * backend edit) leaves the groups alone.
+     * A school chosen in the forms sets the price tier when its group carries a price type
+     * and no manager set the tier. Runs only when the school changed: every other save
+     * (login stamp, checkout phone, backend edit) leaves the primary group alone.
+     * @param \RainLab\User\Models\User $obElement
      */
-    protected function attachUserToGroup($obElement)
+    protected function applySchoolPriceGroup($obElement)
     {
-        $sPropertyCode = $obElement->property['school-name'] ?? null;
-        if (!$sPropertyCode || $sPropertyCode === $this->getOriginalSchoolCode($obElement)) {
+        $sSchoolCode = $obElement->property['school-name'] ?? null;
+        if (!$sSchoolCode || $sSchoolCode === $this->getOriginalSchoolCode($obElement)) {
             return;
         }
 
-        $obGroup = UserGroupHelper::instance()->findByCode($sPropertyCode);
+        $obGroup = UserGroupHelper::instance()->findByCode($sSchoolCode);
         if (!$obGroup) {
-            Log::warning("Group with code '{$sPropertyCode}' not found.");
+            Log::warning("Group with code '{$sSchoolCode}' not found.");
             return;
         }
 
-        // Attach without detaching: a user can hold several groups and sync() would
-        // drop every group this handler did not name.
-        try {
-            $obElement->groups()->syncWithoutDetaching([$obGroup->id]);
-        } catch (\Exception $obException) {
-            Log::error("Failed to attach user to group: {$obException->getMessage()}");
-
+        if (empty($obGroup->price_type_id) || $this->hasManagerSetTier($obElement)) {
             return;
         }
 
-        $this->makeSchoolGroupPrimary($obElement, $obGroup);
+        $obElement->primary_group_id = $obGroup->id;
+    }
+
+    /**
+     * A priced primary group other than the previously chosen school came from a manager.
+     * Queried through the relation so a primary group changed in the same save counts.
+     * @param \RainLab\User\Models\User $obElement
+     * @return bool
+     */
+    protected function hasManagerSetTier($obElement)
+    {
+        $obPrimaryGroup = $obElement->primary_group()->first();
+        if (empty($obPrimaryGroup) || empty($obPrimaryGroup->price_type_id)) {
+            return false;
+        }
+
+        return $obPrimaryGroup->code !== $this->getOriginalSchoolCode($obElement);
     }
 
     /**
      * The school code as loaded from the database. Read from the raw original because
-     * "property" is jsonable and afterSave runs before Eloquent syncs the originals.
+     * "property" is jsonable.
      * @param \RainLab\User\Models\User $obElement
      * @return string|null
      */
@@ -101,18 +117,16 @@ class UserModelHandler
     }
 
     /**
-     * The chosen school is the user's group of record, so it also becomes RainLab's
-     * primary group (the one the backend shows). Written with a quiet query: this
-     * runs inside afterSave, and a model save here would re-fire it.
+     * The secondary groups hold the primary group only, so group filters and member
+     * counts match the price tier. afterSave runs before Eloquent syncs the originals.
+     * @param \RainLab\User\Models\User $obElement
      */
-    protected function makeSchoolGroupPrimary($obElement, $obGroup)
+    protected function mirrorPrimaryGroup($obElement)
     {
-        if ((int) $obElement->primary_group_id === (int) $obGroup->id) {
+        if (!$obElement->isDirty('primary_group_id')) {
             return;
         }
 
-        $obElement->newQuery()->whereKey($obElement->getKey())->update(['primary_group_id' => $obGroup->id]);
-        $obElement->primary_group_id = $obGroup->id;
-        $obElement->syncOriginalAttribute('primary_group_id');
+        $obElement->groups()->sync(array_filter([$obElement->primary_group_id]));
     }
 }

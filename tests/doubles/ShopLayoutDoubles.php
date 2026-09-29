@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Schema;
 use October\Rain\Database\Schema\Blueprint;
 use Logingrupa\StoreExtender\Classes\Helper\ActivePriceHelper;
 
+require_once __DIR__.'/PriceTierGroupFixtures.php';
+
 /**
  * Layout double for the ShopLayoutBinder tests. FakeBinderLayout already exists
  * at global scope in ThemeUserBinderTest.php and always answers a session
@@ -92,6 +94,8 @@ class FakeShopComponent
  */
 trait ShopLayoutStubTables
 {
+    use PriceTierGroupFixtures;
+
     /**
      * @return void
      */
@@ -113,17 +117,7 @@ trait ShopLayoutStubTables
             $obTable->timestamp('deleted_at')->nullable();
         });
 
-        $this->createStubTable('lovata_shopaholic_price_types', function (Blueprint $obTable) {
-            $obTable->increments('id');
-            $obTable->boolean('active')->default(0);
-            $obTable->string('name');
-            $obTable->string('code')->nullable();
-            $obTable->string('external_id')->nullable();
-            $obTable->integer('currency_id')->nullable();
-            $obTable->integer('sort_order')->nullable();
-            $obTable->softDeletes();
-            $obTable->timestamps();
-        });
+        $this->createPriceTypeStubTable();
 
         $this->createStubTable('lovata_shopaholic_currency', function (Blueprint $obTable) {
             $obTable->increments('id');

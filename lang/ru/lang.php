@@ -6,19 +6,10 @@
     ],
     'menu' => [
         'user_property' => 'Svoystva polzovateley',
-        'group' => 'Groups',
     ],
     'user_property' => [
         'list_title' => 'Svoystva polzovateley',
         'name' => 'Svoystvo polzovatelya',
-    ],
-    'user' => [
-        'list_title' => 'Polzovateli',
-        'name' => 'Polzovateli',
-    ],
-    'group' => [
-        'list_title' => 'Groups',
-        'name' => 'Group',
     ],
     'message' => [
         'e_email_required' => 'Электронная почта обязательна',

@@ -6,19 +6,10 @@
     ],
     'menu' => [
         'user_property' => 'Benutzereigenschaften',
-        'group' => 'Groups',
     ],
     'user_property' => [
         'list_title' => 'Benutzereigenschaften',
         'name' => 'Benutzereigenschaft',
-    ],
-    'user' => [
-        'list_title' => 'Benutzer',
-        'name' => 'Benutzer',
-    ],
-    'group' => [
-        'list_title' => 'Groups',
-        'name' => 'Group',
     ],
     'message' => [
         'e_security_required' => 'Dieses Feld ist erforderlich, bitte geben Sie die richtige Antwort auf die Frage ein',

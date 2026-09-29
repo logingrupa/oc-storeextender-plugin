@@ -33,9 +33,6 @@ class ActivePriceHelper
     /** @var DiscountItem */
     protected $obAuthorizedDiscount;
 
-    /** @var \RainLab\User\Models\User */
-    protected $obUser;
-
     /** @var \Lovata\Shopaholic\Models\PriceType */
     protected $obActivePriceType;
 
@@ -130,21 +127,20 @@ class ActivePriceHelper
     }
 
     /**
-     * Initialize the singleton free from constructor parameters.
+     * The primary group alone sets the price tier. No group or no price type is retail.
      */
     protected function init()
     {
-        $this->obUser = UserHelper::instance()->getUser();
-        if (empty($this->obUser)) {
+        $obUser = UserHelper::instance()->getUser();
+        if (empty($obUser)) {
             return;
         }
 
-        // $this->obActivePriceType = PriceTypeHelper::instance()->findByCode(self::AUTHORIZED_DISCOUNT);
-        $obUserGroup = $this->obUser->groups->first();
-        if (empty($obUserGroup) || empty($obUserGroup->price_type_id)) {
+        $obPrimaryGroup = $obUser->primary_group;
+        if (empty($obPrimaryGroup) || empty($obPrimaryGroup->price_type_id)) {
             return;
         }
 
-        $this->obActivePriceType = $obUserGroup->price_type;
+        $this->obActivePriceType = $obPrimaryGroup->price_type;
     }
 }

@@ -7,7 +7,7 @@ use Logingrupa\StoreExtender\Classes\Helper\UserPhoneLookup;
  * The pure half of the phone lookup: normalization and the minimum digit gate.
  *
  * The FIND_IN_SET matching itself is MySQL-only SQL and is covered by
- * tests/integration/BuddiesUserPortMysqlTest, which runs against a real MySQL
+ * tests/integration/UserPhoneLookupMysqlTest, which runs against a real MySQL
  * scratch schema when one is configured.
  */
 class UserPhoneLookupTest extends TestCase
