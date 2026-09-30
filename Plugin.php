@@ -87,7 +87,9 @@ use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
 use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
+use Logingrupa\StoreExtender\Classes\Helper\BreadcrumbStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
+use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\TextHighlighter;
@@ -539,6 +541,12 @@ class Plugin extends PluginBase
                 // schema.org Product JSON for the product page: offers only
                 // when a sellable offer exists, ratings only from real reviews
                 'product_json_ld' => [ProductStructuredData::class, 'render'],
+                // schema.org BreadcrumbList JSON for the product page: Home
+                // first, then the crumbs the page built, root category to product
+                'breadcrumb_json_ld' => [BreadcrumbStructuredData::class, 'render'],
+                // The layout's SeoToolbox reading the page params of a named page
+                // code: /p2 renders the product page's row until the Phase 7 rename
+                'seo_toolbox_for_page' => [SeoToolboxPageBinder::class, 'bind'],
                 // Cross-domain hreflang: does the other shop list this URL
                 // in its sitemap; fails closed when the sitemap is unreadable
                 'shop_has_url' => [SiblingShopSitemap::class, 'hasUrl'],
