@@ -1,14 +1,10 @@
 <?php
 
 require_once __DIR__ . '/../StoreExtenderPluginTestCase.php';
+require_once __DIR__ . '/../doubles/ShopItemDoubles.php';
 
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
-use Lovata\ReviewsShopaholic\Classes\Item\ReviewItem;
-use Lovata\Shopaholic\Classes\Item\OfferItem;
-use Lovata\Shopaholic\Classes\Item\ProductItem;
-use Lovata\Toolbox\Classes\Item\ElementItem;
 use October\Rain\Database\Collection;
-use System\Models\File;
 
 /**
  * The schema.org Product block Google reads on every product page.
@@ -19,14 +15,17 @@ use System\Models\File;
  * inactive products CustomProductPage still serves for SEO). It also printed a
  * one-review five-star aggregateRating for products with no reviews at all.
  *
- * Items are built from model data through reflection, the same way
- * OfferRenderContextTest does it: the Shopaholic schema does not build on
- * SQLite, and nothing here needs a row. The app is booted (core modules only)
- * because File::path and the url() helper need it. The two OfferItem accessors
- * that reach into the currency table are overridden on a test double.
+ * Items are built from model data through reflection (ShopItemDoubles), the
+ * same way OfferRenderContextTest does it: the Shopaholic schema does not
+ * build on SQLite, and nothing here needs a row. The app is booted (core
+ * modules only) because File::path and the url() helper need it. The two
+ * OfferItem accessors that reach into the currency table are overridden on a
+ * test double.
  */
 class ProductStructuredDataTest extends StoreExtenderPluginTestCase
 {
+    use ShopItemDoubles;
+
     /** @var bool core module schema only, see class comment */
     protected $autoMigrate = false;
 
@@ -274,98 +273,5 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
         } catch (InvalidArgumentException $obException) {
             $this->assertStringContainsString('seller name', $obException->getMessage());
         }
-    }
-
-    /**
-     * @param array $arModelData
-     * @return ProductItem
-     */
-    protected function makeProduct(array $arModelData): ProductItem
-    {
-        /** @var ProductItem $obItem */
-        $obItem = $this->makeItem(ProductItem::class, $arModelData);
-
-        return $obItem;
-    }
-
-    /**
-     * price_value and currency_code read the currency table on a real
-     * OfferItem; the double answers with what the fixture says.
-     * @param array  $arModelData
-     * @param float  $fPrice
-     * @param string $sCurrencyCode
-     * @return OfferItem
-     */
-    protected function makeOffer(array $arModelData, float $fPrice, string $sCurrencyCode): OfferItem
-    {
-        $obPrototype = new class(0, null) extends OfferItem {
-            /** @var float */
-            public $fFakePrice = 0.0;
-            /** @var string */
-            public $sFakeCurrencyCode = '';
-
-            protected function getPriceValueAttribute()
-            {
-                return $this->fFakePrice;
-            }
-
-            protected function getCurrencyCodeAttribute()
-            {
-                return $this->sFakeCurrencyCode;
-            }
-        };
-
-        /** @var OfferItem $obItem */
-        $obItem = $this->makeItem(get_class($obPrototype), $arModelData);
-        $obItem->fFakePrice = $fPrice;
-        $obItem->sFakeCurrencyCode = $sCurrencyCode;
-
-        return $obItem;
-    }
-
-    /**
-     * @param array $arModelData
-     * @return ReviewItem
-     */
-    protected function makeReview(array $arModelData): ReviewItem
-    {
-        /** @var ReviewItem $obItem */
-        $obItem = $this->makeItem(ReviewItem::class, $arModelData);
-
-        return $obItem;
-    }
-
-    /**
-     * An item with model data and no database, no cache and no constructor.
-     * @param string $sClass
-     * @param array  $arModelData
-     * @return ElementItem
-     */
-    protected function makeItem(string $sClass, array $arModelData): ElementItem
-    {
-        $obReflection = new ReflectionClass($sClass);
-        /** @var ElementItem $obItem */
-        $obItem = $obReflection->newInstanceWithoutConstructor();
-
-        $obProperty = $obReflection->getProperty('arModelData');
-        $obProperty->setAccessible(true);
-        $obProperty->setValue($obItem, $arModelData);
-
-        return $obItem;
-    }
-
-    /**
-     * A public upload whose path resolves through the booted app's url().
-     * @param string $sDiskName
-     * @return File
-     */
-    protected function makeFile(string $sDiskName): File
-    {
-        $obFile = new File();
-        $obFile->disk_name = $sDiskName;
-        $obFile->file_name = $sDiskName;
-        $obFile->is_public = true;
-
-        return $obFile;
     }
 }
