@@ -19,6 +19,7 @@ use Lovata\Toolbox\Classes\Item\ElementItem;
  *     product nobody can buy carries no Offer instead of a broken one
  *   - aggregateRating and review only from reviews that carry a rating, and the
  *     aggregate is computed from that same list, so the two never disagree
+ *   - reviewBody is the comment as plain text, left out when no text remains
  *   - a numeric offer code with a valid GS1 check digit is a gtin, anything
  *     else non-empty is an mpn
  *   - name follows the same rule as the visible h3: the shade name only when
@@ -36,7 +37,6 @@ class ProductStructuredData
     // GS1 prefixes (first three digits of the 13-digit form) reserved for
     // restricted circulation: 020-029, 040-049, 200-299
     const RESTRICTED_GS1_PREFIX_PATTERNS = ['/^02\d$/', '/^04\d$/', '/^2\d\d$/'];
-    const BLOCK_BOUNDARY_PATTERN = '#<br\s*/?>|</(?:p|div|li|ul|ol|h[1-6]|tr|td|th|table|blockquote|section|script|style)\s*>#i';
 
     /**
      * @param ElementItem    $obProduct    product (or collection) the page describes
@@ -230,9 +230,8 @@ class ProductStructuredData
     }
 
     /**
-     * Plain text: block boundaries become spaces, tags stripped, entities
-     * decoded, whitespace collapsed. Editors write one paragraph per block
-     * with no whitespace between them, so a bare strip_tags glues sentences.
+     * The description as plain text, or the preview text when the description
+     * holds no text.
      * @param ElementItem $obProduct
      * @return string
      */
@@ -243,10 +242,7 @@ class ProductStructuredData
             $sSource = (string) $obProduct->preview_text;
         }
 
-        $sSpaced = (string) preg_replace(self::BLOCK_BOUNDARY_PATTERN, ' ', $sSource);
-        $sText = html_entity_decode(strip_tags($sSpaced), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-
-        return trim((string) preg_replace('/\s+/u', ' ', $sText));
+        return PlainText::fromHtml($sSource);
     }
 
     /**
@@ -386,9 +382,9 @@ class ProductStructuredData
             $arReview['datePublished'] = $obCreatedAt->format('Y-m-d');
         }
 
-        $sComment = trim((string) $obReview->comment);
-        if ($sComment !== '') {
-            $arReview['reviewBody'] = $sComment;
+        $sReviewBody = PlainText::fromHtml((string) $obReview->comment);
+        if ($sReviewBody !== '') {
+            $arReview['reviewBody'] = $sReviewBody;
         }
 
         return $arReview;
