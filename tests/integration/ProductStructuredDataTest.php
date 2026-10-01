@@ -117,6 +117,24 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
         $this->assertArrayNotHasKey('datePublished', $arData['review'][1]);
     }
 
+    public function testAReviewBodyIsPlainTextAndAnEmptyOneIsLeftOut()
+    {
+        $obProduct = $this->makeProduct(['id' => 1, 'name' => 'P']);
+        $arReviewList = [
+            $this->makeReview(['id' => 1, 'name' => 'Anna', 'rating' => 5, 'comment' => 'Laba <a href="https://x.test" style="color:red">saite</a><br>otrā rinda']),
+            $this->makeReview(['id' => 2, 'name' => 'Ilze', 'rating' => 4, 'comment' => '<p> </p>']),
+        ];
+
+        $arData = ProductStructuredData::build($obProduct, null, false, $arReviewList, self::PAGE_URL, self::SELLER);
+
+        $this->assertSame('Laba saite otrā rinda', $arData['review'][0]['reviewBody']);
+        $this->assertArrayNotHasKey('reviewBody', $arData['review'][1], 'a comment with no text is not a review body');
+
+        $sJson = ProductStructuredData::render($obProduct, null, false, $arReviewList, self::PAGE_URL, self::SELLER);
+        $this->assertStringNotContainsString('</', $sJson);
+        $this->assertDoesNotMatchRegularExpression('/<[a-z]/i', json_decode($sJson, true)['review'][0]['reviewBody']);
+    }
+
     public function testAGs1CodeIsAGtinAndAnythingElseIsAnMpn()
     {
         $obProduct = $this->makeProduct(['id' => 1, 'name' => 'P', 'code' => 'ABC-1']);
