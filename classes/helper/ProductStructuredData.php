@@ -15,8 +15,9 @@ use Lovata\Toolbox\Classes\Item\ElementItem;
  * error on nailscosmetics.lv; the second is a review-snippet policy violation.
  *
  * Contract:
- *   - offers only when an OfferItem with a positive price was resolved, so a
- *     product nobody can buy carries no Offer instead of a broken one
+ *   - offers only when ProductOfferPrice answers for the offer (resolved, not
+ *     empty, priced above zero), so a product nobody can buy carries no Offer
+ *     instead of a broken one; the price and its currency are that answer
  *   - aggregateRating and review only from reviews that carry a rating, and the
  *     aggregate is computed from that same list, so the two never disagree
  *   - reviewBody is the comment as plain text, left out when no text remains
@@ -81,9 +82,9 @@ class ProductStructuredData
             $arData['review'] = array_map([self::class, 'review'], $arRatedReviewList);
         }
 
-        $obSellableOffer = self::sellableOffer($obOffer);
-        if ($obSellableOffer !== null) {
-            $arData['offers'] = self::offer($obSellableOffer, $sPageUrl, $sSellerName);
+        $arOfferPrice = ProductOfferPrice::resolve($obOffer);
+        if ($arOfferPrice !== null) {
+            $arData['offers'] = self::offer($obOffer, $arOfferPrice, $sPageUrl, $sSellerName);
         }
 
         return $arData;
@@ -146,23 +147,6 @@ class ProductStructuredData
         if (trim($sSellerName) === '') {
             throw new InvalidArgumentException('ProductStructuredData: seller name is empty (theme company_name)');
         }
-    }
-
-    /**
-     * An offer the shop can actually sell: resolved, non-empty, priced above zero.
-     * @param OfferItem|null $obOffer
-     * @return OfferItem|null
-     */
-    protected static function sellableOffer($obOffer): ?OfferItem
-    {
-        if ($obOffer === null || $obOffer->isEmpty()) {
-            return null;
-        }
-        if ((float) $obOffer->price_value <= 0) {
-            return null;
-        }
-
-        return $obOffer;
     }
 
     /**
@@ -391,25 +375,21 @@ class ProductStructuredData
     }
 
     /**
-     * @param OfferItem $obOffer sellable offer
+     * @param OfferItem $obOffer      offer ProductOfferPrice answered for
+     * @param array     $arOfferPrice its amount and currency, as resolved
      * @param string    $sPageUrl
      * @param string    $sSellerName
      * @return array
      */
-    protected static function offer(OfferItem $obOffer, string $sPageUrl, string $sSellerName): array
+    protected static function offer(OfferItem $obOffer, array $arOfferPrice, string $sPageUrl, string $sSellerName): array
     {
-        $sCurrencyCode = trim((string) $obOffer->currency_code);
-        if ($sCurrencyCode === '') {
-            throw new InvalidArgumentException(sprintf('ProductStructuredData: offer %s has no currency code', $obOffer->id));
-        }
-
         $bInStock = (int) $obOffer->quantity > 0;
 
         return [
             '@type'           => 'Offer',
             'url'             => $sPageUrl,
-            'priceCurrency'   => $sCurrencyCode,
-            'price'           => number_format((float) $obOffer->price_value, 2, '.', ''),
+            'priceCurrency'   => $arOfferPrice['currency'],
+            'price'           => $arOfferPrice['amount'],
             'priceValidUntil' => date('Y-m-d', strtotime(self::PRICE_VALID_INTERVAL)),
             'itemCondition'   => 'https://schema.org/NewCondition',
             'availability'    => $bInStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
