@@ -88,6 +88,7 @@ use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\BreadcrumbStructuredData;
+use Logingrupa\StoreExtender\Classes\Helper\ProductOfferPrice;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
@@ -541,6 +542,9 @@ class Plugin extends PluginBase
                 // schema.org Product JSON for the product page: offers only
                 // when a sellable offer exists, ratings only from real reviews
                 'product_json_ld' => [ProductStructuredData::class, 'render'],
+                // Amount and currency of an offer a shopper can buy, null when
+                // none: the head metas read what the JSON-LD Offer reads
+                'product_offer_price' => [ProductOfferPrice::class, 'resolve'],
                 // schema.org BreadcrumbList JSON for the product page: Home
                 // first, then the crumbs the page built, root category to product
                 'breadcrumb_json_ld' => [BreadcrumbStructuredData::class, 'render'],
