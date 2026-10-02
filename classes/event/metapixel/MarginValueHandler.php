@@ -96,7 +96,7 @@ class MarginValueHandler
         }
 
         if ($sEventName === 'Purchase' && $obSubject instanceof Order) {
-            $fMarginValue = $this->marginFromItems($this->readOrderItems($obSubject));
+            $fMarginValue = $this->marginForOrder($obSubject);
         } else {
             $arCustomData = (array) array_get($arPayload, 'data.0.custom_data', []);
             $fMarginValue = $this->marginFromItems($this->readCustomDataItems($arCustomData, $fSalesValue));
@@ -109,6 +109,19 @@ class MarginValueHandler
         array_set($arPayload, 'data.0.custom_data.value', round(max(0.0, $fMarginValue), 2));
 
         return $arPayload;
+    }
+
+    /**
+     * Store margin of an order from its positions, rounded to cents and never
+     * below zero; null when no line has a known izpl cost.
+     * @param Order $obOrder
+     * @return float|null
+     */
+    public function marginForOrder(Order $obOrder): ?float
+    {
+        $fMargin = $this->marginFromItems($this->readOrderItems($obOrder));
+
+        return $fMargin === null ? null : round(max(0.0, $fMargin), 2);
     }
 
     /**

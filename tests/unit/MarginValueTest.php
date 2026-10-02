@@ -167,6 +167,19 @@ class MarginValueTest extends TestCase
         $this->assertSame($arCustomData, $obHandler->applyMarginToCustomData('Purchase', $arCustomData));
     }
 
+    public function testMarginForOrderIsTheRoundedOrderMargin()
+    {
+        $obHandler = $this->makeHandler([
+            ['gross' => 16.90, 'tax' => 21.0, 'cost' => 5.12, 'quantity' => 1],
+        ]);
+        $obNoCostHandler = $this->makeHandler([
+            ['gross' => 16.90, 'tax' => 21.0, 'cost' => 0.0, 'quantity' => 1],
+        ]);
+
+        $this->assertSame(8.85, $obHandler->marginForOrder($this->makeOrder()));
+        $this->assertNull($obNoCostHandler->marginForOrder($this->makeOrder()));
+    }
+
     public function testEventIdAndTimeAreNeverTouched()
     {
         $obHandler = $this->makeHandler([
