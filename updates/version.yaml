@@ -271,3 +271,6 @@
   - 'The price tier follows the Primary Group only (owner ruling 2026-09-29). ActivePriceHelper reads the primary group, a school with a price type sets it unless a manager set the tier, and the secondary groups pivot mirrors it on every change. The backend user form shows Primary Group alone.'
   - 'One-time data move for the ported users: a registered primary with a priced pivot group takes the lowest id one, nailscosmetics.slovenija@gmail.com keeps distributor, the legacy authorized group is deleted and the pivot holds the primary group only. The Buddies porter and storeextender:migrate-buddies-users are removed, a re-run would have reset every tier.'
   - update_table_users_primary_group_from_price_group.php
+
+2.0.95:
+  - 'JSON-LD helpers for the phone product page /p2: a BreadcrumbList builder, the MightySeo page params and the Twig function product_offer_price, one price source for the JSON-LD offer and the head. Review bodies in the Product JSON-LD are plain text on both product pages.'
