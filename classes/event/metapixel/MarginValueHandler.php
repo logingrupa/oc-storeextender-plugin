@@ -125,6 +125,38 @@ class MarginValueHandler
     }
 
     /**
+     * Store margin of offer lines (GA4 browser funnel events), rounded to
+     * cents and never below zero. A line without a positive offer id, a
+     * positive price and a quantity of at least 1 is skipped; null when no
+     * line is left or no line has a known izpl cost.
+     * @param array $arLineList [['offer_id' => int, 'price' => float, 'quantity' => int], ...]
+     * @return float|null
+     */
+    public function marginForOfferLines(array $arLineList): ?float
+    {
+        $arItemList = [];
+        foreach ($arLineList as $arLine) {
+            $iOfferId = (int) array_get($arLine, 'offer_id', 0);
+            $fGross = (float) array_get($arLine, 'price', 0.0);
+            $iQuantity = (int) array_get($arLine, 'quantity', 0);
+            if ($iOfferId < 1 || $fGross <= 0 || $iQuantity < 1) {
+                continue;
+            }
+
+            $arItemList[] = [
+                'gross'    => $fGross,
+                'tax'      => $this->taxPercentForOffer($iOfferId),
+                'cost'     => $this->izplCost($iOfferId),
+                'quantity' => $iQuantity,
+            ];
+        }
+
+        $fMargin = $this->marginFromItems($arItemList);
+
+        return $fMargin === null ? null : round(max(0.0, $fMargin), 2);
+    }
+
+    /**
      * Browser-twin variant: mutate a bare custom_data array the way the CAPI
      * listener mutates the envelope. Purchase is skipped on purpose - its
      * browser twin renders the frozen EventLog payload, which already carries
