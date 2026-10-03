@@ -41,6 +41,7 @@ use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
 
 use Logingrupa\StoreExtender\Classes\Event\Metapixel\MarginValueHandler;
 use Logingrupa\StoreExtender\Classes\Event\GoogleAnalytics\PurchaseMarginValueHandler;
+use Logingrupa\StoreExtender\Classes\Event\GoogleAnalytics\BrowserMarginValueHandler;
 use Logingrupa\StoreExtender\Classes\Event\Metapixel\GuestCheckoutIdentityHandler;
 
 use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
@@ -252,6 +253,8 @@ class Plugin extends PluginBase
         Event::subscribe(MarginValueHandler::class);
         //GA4 purchase value = margin, through the same MarginValueHandler math
         Event::subscribe(PurchaseMarginValueHandler::class);
+        //GA4 browser funnel value = margin, through the same MarginValueHandler math
+        Event::subscribe(BrowserMarginValueHandler::class);
         //Guest identity for Meta from the checkout fields on the cart row;
         //logged-in accounts stay with Metapixel's own AccountIdentityHandler
         Event::subscribe(GuestCheckoutIdentityHandler::class);
