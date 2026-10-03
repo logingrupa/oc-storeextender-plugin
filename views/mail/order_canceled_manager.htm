@@ -1,0 +1,5 @@
+subject = "{{ 'logingrupa.storeextender::order_mail.subject.manager_canceled'|trans({'number': order_number, 'total': order.currency_symbol ~ order.total_price}) }}"
+description = "Notice to the shop managers that a customer canceled an unpaid order"
+layout = "logingrupa.storeextender::mail.layout-order"
+==
+{% partial 'orderMailBody' audience='manager' %}

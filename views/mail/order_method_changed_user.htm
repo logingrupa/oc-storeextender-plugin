@@ -1,0 +1,5 @@
+subject = "{{ 'logingrupa.storeextender::order_mail.subject.method_changed'|trans({'number': order_number}) }}"
+description = "What to do next after the customer switched an order to bank transfer or pay at store"
+layout = "logingrupa.storeextender::mail.layout-order"
+==
+{% partial 'orderMailBody' audience='customer' %}

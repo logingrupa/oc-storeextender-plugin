@@ -1,0 +1,5 @@
+subject = "{{ 'logingrupa.storeextender::order_mail.subject.paid'|trans({'number': order_number}) }}"
+description = "Online payment confirmation sent to the customer"
+layout = "logingrupa.storeextender::mail.layout-order"
+==
+{% partial 'orderMailBody' audience='customer' %}

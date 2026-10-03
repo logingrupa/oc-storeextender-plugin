@@ -1,0 +1,133 @@
+name = "Shop order layout"
+options[disable_brand_css] = 1
+==
+{{ content|raw }}
+
+{{ brandLogoLink }}
+==
+<!DOCTYPE html>
+<html lang="{{ _current_locale ?: 'en' }}" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
+<title>{{ subject }}</title>
+<style type="text/css">
+{{ css|raw }}
+</style>
+</head>
+<body class="om-body">
+{% set arPreheaderParam = {'number': order.order_number, 'total': order.currency_symbol ~ order.total_price} %}
+<div class="om-preheader">{{ ('logingrupa.storeextender::order_mail.state.' ~ mail_state ~ '.preheader')|trans(arPreheaderParam) }}&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;</div>
+<table role="presentation" class="om-page" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td align="center" class="om-page-cell">
+<table role="presentation" class="om-container" width="600" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td class="om-header">
+<a href="{{ brandLogoLink }}" class="om-logo-link">
+<img src="{{ brandLogoLink }}/plugins/logingrupa/storeextender/assets/images/mail-logo-light.png" width="138" alt="{{ appName }}" class="om-logo om-logo-light">
+<!--[if !mso]><!--><img src="{{ brandLogoLink }}/plugins/logingrupa/storeextender/assets/images/mail-logo-dark.png" width="138" alt="{{ appName }}" class="om-logo om-logo-dark"><!--<![endif]-->
+</a>
+</td>
+</tr>
+<tr>
+<td class="om-card">
+{{ content|raw }}
+</td>
+</tr>
+<tr>
+<td class="om-footer">
+<a href="{{ brandLogoLink }}" class="om-footer-link">{{ brandLogoLink|replace({'https://': '', 'http://': ''}) }}</a><br>
+&copy; {{ "now"|date("Y") }} {{ appName }}. {{ 'logingrupa.storeextender::lang.mail.rights_reserved'|trans }}
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+==
+body, .om-body { margin: 0; padding: 0; width: 100%; background-color: #f3f4f1; -webkit-text-size-adjust: 100%; }
+.om-body, .om-page-cell, .om-header, .om-card, .om-footer, td, p, a, h1 { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+.om-preheader { display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: #f3f4f1; opacity: 0; }
+.om-page { background-color: #f3f4f1; }
+.om-page-cell { padding: 24px 12px 32px; }
+.om-container { width: 600px; max-width: 600px; }
+.om-header { padding: 8px 4px 20px; text-align: left; }
+.om-logo-link { text-decoration: none; }
+.om-logo { display: block; border: 0; height: auto; }
+.om-logo-dark { display: none; max-height: 0; overflow: hidden; mso-hide: all; }
+.om-card { background-color: #ffffff; border: 1px solid #e3e6df; border-radius: 16px; padding: 32px; color: #1f2421; }
+.om-footer { padding: 24px 4px 0; text-align: center; color: #7a807b; font-size: 12px; line-height: 1.7; }
+.om-footer-link { color: #7a807b; text-decoration: underline; }
+.om-badge { display: inline-block; padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; line-height: 1.4; }
+.om-badge-paid { background-color: #eaf4dc; color: #3b6312; }
+.om-badge-pending { background-color: #fdf1d6; color: #7a5200; }
+.om-badge-neutral { background-color: #eef0ec; color: #4b524c; }
+.om-title { margin: 16px 0 8px; font-size: 24px; line-height: 1.25; font-weight: 700; color: #1f2421; }
+.om-text { margin: 0; font-size: 16px; line-height: 1.55; color: #4b524c; }
+.om-meta { margin: 20px 0 0; font-size: 13px; line-height: 1.5; color: #7a807b; }
+.om-meta-strong { color: #1f2421; font-weight: 600; }
+.om-actions { padding-top: 24px; }
+.om-button-cell { border-radius: 10px; background-color: #96ca4f; }
+.om-button { display: inline-block; padding: 13px 24px; border-radius: 10px; background-color: #96ca4f; color: #14210a; font-size: 15px; font-weight: 700; line-height: 1.2; text-decoration: none; }
+.om-link { color: #4a7a17; font-size: 14px; font-weight: 600; text-decoration: underline; }
+.om-section { padding-top: 28px; }
+.om-section-title { margin: 0 0 12px; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #7a807b; }
+.om-panel { background-color: #f6f8f3; border: 1px solid #e3e6df; border-radius: 12px; padding: 16px 18px; }
+.om-row-label { padding: 6px 12px 6px 0; font-size: 13px; line-height: 1.45; color: #7a807b; vertical-align: top; white-space: nowrap; }
+.om-row-value { padding: 6px 0; font-size: 14px; line-height: 1.45; color: #1f2421; vertical-align: top; }
+.om-mono { font-family: 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: 0.03em; color: #1f2421; }
+.om-amount { font-size: 18px; font-weight: 700; color: #1f2421; }
+.om-note { margin: 12px 0 0; font-size: 13px; line-height: 1.5; color: #4b524c; }
+.om-item { border-top: 1px solid #edf0ea; }
+.om-item-first { border-top: 0; }
+.om-item-image-cell { padding: 12px 14px 12px 0; width: 56px; vertical-align: top; }
+.om-item-image { display: block; width: 56px; height: 56px; border-radius: 10px; border: 1px solid #edf0ea; background-color: #f6f8f3; }
+.om-item-name-cell { padding: 12px 8px 12px 0; vertical-align: top; }
+.om-item-name { margin: 0; font-size: 15px; line-height: 1.4; font-weight: 600; color: #1f2421; }
+.om-item-qty { margin: 4px 0 0; font-size: 13px; line-height: 1.4; color: #7a807b; }
+.om-item-price-cell { padding: 12px 0; vertical-align: top; text-align: right; font-size: 15px; font-weight: 600; color: #1f2421; white-space: nowrap; }
+.om-sum-label { padding: 4px 0; font-size: 14px; color: #4b524c; }
+.om-sum-value { padding: 4px 0; font-size: 14px; color: #1f2421; text-align: right; white-space: nowrap; }
+.om-total-label { padding: 12px 0 0; border-top: 1px solid #e3e6df; font-size: 16px; font-weight: 700; color: #1f2421; }
+.om-total-value { padding: 12px 0 0; border-top: 1px solid #e3e6df; font-size: 20px; font-weight: 700; color: #1f2421; text-align: right; white-space: nowrap; }
+.om-info-cell { width: 50%; padding: 0 12px 0 0; vertical-align: top; font-size: 14px; line-height: 1.55; color: #1f2421; }
+.om-info-text { margin: 0; font-size: 14px; line-height: 1.55; color: #1f2421; }
+.om-info-muted { color: #4b524c; }
+.om-contact-link { color: #4a7a17; text-decoration: underline; }
+
+@media only screen and (max-width: 620px) {
+    .om-container { width: 100% !important; }
+    .om-page-cell { padding: 16px 8px 24px !important; }
+    .om-card { padding: 24px 20px !important; border-radius: 14px !important; }
+    .om-title { font-size: 22px !important; }
+    .om-info-cell { display: block !important; width: 100% !important; padding: 0 0 16px !important; }
+    .om-button { display: block !important; text-align: center !important; }
+    .om-button-table { width: 100% !important; }
+}
+
+@media (prefers-color-scheme: dark) {
+    body, .om-body, .om-page { background-color: #111312 !important; }
+    .om-card { background-color: #1b1d1c !important; border-color: #2c302d !important; }
+    .om-title, .om-item-name, .om-item-price-cell, .om-row-value, .om-mono, .om-amount, .om-sum-value, .om-total-label, .om-total-value, .om-info-cell, .om-info-text, .om-meta-strong { color: #eceeea !important; }
+    .om-text, .om-note, .om-sum-label, .om-info-muted { color: #b8bdb8 !important; }
+    .om-meta, .om-row-label, .om-item-qty, .om-section-title, .om-footer, .om-footer-link { color: #8f958f !important; }
+    .om-panel { background-color: #222523 !important; border-color: #2c302d !important; }
+    .om-item, .om-total-label, .om-total-value { border-color: #2c302d !important; }
+    .om-item-image { border-color: #2c302d !important; background-color: #222523 !important; }
+    .om-link, .om-contact-link { color: #b5dd7f !important; }
+    .om-badge-paid { background-color: #26381a !important; color: #c5e79a !important; }
+    .om-badge-pending { background-color: #3a2f12 !important; color: #f3d58a !important; }
+    .om-badge-neutral { background-color: #2a2d2b !important; color: #c9cec9 !important; }
+    .om-logo-light { display: none !important; max-height: 0 !important; }
+    .om-logo-dark { display: block !important; max-height: none !important; }
+}
+
+[data-ogsc] .om-title, [data-ogsc] .om-item-name, [data-ogsc] .om-total-value, [data-ogsc] .om-row-value { color: #eceeea !important; }
+[data-ogsc] .om-logo-light { display: none !important; }
+[data-ogsc] .om-logo-dark { display: block !important; max-height: none !important; }

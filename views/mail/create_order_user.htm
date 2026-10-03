@@ -1,4 +1,5 @@
-subject = "{{ 'Your order No.'|_ }} {{ order_number }} {{ 'has been received'|_ }}"
+subject = "{{ 'logingrupa.storeextender::order_mail.subject.received'|trans({'number': order_number}) }}"
 description = "Order confirmation sent to the customer"
+layout = "logingrupa.storeextender::mail.layout-order"
 ==
-{% partial 'orderDetails' order=order %}
+{% partial 'orderMailBody' audience='customer' %}

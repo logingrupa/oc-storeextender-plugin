@@ -6,6 +6,7 @@
   "require": {
     "composer/installers": "~1.0",
     "logingrupa/oc-customxmlimportpricing-plugin": "dev-master",
+    "logingrupa/oc-retrypayment-plugin": "dev-master",
     "mobiledetect/mobiledetectlib": "^4.8"
   }
 }

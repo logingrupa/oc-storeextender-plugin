@@ -1,0 +1,5 @@
+subject = "{{ 'logingrupa.storeextender::order_mail.subject.canceled'|trans({'number': order_number}) }}"
+description = "Confirmation for an order the customer canceled"
+layout = "logingrupa.storeextender::mail.layout-order"
+==
+{% partial 'orderMailBody' audience='customer' %}

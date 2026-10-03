@@ -62,6 +62,9 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPropertySecretHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderUserPhoneHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderMailDataHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderPaidMailHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderPaymentChoiceMailHandler;
 //Product events
 use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductFieldsHandler as StoreExtenderExtendProductFieldsHandler;
 use Logingrupa\StoreExtender\Classes\Event\Product\ProductModelHandler as StoreExtenderProductModelHandler;
@@ -97,6 +100,8 @@ use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\TextHighlighter;
 use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
+use Logingrupa\StoreExtender\Classes\Helper\ThemeVariable;
+use Logingrupa\StoreExtender\Classes\Helper\OrderPageData;
 use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
 
 /**
@@ -111,8 +116,14 @@ class Plugin extends PluginBase
 
     const MAIL_ORDER_CREATED_USER = 'lovata.ordersshopaholic::mail.create_order_user';
     const MAIL_ORDER_CREATED_MANAGER = 'lovata.ordersshopaholic::mail.create_order_manager';
+    const MAIL_ORDER_PAID_USER = 'logingrupa.storeextender::mail.order_paid_user';
+    const MAIL_ORDER_PAID_MANAGER = 'logingrupa.storeextender::mail.order_paid_manager';
+    const MAIL_ORDER_METHOD_CHANGED_USER = 'logingrupa.storeextender::mail.order_method_changed_user';
+    const MAIL_ORDER_CANCELED_USER = 'logingrupa.storeextender::mail.order_canceled_user';
+    const MAIL_ORDER_CANCELED_MANAGER = 'logingrupa.storeextender::mail.order_canceled_manager';
+    const MAIL_ORDER_PAYMENT_REMINDER_USER = 'logingrupa.storeextender::mail.order_payment_reminder_user';
 
-    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Lovata.CampaignsShopaholic', 'Logingrupa.CustomXMLImportPricing', 'RainLab.User', 'RainLab.Pages'];
+    public $require = ['Lovata.DiscountsShopaholic', 'Lovata.Toolbox', 'Lovata.Shopaholic', 'Lovata.OrdersShopaholic', 'Lovata.CampaignsShopaholic', 'Logingrupa.CustomXMLImportPricing', 'Logingrupa.RetrypaymentShopaholic', 'RainLab.User', 'RainLab.Pages'];
 
     /**
      * Returns information about this plugin.
@@ -143,6 +154,7 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.warmofferthumbs', 'Logingrupa\StoreExtender\Console\WarmOfferThumbs');
         $this->registerConsoleCommand('storeextender.purgeorderpropertysecrets', 'Logingrupa\StoreExtender\Console\PurgeOrderPropertySecrets');
         $this->registerConsoleCommand('storeextender.refreshpickuppoints', 'Logingrupa\StoreExtender\Console\RefreshPickupPoints');
+        $this->registerConsoleCommand('storeextender.sendpaymentreminders', 'Logingrupa\StoreExtender\Console\SendPaymentReminders');
 
         // Toolbox RainLabUserHelper::findUserByEmail() calls a method RainLab.User 3.5.3
         // does not define. UserHelper resolves its inner helper through the container, so
@@ -263,6 +275,9 @@ class Plugin extends PluginBase
         // Keeps raw checkout credentials out of the order property snapshot.
         Event::subscribe(OrderPropertySecretHandler::class);
         Event::subscribe(OrderUserPhoneHandler::class);
+        Event::subscribe(OrderMailDataHandler::class);
+        Event::subscribe(OrderPaidMailHandler::class);
+        Event::subscribe(OrderPaymentChoiceMailHandler::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
 
@@ -350,31 +365,25 @@ class Plugin extends PluginBase
         // Carrier pickup point feeds change a few times a month: one pull before the shop day
         // keeps the checkout from fetching a 1.3 MB feed inside a customer request.
         $obSchedule->command('storeextender:refresh-pickup-points')->dailyAt('04:10');
+
+        // Unpaid online orders get a reminder an hour and a day after the order.
+        $obSchedule->command('storeextender:send-payment-reminders')->everyTenMinutes()->withoutOverlapping();
     }
 
     /**
-     * Register file-based mail partials.
-     * `bankdetails` is read from views/mail/bankdetails.htm at runtime, allowing each
-     * deployed site to render its own seller block from its own theme settings DB.
-     *
-     * `product`, `orderSummary` and `buttons` are the order mail body: the line item
-     * rows, the totals block and the proforma links. The order templates call them and
-     * no site carries a DB row for them, so October rendered "Missing partial" comments
-     * where the customer's products belong.
-     *
-     * Note: a DB row with the same code in system_mail_partials takes precedence over
-     * these files. Existing sites must delete that row once to switch over.
+     * Register the order mail partials. The codes are new on purpose: .lt and .no carry
+     * hand-edited custom rows for the old product, orderSummary, buttons and bankdetails
+     * codes, and a custom DB row always beats the view file.
      *
      * @return array
      */
     public function registerMailPartials()
     {
         return [
-            'bankdetails' => 'logingrupa.storeextender::mail.bankdetails',
-            'product' => 'logingrupa.storeextender::mail.product',
-            'orderSummary' => 'logingrupa.storeextender::mail.ordersummary',
-            'buttons' => 'logingrupa.storeextender::mail.buttons',
-            'orderDetails' => 'logingrupa.storeextender::mail.orderdetails',
+            'orderMailBody' => 'logingrupa.storeextender::mail.order-mail-body',
+            'orderMailItems' => 'logingrupa.storeextender::mail.order-mail-items',
+            'orderMailBank' => 'logingrupa.storeextender::mail.order-mail-bank',
+            'orderMailButton' => 'logingrupa.storeextender::mail.order-mail-button',
         ];
     }
 
@@ -404,6 +413,12 @@ class Plugin extends PluginBase
             'user:recover_password' => 'logingrupa.storeextender::mail.recover_password',
             self::MAIL_ORDER_CREATED_USER => 'logingrupa.storeextender::mail.create_order_user',
             self::MAIL_ORDER_CREATED_MANAGER => 'logingrupa.storeextender::mail.create_order_manager',
+            self::MAIL_ORDER_PAID_USER => self::MAIL_ORDER_PAID_USER,
+            self::MAIL_ORDER_PAID_MANAGER => self::MAIL_ORDER_PAID_MANAGER,
+            self::MAIL_ORDER_METHOD_CHANGED_USER => self::MAIL_ORDER_METHOD_CHANGED_USER,
+            self::MAIL_ORDER_CANCELED_USER => self::MAIL_ORDER_CANCELED_USER,
+            self::MAIL_ORDER_CANCELED_MANAGER => self::MAIL_ORDER_CANCELED_MANAGER,
+            self::MAIL_ORDER_PAYMENT_REMINDER_USER => self::MAIL_ORDER_PAYMENT_REMINDER_USER,
             self::MAIL_SALON_LEAD_MANAGER => self::MAIL_SALON_LEAD_MANAGER,
             self::MAIL_SALON_LEAD_APPLICANT => self::MAIL_SALON_LEAD_APPLICANT,
             self::MAIL_MD_RESERVATION_DELETED => self::MAIL_MD_RESERVATION_DELETED,
@@ -564,14 +579,10 @@ class Plugin extends PluginBase
                 // Catalog search grid: offers matching the query directly
                 // plus every offer of a matching product
                 'search_offer_filter' => [SearchOfferHelper::class, 'searchOfferIds'],
-                'theme_var' => function ($sKey) {
-                    $obTheme = \Cms\Classes\Theme::getActiveTheme();
-                    if (empty($obTheme)) {
-                        return null;
-                    }
-                    $obData = $obTheme->getCustomData();
-                    return $obData ? ($obData->{$sKey} ?? null) : null;
-                },
+                'theme_var' => [ThemeVariable::class, 'get'],
+                // Order page: where the order stands with its payment, and the bank details
+                'order_payment_state' => [OrderPageData::class, 'paymentState'],
+                'order_bank_details' => [OrderPageData::class, 'bankDetails'],
             ]
         ];
     }

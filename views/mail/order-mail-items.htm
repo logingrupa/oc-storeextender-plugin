@@ -1,0 +1,41 @@
+name = "Order mail line items and totals"
+==
+{{ 'logingrupa.storeextender::order_mail.label.items'|trans }}
+{% for obPosition in order.order_position %}
+- {{ obPosition.item.name ?: obPosition.item.product.name }}: {{ obPosition.quantity }} x {{ order.currency_symbol }}{{ obPosition.price }} = {{ order.currency_symbol }}{{ obPosition.total_price }}
+{% endfor %}
+{{ 'logingrupa.storeextender::order_mail.label.subtotal'|trans }}: {{ order.currency_symbol }}{{ order.position_total_price }}
+{{ 'logingrupa.storeextender::order_mail.label.shipping'|trans }}: {{ order.shipping_price_value > 0 ? order.currency_symbol ~ order.shipping_price : 'logingrupa.storeextender::order_mail.label.free'|trans }}
+{{ 'logingrupa.storeextender::order_mail.label.total'|trans }}: {{ order.currency_symbol }}{{ order.total_price }}
+==
+<div class="om-section">
+<p class="om-section-title">{{ 'logingrupa.storeextender::order_mail.label.items'|trans }}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{% for obPosition in order.order_position %}
+{% set obOffer = obPosition.item %}
+{% set obImage = obOffer.preview_image ?: obOffer.product.preview_image %}
+<tr class="om-item{{ loop.first ? ' om-item-first' }}">
+<td class="om-item-image-cell">{% if obImage %}<img src="{{ obImage.getThumb(112, 112, {'mode': 'crop'}) }}" width="56" height="56" alt="" class="om-item-image">{% else %}<div class="om-item-image"></div>{% endif %}</td>
+<td class="om-item-name-cell">
+<p class="om-item-name">{{ obOffer.name ?: obOffer.product.name }}</p>
+<p class="om-item-qty">{{ obPosition.quantity }} &times; {{ order.currency_symbol }}{{ obPosition.price }}</p>
+</td>
+<td class="om-item-price-cell">{{ order.currency_symbol }}{{ obPosition.total_price }}</td>
+</tr>
+{% endfor %}
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 8px;">
+<tr>
+<td class="om-sum-label">{{ 'logingrupa.storeextender::order_mail.label.subtotal'|trans }}</td>
+<td class="om-sum-value">{{ order.currency_symbol }}{{ order.position_total_price }}</td>
+</tr>
+<tr>
+<td class="om-sum-label">{{ 'logingrupa.storeextender::order_mail.label.shipping'|trans }}</td>
+<td class="om-sum-value">{{ order.shipping_price_value > 0 ? order.currency_symbol ~ order.shipping_price : 'logingrupa.storeextender::order_mail.label.free'|trans }}</td>
+</tr>
+<tr>
+<td class="om-total-label">{{ 'logingrupa.storeextender::order_mail.label.total'|trans }}</td>
+<td class="om-total-value">{{ order.currency_symbol }}{{ order.total_price }}</td>
+</tr>
+</table>
+</div>

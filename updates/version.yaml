@@ -274,3 +274,9 @@
 
 2.0.95:
   - 'JSON-LD helpers for the phone product page /p2: a BreadcrumbList builder, the MightySeo page params and the Twig function product_offer_price, one price source for the JSON-LD offer and the head. Review bodies in the Product JSON-LD are plain text on both product pages.'
+2.0.96:
+  - 'Order mails redesigned with light and dark mode. The new-order mail follows the payment method, so online payments no longer get bank details; paid, canceled and bank-switch mails added, plus payment reminders 1 h and 24 h after an unpaid online order. Bank details come from the Theme options block, text styled as Code gets a Copy button. New status payment-pending for gateway payments, PayPal dropped from the status names, sent sorted before complete.'
+  - create_table_order_payment_reminders.php
+  - update_table_order_statuses_payment_pending.php
+  - update_table_system_mail_partials_retire_order_rows.php
+  - update_table_theme_data_bank_details_copy_mark.php

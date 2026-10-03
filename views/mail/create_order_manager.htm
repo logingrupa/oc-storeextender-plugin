@@ -1,4 +1,5 @@
-subject = "{{ 'NEW ORDER'|_ }} - {{ order_number }} | {{ order.currency_symbol }}{{ order.total_price }}"
+subject = "{{ 'logingrupa.storeextender::order_mail.subject.manager_new'|trans({'number': order_number, 'total': order.currency_symbol ~ order.total_price}) }}"
 description = "New order notification sent to the shop managers"
+layout = "logingrupa.storeextender::mail.layout-order"
 ==
-{% partial 'orderDetails' order=order %}
+{% partial 'orderMailBody' audience='manager' %}

@@ -1,0 +1,5 @@
+subject = "{{ ('logingrupa.storeextender::order_mail.subject.' ~ mail_state)|trans({'number': order_number}) }}"
+description = "Reminder for an unpaid online order, an hour and a day after the order"
+layout = "logingrupa.storeextender::mail.layout-order"
+==
+{% partial 'orderMailBody' audience='customer' %}

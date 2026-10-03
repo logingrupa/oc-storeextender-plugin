@@ -26,7 +26,12 @@ Logingrupa.CustomXMLImportPricing. See README.MD, SQL_IMPORT_README.md, USAGE_EX
                      fragment resolves which offer to render), ViteAssetHelper,
                      RoundedCurrencyHelper, CurrencyHelperSwapper, ActivePriceHelper,
                      OfferImageHelper, WholeNumberCurrencyConfig
-- classes/mail/      SafeMailManager, SafeMailer (mail.manager wrapper)
+- classes/mail/      SafeMailManager, SafeMailer (mail.manager wrapper); order mails: OrderMailState
+                     (mail kinds + VIEW_MAP), OrderMailData, OrderMailSender (locale switch for
+                     webhook/scheduler sends), PaymentReminderSender (1 h / 24 h, claim table)
+- classes/helper/    OrderStatusCode + OrderPaymentState (order state by method + status CODE,
+                     shared by mails and the order page), BankTransferDetails, OrderPageData
+                     (Twig order_payment_state / order_bank_details)
 - components/        CustomProductPage, OfferSheet (shade sheet + swatch strip AJAX),
                      LazyPromoBlockLoader
 - console/           storeextender:sql-import, storeextender:sync-offer-colors,

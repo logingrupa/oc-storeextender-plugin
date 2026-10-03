@@ -1,0 +1,40 @@
+name = "Order mail bank transfer details"
+==
+{{ 'logingrupa.storeextender::order_mail.bank.title'|trans }}
+{% for arRow in bank_detail_list %}
+{{ arRow.label ? arRow.label ~ ': ' }}{{ arRow.value }}
+{% endfor %}
+{{ 'logingrupa.storeextender::order_mail.bank.reference'|trans }}: {{ order.order_number }}
+{{ 'logingrupa.storeextender::order_mail.bank.amount'|trans }}: {{ order.currency_symbol }}{{ order.total_price }}
+{{ 'logingrupa.storeextender::order_mail.bank.note'|trans }}
+==
+<div class="om-section">
+<p class="om-section-title">{{ 'logingrupa.storeextender::order_mail.bank.title'|trans }}</p>
+<table role="presentation" class="om-panel" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{% for arRow in bank_detail_list %}
+<tr>
+{% if arRow.label %}
+<td class="om-row-label">{{ arRow.label }}</td>
+<td class="om-row-value">{% if arRow.copy %}<span class="om-mono">{{ arRow.value }}</span>{% else %}{{ arRow.value }}{% endif %}</td>
+{% else %}
+<td class="om-row-value" colspan="2"><strong>{{ arRow.value }}</strong></td>
+{% endif %}
+</tr>
+{% endfor %}
+<tr>
+<td class="om-row-label">{{ 'logingrupa.storeextender::order_mail.bank.reference'|trans }}</td>
+<td class="om-row-value"><span class="om-mono">{{ order.order_number }}</span></td>
+</tr>
+<tr>
+<td class="om-row-label">{{ 'logingrupa.storeextender::order_mail.bank.amount'|trans }}</td>
+<td class="om-row-value"><span class="om-amount">{{ order.currency_symbol }}{{ order.total_price }}</span></td>
+</tr>
+</table>
+<p class="om-note">{{ 'logingrupa.storeextender::order_mail.bank.note'|trans }}</p>
+</td>
+</tr>
+</table>
+</div>

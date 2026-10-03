@@ -1,0 +1,92 @@
+name = "Order mail body"
+==
+{% set bManager = audience == 'manager' %}
+{% set arParam = {'number': order.order_number, 'total': order.currency_symbol ~ order.total_price} %}
+{% set sKey = 'logingrupa.storeextender::order_mail.' %}
+{% set sOrderUrl = site_url|trim('/', 'right') ~ '/checkout/' ~ order.secret_key %}
+{% if bManager %}
+{{ (sKey ~ 'manager.' ~ mail_view.manager_title)|trans(arParam) }}
+{{ (sKey ~ 'manager.text_' ~ mail_state)|trans(arParam) }}
+{% else %}
+{{ (sKey ~ 'state.' ~ mail_state ~ '.title')|trans(arParam) }}
+{{ (sKey ~ 'state.' ~ mail_state ~ '.text')|trans(arParam) }}
+{% endif %}
+
+{{ (sKey ~ 'label.order')|trans }}: {{ order.order_number }}
+{% if bManager %}
+{{ (sKey ~ 'manager.open_admin')|trans }}: {{ backend_order_url }}
+{% elseif mail_view.action %}
+{{ (sKey ~ 'action.' ~ mail_view.action)|trans }}: {{ sOrderUrl }}
+{% endif %}
+{% if mail_view.bank_details %}
+
+{% partial 'orderMailBank' %}
+{% endif %}
+{% if can_pay_online and not bManager %}
+{{ (sKey ~ 'action.pay_online')|trans }}: {{ sOrderUrl }}
+{% endif %}
+{% if mail_view.cancel and not bManager %}
+{{ (sKey ~ 'action.cancel_hint')|trans }} {{ sOrderUrl }}?cancel=1
+{% endif %}
+
+{% partial 'orderMailItems' %}
+
+{{ (sKey ~ 'label.delivery')|trans }}: {{ order.shipping_type.name }}
+{{ (sKey ~ 'label.payment')|trans }}: {{ order.payment_method.name }}
+{% if bManager %}
+{{ (sKey ~ 'manager.customer')|trans }}: {{ order.property.name }} {{ order.property.last_name }}, {{ order.property.email }}, {{ order.property.phone }}
+{% endif %}
+==
+{% set bManager = audience == 'manager' %}
+{% set arParam = {'number': order.order_number, 'total': order.currency_symbol ~ order.total_price} %}
+{% set sKey = 'logingrupa.storeextender::order_mail.' %}
+{% set sOrderUrl = site_url|trim('/', 'right') ~ '/checkout/' ~ order.secret_key %}
+{% set sProformaUrl = site_url|trim('/', 'right') ~ '/proforma/' ~ order.secret_key %}
+{% set sAddress = order.property.shipping_address2|replace({'undefined': ' ', 'NaN': ' ', '- BEZMAKSAS': ' ', '- NEMOKAMAI': ' '})|trim %}
+<span class="om-badge om-badge-{{ mail_view.tone }}">{{ (sKey ~ 'state.' ~ mail_state ~ '.badge')|trans }}</span>
+{% if bManager %}
+<h1 class="om-title">{{ (sKey ~ 'manager.' ~ mail_view.manager_title)|trans(arParam) }}</h1>
+<p class="om-text">{{ (sKey ~ 'manager.text_' ~ mail_state)|trans(arParam) }}</p>
+{% else %}
+<h1 class="om-title">{{ (sKey ~ 'state.' ~ mail_state ~ '.title')|trans(arParam) }}</h1>
+<p class="om-text">{{ (sKey ~ 'state.' ~ mail_state ~ '.text')|trans(arParam) }}</p>
+{% endif %}
+<p class="om-meta">{{ (sKey ~ 'label.order')|trans }} <span class="om-meta-strong">{{ order.order_number }}</span> &nbsp;&middot;&nbsp; {{ order.created_at|date('d.m.Y') }}</p>
+{% if bManager %}
+<div class="om-actions">{% partial 'orderMailButton' url=backend_order_url label=(sKey ~ 'manager.open_admin')|trans %}</div>
+{% elseif mail_view.action %}
+<div class="om-actions">{% partial 'orderMailButton' url=sOrderUrl label=(sKey ~ 'action.' ~ mail_view.action)|trans %}</div>
+{% endif %}
+{% if mail_view.cancel and not bManager %}
+<p class="om-meta">{{ (sKey ~ 'action.cancel_hint')|trans }} <a href="{{ sOrderUrl }}?cancel=1" class="om-link" target="_blank">{{ (sKey ~ 'action.cancel_order')|trans }}</a></p>
+{% endif %}
+{% if mail_view.bank_details %}
+{% partial 'orderMailBank' %}
+<p class="om-meta"><a href="{{ sProformaUrl }}" class="om-link" target="_blank">{{ (sKey ~ 'action.open_proforma')|trans }}</a> &nbsp;&middot;&nbsp; <a href="{{ sProformaUrl }}/print" class="om-link" target="_blank">{{ (sKey ~ 'action.print_proforma')|trans }}</a></p>
+{% endif %}
+{% if can_pay_online and not bManager %}
+<p class="om-meta">{{ (sKey ~ 'action.pay_online_hint')|trans }} <a href="{{ sOrderUrl }}" class="om-link" target="_blank">{{ (sKey ~ 'action.pay_online')|trans }}</a></p>
+{% endif %}
+{% partial 'orderMailItems' %}
+<div class="om-section">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td class="om-info-cell">
+<p class="om-section-title">{{ (sKey ~ 'label.delivery')|trans }}</p>
+<p class="om-info-text">{{ order.shipping_type.name }}</p>
+<p class="om-info-text om-info-muted">{% if sAddress %}{{ sAddress }}<br>{% endif %}{% for sField in ['shipping_address1', 'shipping_city', 'shipping_postcode', 'shipping_country'] %}{% if order.property[sField] %}{{ order.property[sField] }}<br>{% endif %}{% endfor %}</p>
+</td>
+<td class="om-info-cell">
+<p class="om-section-title">{{ (sKey ~ 'label.payment')|trans }}</p>
+<p class="om-info-text">{{ order.payment_method.name }}</p>
+</td>
+</tr>
+</table>
+</div>
+{% if bManager %}
+<div class="om-section">
+<p class="om-section-title">{{ (sKey ~ 'manager.customer')|trans }}</p>
+<p class="om-info-text">{{ order.property.name }} {{ order.property.last_name }}{% if order.property.account_type == 'legal_person' %} ({{ (sKey ~ 'manager.legal_person')|trans }}){% endif %}</p>
+<p class="om-info-text om-info-muted"><a href="mailto:{{ order.property.email }}" class="om-contact-link">{{ order.property.email }}</a>{% if order.property.phone %}<br><a href="tel:{{ order.property.phone|replace({' ': ''}) }}" class="om-contact-link">{{ order.property.phone }}</a>{% endif %}</p>
+</div>
+{% endif %}

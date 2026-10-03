@@ -5,16 +5,15 @@ require_once __DIR__.'/../StoreExtenderPluginTestCase.php';
 use Logingrupa\StoreExtender\Plugin;
 
 /**
- * The order mail templates call product, orderSummary and buttons, and no site carries
- * a DB row for them, so an unregistered file partial renders as a "Missing partial"
- * comment where the customer's line items belong.
+ * The order mail templates call these partials by code, and an unregistered file partial
+ * renders as a "Missing partial" comment where the customer's line items belong.
  */
 class OrderMailPartialsTest extends StoreExtenderPluginTestCase
 {
     /** Registrations and view files are read without touching a table */
     protected $autoMigrate = false;
 
-    const ORDER_MAIL_PARTIAL_LIST = ['product', 'orderSummary', 'buttons'];
+    const ORDER_MAIL_PARTIAL_LIST = ['orderMailBody', 'orderMailItems', 'orderMailBank', 'orderMailButton'];
 
     public function testOrderMailPartialsAreRegisteredAndReadable()
     {
@@ -27,16 +26,5 @@ class OrderMailPartialsTest extends StoreExtenderPluginTestCase
 
             $this->assertFileExists(__DIR__.'/../../views/mail/'.$sFileName.'.htm');
         }
-    }
-
-    public function testProductPartialResolvesTheOfferOffThePositionItPassed()
-    {
-        $sMarkup = file_get_contents(__DIR__.'/../../views/mail/product.htm');
-
-        $this->assertStringContainsString(
-            '{% set obOffer = obOrderPosition.item %}',
-            $sMarkup,
-            'the order template passes only order and obOrderPosition'
-        );
     }
 }
