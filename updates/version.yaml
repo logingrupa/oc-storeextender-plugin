@@ -280,3 +280,5 @@
   - update_table_order_statuses_payment_pending.php
   - update_table_system_mail_partials_retire_order_rows.php
   - update_table_theme_data_bank_details_copy_mark.php
+2.0.97:
+  - 'Each shop runs the daily colour sync at its own time from services.color_lab.sync_at (COLOR_LAB_SYNC_AT, default 07:00 Riga), so the shops wake the sleeping nailolab host one at a time instead of failing together with 503. A malformed value keeps 07:00 and logs a warning.'

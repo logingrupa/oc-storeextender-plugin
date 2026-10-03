@@ -86,6 +86,8 @@ use Logingrupa\StoreExtender\Classes\Registrar\PaymentRedirectRegistrar;
 use Logingrupa\StoreExtender\Classes\Registrar\ShopaholicExtensionRegistrar;
 use Logingrupa\StoreExtender\Classes\Registrar\ThemeDataRegistrar;
 
+use Logingrupa\StoreExtender\Classes\Color\ColorSyncSchedule;
+
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
 use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
@@ -360,7 +362,8 @@ class Plugin extends PluginBase
         // curation on nailolab, and that host sleeps between requests, so an
         // hourly poll mostly paid to wake it for a 304. The ColorSync settings
         // page runs the same command on demand when a change cannot wait.
-        $obSchedule->command('storeextender:sync-offer-colors')->dailyAt('07:00')->timezone('Europe/Riga');
+        // Each shop runs it at its own minute, see ColorSyncSchedule.
+        $obSchedule->command('storeextender:sync-offer-colors')->dailyAt(ColorSyncSchedule::time())->timezone('Europe/Riga');
 
         // Carrier pickup point feeds change a few times a month: one pull before the shop day
         // keeps the checkout from fetching a 1.3 MB feed inside a customer request.
