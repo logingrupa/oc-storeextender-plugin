@@ -8,6 +8,7 @@ use Lovata\Shopaholic\Models\Settings;
 use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\OrdersShopaholic\Models\PaymentMethod;
 use Lovata\OrdersShopaholic\Classes\Helper\AbstractPaymentGateway;
+use Lovata\OrdersShopaholic\Classes\Processor\OrderProcessor;
 use System\Classes\MailManager;
 use Illuminate\Mail\Message;
 use Symfony\Component\Mime\Email;
@@ -176,6 +177,46 @@ class OrderMailTest extends StoreExtenderPluginTestCase
         $this->assertSame(OrderMailState::PAID, $this->arSentMailList[0][1]['mail_state']);
     }
 
+    public function testManagerMailLeavesInTheShopLanguageNotTheOrderLanguage()
+    {
+        $arSiteIdList = $this->defineSites([['lv', true, true], ['ru', false, true]]);
+        $this->enableOrderMails('manager@example.com');
+        $this->captureMail();
+
+        $obOrder = $this->makeOrder('PayseraCheckout', ['email' => 'buyer@example.com']);
+        $obOrder->site_id = $arSiteIdList['ru'];
+        $this->markStatusChanged($obOrder, 1, 5);
+
+        Event::fire(AbstractPaymentGateway::EVENT_PAYMENT_SUCCESS, [$obOrder]);
+
+        $this->assertSame('ru', $this->arSentMailList[0][1]['_current_locale'], 'customer mail left the order language');
+        $this->assertSame('lv', $this->arSentMailList[1][1]['_current_locale'], 'manager mail followed the order language');
+    }
+
+    public function testNewOrderManagerMailLeavesInTheShopLanguageNotTheOrderLanguage()
+    {
+        $arSiteIdList = $this->defineSites([['lv', true, true], ['ru', false, true]]);
+
+        $obOrder = $this->makeOrder('PayseraCheckout', ['email' => 'buyer@example.com']);
+        $obOrder->site_id = $arSiteIdList['ru'];
+
+        $this->assertSame('ru', $this->fireMailData(OrderProcessor::EVENT_ORDER_CREATED_USER_MAIL_DATA, $obOrder));
+        $this->assertSame('lv', $this->fireMailData(OrderProcessor::EVENT_ORDER_CREATED_MANAGER_MAIL_DATA, $obOrder));
+    }
+
+    /**
+     * .no runs on its first enabled site: the primary one is the disabled Latvian source.
+     */
+    public function testShopLanguageSkipsADisabledPrimarySite()
+    {
+        $arSiteIdList = $this->defineSites([['nb-no', false, true], ['en', false, true], ['lv', true, false]]);
+
+        $obOrder = $this->makeOrder('PayseraCheckout', ['email' => 'buyer@example.com']);
+        $obOrder->site_id = $arSiteIdList['en'];
+
+        $this->assertSame('nb-no', $this->fireMailData(OrderProcessor::EVENT_ORDER_CREATED_MANAGER_MAIL_DATA, $obOrder));
+    }
+
     public function testRepeatedGatewayCallbackSendsNothing()
     {
         $this->enableOrderMails('manager@example.com');
@@ -235,6 +276,22 @@ class OrderMailTest extends StoreExtenderPluginTestCase
         $obOrder->syncOriginal();
         $obOrder->status_id = $iToStatusId;
         $obOrder->syncChanges();
+    }
+
+    /**
+     * Fires one of the two mail data events the way Lovata does, with the mail data array
+     * standing in for the listener parameters.
+     * @param string $sEventName
+     * @param Order $obOrder
+     * @return string the locale the mail would render in
+     */
+    protected function fireMailData($sEventName, $obOrder)
+    {
+        $arResponseList = Event::fire($sEventName, ['order' => $obOrder]);
+
+        $this->assertCount(1, $arResponseList, $sEventName.' has no listener');
+
+        return $arResponseList[0]['_current_locale'];
     }
 
     /**

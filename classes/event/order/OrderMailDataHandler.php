@@ -11,6 +11,9 @@ use Logingrupa\StoreExtender\Classes\Mail\OrderMailState;
  *
  * Adds the mail state, locale, bank details and admin link to the two new-order mails
  * Lovata sends. Lovata merges every array a listener returns into the mail data.
+ *
+ * The customer copy follows the site the order was placed on, the manager copy the shop's
+ * own language.
  */
 class OrderMailDataHandler
 {
@@ -21,20 +24,11 @@ class OrderMailDataHandler
     public function subscribe($obEvent)
     {
         $obEvent->listen(OrderProcessor::EVENT_ORDER_CREATED_USER_MAIL_DATA, function (Order $obOrder) {
-            return $this->makeNewOrderData($obOrder);
+            return OrderMailData::make($obOrder, OrderMailState::forNewOrder($obOrder));
         });
 
         $obEvent->listen(OrderProcessor::EVENT_ORDER_CREATED_MANAGER_MAIL_DATA, function (Order $obOrder) {
-            return $this->makeNewOrderData($obOrder);
+            return OrderMailData::forManager($obOrder, OrderMailState::forNewOrder($obOrder));
         });
-    }
-
-    /**
-     * @param Order $obOrder
-     * @return array
-     */
-    protected function makeNewOrderData(Order $obOrder): array
-    {
-        return OrderMailData::make($obOrder, OrderMailState::forNewOrder($obOrder));
     }
 }

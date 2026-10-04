@@ -47,6 +47,9 @@
  */
 abstract class StoreExtenderPluginTestCase extends PluginTestCase
 {
+    /** @var bool set when defineSites() replaced the site definitions */
+    protected $bSitesDefined = false;
+
     /**
      * Creates the application with the hermetic guards applied, then builds
      * the core module schema so the first settings read inside
@@ -107,5 +110,73 @@ abstract class StoreExtenderPluginTestCase extends PluginTestCase
         $this->app = $app;
 
         $this->migrateModules();
+    }
+
+    /**
+     * defineSites replaces the site definitions the core migrations seed with a shop shape,
+     * so site resolution and RainLab locale validity can be exercised hermetically.
+     * @param array $arSiteList list of [locale, is_primary, is_enabled]
+     * @return array site id per locale
+     */
+    protected function defineSites($arSiteList)
+    {
+        Db::table('system_site_definitions')->delete();
+
+        $arSiteIdList = [];
+        foreach (array_values($arSiteList) as $iIndex => [$sLocale, $bIsPrimary, $bIsEnabled]) {
+            $iSiteId = $iIndex + 1;
+            Db::table('system_site_definitions')->insert([
+                'id' => $iSiteId,
+                'name' => $sLocale,
+                'code' => $sLocale,
+                'sort_order' => $iSiteId,
+                'locale' => $sLocale,
+                'is_primary' => $bIsPrimary,
+                'is_enabled' => $bIsEnabled,
+                'is_enabled_edit' => $bIsEnabled,
+            ]);
+
+            $arSiteIdList[$sLocale] = $iSiteId;
+        }
+
+        $this->bSitesDefined = true;
+
+        $this->forgetSiteState();
+
+        return $arSiteIdList;
+    }
+
+    /**
+     * tearDown drops the site state the test left in the static singletons, which outlive
+     * the application instance. A locale left behind makes the next test write translation
+     * rows into a schema that has no translation tables. It runs after the parent, because
+     * the parent tears the application down and anything resolving the translator before
+     * that reads it back from the site definitions this test wrote.
+     * @return void
+     */
+    public function tearDown(): void
+    {
+        parent::tearDown();
+
+        if ($this->bSitesDefined) {
+            $this->forgetSiteState();
+        }
+    }
+
+    /**
+     * forgetSiteState clears the site list, the RainLab locale list derived from it and the
+     * translator holding the active locale.
+     * @return void
+     */
+    protected function forgetSiteState()
+    {
+        Site::resetCache();
+
+        if (!class_exists(\RainLab\Translate\Classes\Locale::class)) {
+            return;
+        }
+
+        \RainLab\Translate\Classes\Locale::clearCache();
+        \RainLab\Translate\Classes\Translator::forgetInstance();
     }
 }

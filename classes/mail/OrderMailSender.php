@@ -1,10 +1,8 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Mail;
 
-use App;
 use Lovata\Shopaholic\Models\Settings;
 use Lovata\Toolbox\Classes\Helper\SendMailHelper;
 use Lovata\OrdersShopaholic\Models\Order;
-use RainLab\Translate\Classes\Translator;
 
 /**
  * Class OrderMailSender
@@ -12,8 +10,8 @@ use RainLab\Translate\Classes\Translator;
  *
  * Sends the order mails Lovata does not: paid, payment reminders, customer cancel and the
  * switch to bank transfer. Several leave from a gateway webhook or the scheduler, where no
- * shop language is active, so the order's own site language is switched on for the render;
- * product and method names follow it through RainLab Translate.
+ * shop language is active, so the mail data carries the language to render in and
+ * MailRenderLocale applies it.
  *
  * Follows the shop's "send email after creating order" switch and manager list, the same
  * settings Lovata's new-order mails read.
@@ -36,7 +34,7 @@ class OrderMailSender
             return false;
         }
 
-        self::send($obOrder, $sTemplate, $sState, $sEmail);
+        self::send($obOrder, $sTemplate, OrderMailData::make($obOrder, $sState), $sEmail);
 
         return true;
     }
@@ -54,7 +52,7 @@ class OrderMailSender
             return false;
         }
 
-        self::send($obOrder, $sTemplate, $sState, $sEmailList);
+        self::send($obOrder, $sTemplate, OrderMailData::forManager($obOrder, $sState), $sEmailList);
 
         return true;
     }
@@ -81,28 +79,18 @@ class OrderMailSender
     /**
      * @param Order $obOrder
      * @param string $sTemplate
-     * @param string $sState
+     * @param array $arMailData from OrderMailData, carries the locale the mail renders in
      * @param string $sEmailList comma separated
      * @return void
      */
-    protected static function send(Order $obOrder, string $sTemplate, string $sState, string $sEmailList)
+    protected static function send(Order $obOrder, string $sTemplate, array $arMailData, string $sEmailList)
     {
-        $arMailData = [
+        $arMailData += [
             'order' => $obOrder,
             'order_number' => $obOrder->order_number,
             'site_url' => config('app.url'),
-        ] + OrderMailData::make($obOrder, $sState);
+        ];
 
-        $obTranslator = Translator::instance();
-        $sPreviousAppLocale = App::getLocale();
-        $sPreviousTranslatorLocale = $obTranslator->getLocale() ?: $sPreviousAppLocale;
-        $obTranslator->setLocale($arMailData['_current_locale'], false);
-
-        try {
-            SendMailHelper::instance()->send($sTemplate, $sEmailList, $arMailData);
-        } finally {
-            $obTranslator->setLocale($sPreviousTranslatorLocale, false);
-            App::setLocale($sPreviousAppLocale);
-        }
+        SendMailHelper::instance()->send($sTemplate, $sEmailList, $arMailData);
     }
 }

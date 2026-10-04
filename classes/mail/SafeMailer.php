@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\Log;
  * Signatures MUST match October\Rain\Mail\Mailer verbatim. Adding return types would
  * break Liskov substitution because the parent declares none.
  *
+ * send() is also the one place every rendered mail passes through, queued or not, so the
+ * locale a mail declares is applied there - see MailRenderLocale.
+ *
  * @package Logingrupa\StoreExtender\Classes\Mail
  */
 class SafeMailer extends \October\Rain\Mail\Mailer
@@ -22,7 +25,9 @@ class SafeMailer extends \October\Rain\Mail\Mailer
     public function send($view, array $data = [], $callback = null)
     {
         return $this->guard('send', $view, function () use ($view, $data, $callback) {
-            return parent::send($view, $data, $callback);
+            return MailRenderLocale::apply($data, function () use ($view, $data, $callback) {
+                return parent::send($view, $data, $callback);
+            });
         });
     }
 
