@@ -7,6 +7,7 @@
     'pay_button' => 'Maksāt :total',
     'confirm_method' => 'Apstiprināt apmaksas veidu',
     'pay_online_instead' => 'Maksāt tiešsaistē',
+    'change_method' => 'Mainīt apmaksas veidu',
     'pending_check' => 'Pārbaudīt maksājumu',
     'pending_hint' => 'Maksājumu jau veicāt? Apstiprinājums var aizņemt dažas minūtes un parādīsies šeit, tiklīdz pienāks.',
     'cancel_link' => 'Atcelt pasūtījumu',

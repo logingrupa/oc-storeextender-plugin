@@ -285,3 +285,6 @@
 
 2.0.98:
   - 'Manager order mails leave in the shop language, not the language the customer ordered in. An order placed on the ru site used to notify the shop in Russian; the new-order, paid and canceled manager copies now render in the primary site locale, or the first enabled one where the primary site is disabled, which is how .no runs. October applies the declared locale to the template and the lang files only, so MailRenderLocale puts the RainLab Translate locale on it for every send, otherwise product names kept arriving in the customer language. The manager copy also reloads the order, because the customer copy renders first and pins every relation it reads to its own language.'
+
+2.0.99:
+  - 'The bank transfer beneficiary row gets a copy button. It is the row the block writes without a label, the shop name a transfer has to be addressed to, and it was the one value on the page a customer had to retype. A row still copies whatever a manager styled as Code, so nothing else changes. New string order_page.change_method for the order page, where a bank transfer order now leads with the way to pay another way instead of hiding it under the account details.'

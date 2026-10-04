@@ -29,21 +29,21 @@ class BankTransferDetailsTest extends TestCase
         ], BankTransferDetails::parse(UpdateTableThemeDataBankDetailsCopyMark::markAccount(self::BLOCK_LT)));
     }
 
-    public function testLatvianBlockKeepsTheCompanyNameAsAValueAndMarksTheIbanOnly()
+    public function testLatvianBlockCopiesTheBeneficiaryAndTheIban()
     {
         $arRowList = BankTransferDetails::parse(UpdateTableThemeDataBankDetailsCopyMark::markAccount(self::BLOCK_LV));
 
-        $this->assertSame(['label' => '', 'value' => 'PROMINENCE SIA', 'copy' => ''], $arRowList[0]);
+        $this->assertSame(['label' => '', 'value' => 'PROMINENCE SIA', 'copy' => 'PROMINENCE SIA'], $arRowList[0]);
         $this->assertSame(['label' => 'Banka', 'value' => 'Luminor Bank AS, swift: RIKOLV2X', 'copy' => ''], $arRowList[1]);
         $this->assertSame(['label' => 'Konts', 'value' => 'LV37RIKO0000082814159, EUR', 'copy' => 'LV37RIKO0000082814159'], $arRowList[2]);
         $this->assertSame(['label' => 'Reģ. nr.', 'value' => '40103186559', 'copy' => ''], $arRowList[3]);
     }
 
-    public function testNorwegianBlockMarksTheDomesticAccountAndKeepsBoldInsideAValue()
+    public function testNorwegianBlockCopiesTheBeneficiaryAndTheDomesticAccount()
     {
         $arRowList = BankTransferDetails::parse(UpdateTableThemeDataBankDetailsCopyMark::markAccount(self::BLOCK_NO));
 
-        $this->assertSame(['label' => '', 'value' => 'AGNESE KRAVECA STUDIO', 'copy' => ''], $arRowList[0]);
+        $this->assertSame(['label' => '', 'value' => 'AGNESE KRAVECA STUDIO', 'copy' => 'AGNESE KRAVECA STUDIO'], $arRowList[0]);
         $this->assertSame(['label' => 'Bank', 'value' => 'DNB, swift: DNBANOKKXXX', 'copy' => ''], $arRowList[1]);
         $this->assertSame(['label' => 'Konts', 'value' => '15068752040, NOK', 'copy' => '15068752040'], $arRowList[2]);
         $this->assertSame(['label' => 'Org. Nr.', 'value' => '893 342 052', 'copy' => ''], $arRowList[3]);
@@ -68,7 +68,7 @@ class BankTransferDetailsTest extends TestCase
     public function testPlainParagraphsBecomeRows()
     {
         $this->assertSame([
-            ['label' => '', 'value' => 'Shop Ltd', 'copy' => ''],
+            ['label' => '', 'value' => 'Shop Ltd', 'copy' => 'Shop Ltd'],
             ['label' => 'IBAN', 'value' => 'GB00TEST', 'copy' => ''],
         ], BankTransferDetails::parse('<p>Shop Ltd</p><p><b>IBAN:</b> GB00TEST</p>'));
     }

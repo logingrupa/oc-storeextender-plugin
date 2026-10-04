@@ -7,6 +7,7 @@
     'pay_button' => 'Pay :total',
     'confirm_method' => 'Confirm payment method',
     'pay_online_instead' => 'Pay online instead',
+    'change_method' => 'Change payment method',
     'pending_check' => 'Check payment status',
     'pending_hint' => 'Paid already? The confirmation can take a few minutes and shows up here as soon as it arrives.',
     'cancel_link' => 'Cancel the order',

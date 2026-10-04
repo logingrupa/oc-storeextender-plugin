@@ -103,11 +103,16 @@ class BankTransferDetails
             $obRowNode
         )->item(0);
 
+        // A row that is bold all the way through (the company name) is a value, not a label
+        $sRowLabel = $sValue === '' ? '' : rtrim($sLabel, ': ');
+        $sRowValue = $sValue === '' ? $sLabel : $sValue;
+        $sCopy = $obCopyNode ? self::cleanText($obCopyNode->textContent) : '';
+
         return [
-            // A row that is bold all the way through (the company name) is a value, not a label
-            'label' => $sValue === '' ? '' : rtrim($sLabel, ': '),
-            'value' => $sValue === '' ? $sLabel : $sValue,
-            'copy' => $obCopyNode ? self::cleanText($obCopyNode->textContent) : '',
+            'label' => $sRowLabel,
+            'value' => $sRowValue,
+            // The beneficiary is the row without a label; a transfer needs that name typed in
+            'copy' => $sCopy !== '' || $sRowLabel !== '' ? $sCopy : $sRowValue,
         ];
     }
 

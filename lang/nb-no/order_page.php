@@ -7,6 +7,7 @@
     'pay_button' => 'Betal :total',
     'confirm_method' => 'Bekreft betalingsmåten',
     'pay_online_instead' => 'Betal på nett i stedet',
+    'change_method' => 'Endre betalingsmåte',
     'pending_check' => 'Sjekk betalingen',
     'pending_hint' => 'Har du allerede betalt? Bekreftelsen kan ta noen minutter og vises her så snart den kommer.',
     'cancel_link' => 'Kanseller bestillingen',

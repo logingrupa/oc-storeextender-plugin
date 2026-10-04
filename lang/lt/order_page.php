@@ -7,6 +7,7 @@
     'pay_button' => 'Mokėti :total',
     'confirm_method' => 'Patvirtinti mokėjimo būdą',
     'pay_online_instead' => 'Mokėti internetu',
+    'change_method' => 'Keisti mokėjimo būdą',
     'pending_check' => 'Tikrinti mokėjimą',
     'pending_hint' => 'Jau sumokėjote? Patvirtinimas gali užtrukti kelias minutes ir atsiras čia, kai tik bus gautas.',
     'cancel_link' => 'Atšaukti užsakymą',
