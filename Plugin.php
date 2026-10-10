@@ -224,6 +224,7 @@ class Plugin extends PluginBase
         ShopaholicExtensionRegistrar::extendShopaholicOfferModel();
         ShopaholicExtensionRegistrar::extendItemEagerLoading();
         ShopaholicExtensionRegistrar::extendCategoryChildrenMapReset();
+        ShopaholicExtensionRegistrar::extendProductOfferMapReset();
         ShopaholicExtensionRegistrar::extendXMLImporter();
         ShopaholicExtensionRegistrar::extendShopaholicOrderModel();
         Event::subscribe(ExtendPaymentGateway::class);

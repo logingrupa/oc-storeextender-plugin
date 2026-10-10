@@ -74,6 +74,23 @@ class ShopaholicExtensionRegistrar
     }
 
     /**
+     * ProductItem reads its active offer ids from a map primed once per request.
+     * An offer save or delete (backend, XML import) must not leave that map stale.
+     */
+    public static function extendProductOfferMapReset()
+    {
+        ShopaholicOfferModel::extend(function ($obModel) {
+            $obModel->bindEvent('model.afterSave', function () {
+                ProductItem::clearActiveOfferMap();
+            });
+
+            $obModel->bindEvent('model.afterDelete', function () {
+                ProductItem::clearActiveOfferMap();
+            });
+        });
+    }
+
+    /**
      * Eager load RainLab Translate 'translations' morphMany during Toolbox item
      * priming. Without this every Product/Offer/Category model AND every attached
      * MLFile image lazy-loads rainlab_translate_attributes one query per instance
@@ -90,13 +107,11 @@ class ShopaholicExtensionRegistrar
         // it via the morphOne relation - without eager loading that is one
         // lovata_mighty_seo_params query per model during cold item builds
         // (58 on one promo page). Eager loaded, collection builds batch it.
+        // No offer-nested path belongs here: any one loads every offer of the product back in.
         ProductItem::$arQueryWith = array_merge(ProductItem::$arQueryWith, [
             'translations',
             'preview_image.translations',
             'images.translations',
-            'offer.translations',
-            'offer.preview_image.translations',
-            'offer.images.translations',
             'seo_container',
         ]);
 
