@@ -9,9 +9,9 @@ use Lovata\Shopaholic\Classes\Item\ProductItem;
  * A card reads obProduct.offer.sort('price|asc').first(), and first() builds that
  * single OfferItem on its own: one query per relation per card on a cold item cache.
  *
- * Twig, registered in Plugin::registerMarkupTags():
+ * Twig, through prime_cards in Plugin::registerMarkupTags():
  *
- *   {% for obProduct in prime_card_offers(obProductList.page(iPage, iPerPage)) %}
+ *   {% for obProduct in prime_cards(obProductList.page(iPage, iPerPage)) %}
  */
 class ProductCardOfferPrimer
 {
