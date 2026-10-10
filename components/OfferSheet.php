@@ -644,22 +644,18 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * The next page of shades after a named one, rendered.
-     *
-     * Forward only. The window the page opens with already holds the shades
-     * before the selected one and the hero's swipe stops at its first slide, so
-     * a backward page has no caller; adding one would need a second cache
-     * dimension for markup nobody asks for.
+     * The shades a strip does not hold yet, rendered.
      *
      * The answer is onGetSwatchStrip's key shape with the family slot replaced
      * by the after-id, so the client applies a family switch and a forward page
      * through one code path: the strip markup, the same fragment batch, the same
      * epoch token.
      *
-     * Two shapes of request: a 12-shade page with its fragment batch, which is
-     * what /p and the home pages ask for, and a `rest` page that carries every
-     * remaining shade with no fragments at all, which is what the phone rail
-     * asks for once.
+     * Two shapes of request: a 12-shade page after the named shade with its
+     * fragment batch, which is what /p and the home pages ask for, and a `rest`
+     * page that carries the whole list with no fragments at all, which is what
+     * the phone rail asks for once. The rail opens on a window around the shade
+     * a URL names, so what it lacks lies on both sides of that window.
      *
      * @return array|null
      */
@@ -682,7 +678,9 @@ class OfferSheet extends ComponentBase
         }
 
         $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
-        $arWindowRowList = $this->getWindowAfterRowList($arVisibleList, $iAfterOfferId, $bRest);
+        $arWindowRowList = $bRest
+            ? $this->getRestRowList($arVisibleList, $iAfterOfferId)
+            : $this->getWindowAfterRowList($arVisibleList, $iAfterOfferId);
         if ($arWindowRowList === null) {
             return null; // fail fast: sold out and hidden, so it holds no position here
         }
@@ -754,7 +752,9 @@ class OfferSheet extends ComponentBase
      *
      * A rest page keys apart from a 12-shade page with the same after-id: the
      * two render a different number of labels, so they are different markup
-     * under the same product and position.
+     * under the same product and position. A rest page is the whole list
+     * whichever shade it was asked after, so it keys with no after-id and one
+     * entry serves every window the rail opens on.
      *
      * The sold-out filter is NOT cached, for the reason the family strip above
      * gives and the row list states: a page kept for ten minutes pages in shades
@@ -780,7 +780,7 @@ class OfferSheet extends ComponentBase
         $sCacheKey = $this->buildCacheKey([
             'hr.window',
             $obProductItem->id,
-            $iAfterOfferId,
+            $bRest ? 0 : $iAfterOfferId,
             (int) $bHideSoldOut,
             (int) $bRest,
         ]);
@@ -1162,10 +1162,9 @@ class OfferSheet extends ComponentBase
      * rejected. An empty array is the end of the list, which is a valid last
      * page.
      *
-     * @param bool $bRest every remaining row rather than one page of them
      * @return array|null [['iOfferId' => int, 'sFamily' => string|null]]
      */
-    protected function getWindowAfterRowList(array $arVisibleList, int $iAfterOfferId, bool $bRest = false): ?array
+    protected function getWindowAfterRowList(array $arVisibleList, int $iAfterOfferId): ?array
     {
         $iAfterIndex = null;
         foreach ($arVisibleList as $iIndex => $arEntry) {
@@ -1182,9 +1181,23 @@ class OfferSheet extends ComponentBase
         // cache can hold: it caps at 24 entries
         // (src/modules/offer-fragments.js), so two pages of INLINE_LIMIT fill
         // it exactly and a longer page would evict the shades the shopper just
-        // swiped past. A rest page carries no fragments, so nothing bounds it
-        // but the list itself.
-        return array_slice($arVisibleList, $iAfterIndex + 1, $bRest ? null : self::INLINE_LIMIT);
+        // swiped past.
+        return array_slice($arVisibleList, $iAfterIndex + 1, self::INLINE_LIMIT);
+    }
+
+    /**
+     * The phone rail's one request: every visible row, in list order.
+     *
+     * The rail opens on a window around the shade a URL names, so the rows it
+     * lacks lie on both sides of it; the client keeps the labels it already
+     * holds. A rest page carries no fragments, so nothing bounds it but the list.
+     *
+     * @return array|null null for a shade the visible list does not hold, the
+     *                    refusal getWindowAfterRowList gives
+     */
+    protected function getRestRowList(array $arVisibleList, int $iAfterOfferId): ?array
+    {
+        return $this->findVisibleRowIndex($arVisibleList, $iAfterOfferId) === null ? null : $arVisibleList;
     }
 
     /**

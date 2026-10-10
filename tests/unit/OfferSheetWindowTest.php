@@ -18,10 +18,11 @@ use ReflectionClass;
  * slices the same row list, so a change to colour-family ordering cannot
  * reshuffle a page the shopper has already swiped past without failing here.
  *
- * That slice has two lengths. A page that carries fragments stays at
- * INLINE_LIMIT; a `rest` page carries every shade left and no fragments, which
- * is the one request the phone rail makes. isWindowListComplete is what tells
- * the client which of the two it received, so the second one is never asked for.
+ * A page that carries fragments stays at INLINE_LIMIT. The `rest` answer
+ * (getRestRowList) is the one request the phone rail makes, and it is the
+ * whole list: the rail can open on a window deep in it, so what it lacks lies
+ * on both sides. isWindowListComplete tells the client which of the two it
+ * received, so the second one is never asked for.
  *
  * No CMS: the component is instantiated without its constructor, because
  * nothing here touches the controller or the component properties.
@@ -242,31 +243,52 @@ class OfferSheetWindowTest extends TestCase
         $this->assertNotContains(1005, $arWindowIdList);
     }
 
-    public function testTheRestOfTheListIsOnePageFromTheHeadOfTheRenderedWindow()
+    public function testTheRestIsTheWholeListInListOrder()
     {
         $arRowList = $this->makeRowList(230); // ids 1000..1229
 
         // the last shade the opening 12-shade strip renders
-        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1011, true]);
+        $arWindow = $this->call('getRestRowList', [$arRowList, 1011]);
 
-        $this->assertCount(218, $arWindow);
-        $this->assertSame(1012, $arWindow[0]['iOfferId']);
-        $this->assertSame(1229, $arWindow[count($arWindow) - 1]['iOfferId']);
-        $this->assertSame(range(1012, 1229), $this->readOfferIdList($arWindow));
+        $this->assertSame(range(1000, 1229), $this->readOfferIdList($arWindow));
     }
 
-    public function testTheRestOfTheListAfterTheLastShadeIsEmpty()
+    /**
+     * A URL that names shade 223 opens the rail on 218..229. Its rest has to
+     * carry 0..217 as well, or the rail never shows them.
+     */
+    public function testTheRestOfAWindowOpenedDeepInTheListCarriesTheShadesBeforeIt()
+    {
+        $arRowList = $this->makeRowList(234); // ids 1000..1233
+        $arOpenWindow = $this->call('getWindowedRowList', [$arRowList, 1223]);
+        $iLastOpenOfferId = (int) $arOpenWindow[count($arOpenWindow) - 1]['iOfferId'];
+
+        $arWindowIdList = $this->readOfferIdList($this->call('getRestRowList', [$arRowList, $iLastOpenOfferId]));
+
+        $this->assertSame(1218, $arOpenWindow[0]['iOfferId']);
+        foreach (range(1000, 1217) as $iOfferId) {
+            $this->assertContains($iOfferId, $arWindowIdList);
+        }
+        $this->assertSame(range(1000, 1233), $arWindowIdList);
+    }
+
+    public function testTheRestAfterTheLastShadeStillCarriesTheHead()
     {
         $arRowList = $this->makeRowList(230);
 
-        $this->assertSame([], $this->call('getWindowAfterRowList', [$arRowList, 1229, true]));
+        // a window clamped to the tail ends on the last shade of all
+        $this->assertSame(
+            range(1000, 1229),
+            $this->readOfferIdList($this->call('getRestRowList', [$arRowList, 1229]))
+        );
     }
 
-    public function testTheRestOfTheListIsRefusedForAShadeTheListDoesNotHold()
+    public function testTheRestIsRefusedForAShadeTheListDoesNotHold()
     {
         $arRowList = $this->makeRowList(230);
 
-        $this->assertNull($this->call('getWindowAfterRowList', [$arRowList, 9999, true]));
+        $this->assertNull($this->call('getRestRowList', [$arRowList, 9999]));
+        $this->assertNull($this->call('getRestRowList', [$arRowList, 0]));
     }
 
     public function testTheRestOfTheSoldOutFilteredListHoldsOnlyItsOwnMembers()
@@ -276,13 +298,9 @@ class OfferSheetWindowTest extends TestCase
             fn (array $arRow) => $arRow['iOfferId'] % 3 !== 0 // the sold-out shades are gone
         ));
 
-        $arWindow = $this->call('getWindowAfterRowList', [$arVisibleList, 1001, true]);
-        $arWindowIdList = $this->readOfferIdList($arWindow);
+        $arWindowIdList = $this->readOfferIdList($this->call('getRestRowList', [$arVisibleList, 1001]));
 
-        $this->assertCount(count($arVisibleList) - 2, $arWindow);
-        foreach ($arWindowIdList as $iOfferId) {
-            $this->assertContains($iOfferId, $this->readOfferIdList($arVisibleList));
-        }
+        $this->assertSame($this->readOfferIdList($arVisibleList), $arWindowIdList);
         // a page composed against the unfiltered list would carry these
         $this->assertNotContains(1002, $arWindowIdList);
         $this->assertNotContains(1059, $arWindowIdList);
@@ -292,7 +310,7 @@ class OfferSheetWindowTest extends TestCase
     {
         $arRowList = $this->makeRowList(230);
 
-        $arWindow = $this->call('getWindowAfterRowList', [$arRowList, 1011, true]);
+        $arWindow = $this->call('getRestRowList', [$arRowList, 1011]);
         $iLastIndex = $this->call(
             'findVisibleRowIndex',
             [$arRowList, (int) $arWindow[count($arWindow) - 1]['iOfferId']]
@@ -306,7 +324,7 @@ class OfferSheetWindowTest extends TestCase
         $arRowList = $this->makeRowList(230);
         $iAfterOfferId = 1011;
 
-        $arRestList = $this->call('getWindowAfterRowList', [$arRowList, $iAfterOfferId, true]);
+        $arRestList = $this->call('getRestRowList', [$arRowList, $iAfterOfferId]);
         $arPageList = $this->call('getWindowAfterRowList', [$arRowList, $iAfterOfferId]);
 
         $this->assertTrue($this->call('isWindowListComplete', [$arRowList, $iAfterOfferId, $arRestList]));
