@@ -95,6 +95,7 @@ use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\BreadcrumbStructuredData;
+use Logingrupa\StoreExtender\Classes\Helper\ProductCardOfferPrimer;
 use Logingrupa\StoreExtender\Classes\Helper\ProductOfferPrice;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
@@ -585,6 +586,8 @@ class Plugin extends PluginBase
                 // Catalog search grid: offers matching the query directly
                 // plus every offer of a matching product
                 'search_offer_filter' => [SearchOfferHelper::class, 'searchOfferIds'],
+                // Builds the offer each product card shows for a whole list at once
+                'prime_card_offers' => [ProductCardOfferPrimer::class, 'prime'],
                 'theme_var' => [ThemeVariable::class, 'get'],
                 // Order page: where the order stands with its payment, and the bank details
                 'order_payment_state' => [OrderPageData::class, 'paymentState'],
