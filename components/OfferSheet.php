@@ -629,6 +629,10 @@ class OfferSheet extends ComponentBase
      * The strip markup for one window of shades. No cache of its own: the two
      * callers above decide whether the answer may be kept.
      *
+     * The family goes along even when empty: the page's onInit runs before every
+     * AJAX handler and leaves the family it resolved from the request address in
+     * the controller vars, which the partial would read otherwise.
+     *
      * @param array $arSwatchData as getInlineSwatchData returns it
      */
     protected function renderSwatchStripPartial(ProductItem $obProductItem, array $arSwatchData): string
@@ -640,6 +644,7 @@ class OfferSheet extends ComponentBase
             'bUseSheet' => $arSwatchData['bUseSheet'],
             'iSelectedOfferId' => 0,
             'iFirstIndex' => $arSwatchData['iFirstIndex'],
+            'sActiveFamily' => $arSwatchData['sActiveFamily'],
         ]);
     }
 

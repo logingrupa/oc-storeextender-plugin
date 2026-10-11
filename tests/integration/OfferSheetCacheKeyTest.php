@@ -52,6 +52,9 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
 
     protected \ReflectionClass $obReflection;
 
+    /** @var object|null the controller stub, its renders listed in $arRenderList */
+    protected ?object $obControllerStub = null;
+
     public function setUp(): void
     {
         parent::setUp();
@@ -122,32 +125,88 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
     /**
      * Stand a controller in front of the component. Only renderPartial is
      * called, and what it returns is opaque to the caching decision, so a
-     * marker string is the whole fixture.
+     * marker string is the whole fixture. Each call is kept as [partial, data].
      */
     protected function setControllerStub(): void
     {
-        $obProperty = $this->obReflection->getProperty('controller');
-        $obProperty->setAccessible(true);
-        $obProperty->setValue($this->obComponent, new class {
+        $this->obControllerStub = new class {
+            /** @var array<int, array{0: string, 1: array}> */
+            public array $arRenderList = [];
+
             public function renderPartial(string $sPartial, array $arData = []): string
             {
+                $this->arRenderList[] = [$sPartial, $arData];
+
                 return OfferSheetCacheKeyTest::RENDER_MARKER;
             }
-        });
+        };
+        $obProperty = $this->obReflection->getProperty('controller');
+        $obProperty->setAccessible(true);
+        $obProperty->setValue($this->obComponent, $this->obControllerStub);
     }
 
     /**
      * The swatch data shape getInlineSwatchData answers with. No items: the
      * partial is stubbed out, so nothing reads them.
      */
-    protected function makeSwatchData(): array
+    protected function makeSwatchData(string $sActiveFamily = ''): array
     {
         return [
             'arOfferItemList' => [],
             'iTotalCount' => 230,
             'bUseSheet' => true,
             'iFirstIndex' => 0,
+            'sActiveFamily' => $sActiveFamily,
         ];
+    }
+
+    /**
+     * The cached strip is keyed by family and page, so it renders from the
+     * family in its key. The page's onInit leaves the family it resolved from
+     * the request address in the controller vars, and that one can differ.
+     */
+    public function testAFamilyStripRendersTheFamilyItIsCachedUnder()
+    {
+        $this->setPageId('product2');
+        $this->setControllerStub();
+        $obProductItem = ProductItem::make(0);
+
+        $this->callProtected(
+            'getSwatchStripHtml',
+            [$obProductItem, 'Rose', false, $this->makeSwatchData('Rose')]
+        );
+
+        $this->assertCount(1, $this->obControllerStub->arRenderList);
+        [$sPartial, $arData] = $this->obControllerStub->arRenderList[0];
+        $this->assertSame('product/offer-swatches/offer-swatches-strip', $sPartial);
+        $this->assertArrayHasKey('sActiveFamily', $arData);
+        $this->assertSame('Rose', $arData['sActiveFamily']);
+        $sCacheKey = $this->callProtected(
+            'buildCacheKey',
+            [['hr.strip', $obProductItem->id, 'Rose', 0]]
+        );
+        $this->assertSame(self::RENDER_MARKER, CCache::get([OfferSheet::CACHE_TAG_SHEET], $sCacheKey));
+    }
+
+    /**
+     * The head strip is cached for every visitor too, so it states its empty
+     * family rather than leaving the partial to read the page's.
+     */
+    public function testTheHeadStripRendersWithAnExplicitlyEmptyFamily()
+    {
+        $this->setPageId('product2');
+        $this->setControllerStub();
+        $obProductItem = ProductItem::make(0);
+
+        $this->callProtected(
+            'getSwatchStripHtml',
+            [$obProductItem, '', false, $this->makeSwatchData()]
+        );
+
+        $this->assertCount(1, $this->obControllerStub->arRenderList);
+        $arData = $this->obControllerStub->arRenderList[0][1];
+        $this->assertArrayHasKey('sActiveFamily', $arData);
+        $this->assertSame('', $arData['sActiveFamily']);
     }
 
     /**
