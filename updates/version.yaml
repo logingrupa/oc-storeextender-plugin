@@ -288,3 +288,6 @@
 
 2.0.99:
   - 'The bank transfer beneficiary row gets a copy button. It is the row the block writes without a label, the shop name a transfer has to be addressed to, and it was the one value on the page a customer had to retype. A row still copies whatever a manager styled as Code, so nothing else changes. New string order_page.change_method for the order page, where a bank transfer order now leads with the way to pay another way instead of hiding it under the account details.'
+
+2.0.100:
+  - 'The phone rail rest request answers with the whole shade list, so a page opened on a shade also loads the shades before it. Card lists prime their offers and labels in one batch (prime_cards), a product build loads none of its offers, and an offer save drops the offer map. A family strip renders the family it is cached under.'
