@@ -2,6 +2,7 @@
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Logingrupa\StoreExtender\Classes\Color\ColorApiClient;
 use Logingrupa\StoreExtender\Classes\Color\ColorMapRepository;
@@ -25,6 +26,8 @@ class SyncOfferColors extends Command
 {
     const UPSERT_CHUNK_SIZE = 500;
 
+    const MISSING_HOST_MESSAGE = 'COLOR_LAB_API_HOST is not set, the offer colour sync has no API to ask.';
+
     /** @var string */
     protected $signature = 'storeextender:sync-offer-colors
         {--force : Re-import even when the export has not changed}
@@ -36,6 +39,14 @@ class SyncOfferColors extends Command
     public function handle(): int
     {
         $obApiClient = new ColorApiClient();
+        if ($obApiClient->getHost() === '') {
+            // the scheduled run has no console to print to, so the log carries it
+            Log::error('storeextender:sync-offer-colors: '.self::MISSING_HOST_MESSAGE);
+            $this->error(self::MISSING_HOST_MESSAGE);
+
+            return self::FAILURE;
+        }
+
         $obRepository = new ColorMapRepository();
 
         // Go to the network every run. Inside the client's freshness window a

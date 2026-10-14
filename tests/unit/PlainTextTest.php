@@ -35,10 +35,34 @@ class PlainTextTest extends TestCase
         $this->assertSame('', PlainText::fromHtml(" \n\t "));
     }
 
-    public function testTheProductDescriptionFixtureReadsAsBefore()
+    public function testTheProductDescriptionFixtureDropsTheScriptBody()
     {
         $sHtml = "<p>Bezsk&#257;bes  \n\n praimeris &amp; gels</p><p>Otrs teikums.<br>Trešais</p><script>alert(1)</script></script>";
 
-        $this->assertSame('Bezskābes praimeris & gels Otrs teikums. Trešais alert(1)', PlainText::fromHtml($sHtml));
+        $this->assertSame('Bezskābes praimeris & gels Otrs teikums. Trešais', PlainText::fromHtml($sHtml));
+    }
+
+    public function testAStyleBlockLeavesNoCssRules()
+    {
+        $sHtml = '<style type="text/css">p { color: red; }</style><p>Gels</p><STYLE>.x{margin:0}</STYLE ><p>Otrs</p>';
+
+        $this->assertSame('Gels Otrs', PlainText::fromHtml($sHtml));
+    }
+
+    public function testTemplateAndNoscriptBodiesAreNotText()
+    {
+        $sHtml = '<p>Laka</p><template><p>slēpts</p></template><noscript>Ieslēdziet JavaScript</noscript><p>Otrs</p>';
+
+        $this->assertSame('Laka Otrs', PlainText::fromHtml($sHtml));
+    }
+
+    public function testAnUnclosedScriptRunsToTheEndOfTheMarkup()
+    {
+        $this->assertSame('Atsauksme', PlainText::fromHtml('<p>Atsauksme</p><script>alert(document.cookie)'));
+    }
+
+    public function testAScriptWordInsideTextIsNotAnElement()
+    {
+        $this->assertSame('Subscript un styles paliek', PlainText::fromHtml('<p>Subscript un styles paliek</p>'));
     }
 }

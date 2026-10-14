@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../StoreExtenderPluginTestCase.php';
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Logingrupa\StoreExtender\Classes\Color\ColorMapRepository;
 use Logingrupa\StoreExtender\Models\OfferColor;
 use System\Models\Parameter;
@@ -50,6 +51,27 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
         // one's reads. Harmless in production, where every request and every
         // console run is its own process.
         Parameter::clearInternalCache();
+        config(['services.color_lab.host' => 'https://nailolab.test']);
+    }
+
+    /**
+     * A shop without COLOR_LAB_API_HOST stops before any request and says why,
+     * on the console and in the log the scheduled run leaves behind.
+     */
+    public function testAMissingHostFailsFastWithoutAskingTheApi()
+    {
+        config(['services.color_lab.host' => null]);
+        Http::fake();
+        Log::spy();
+
+        $iExitCode = Artisan::call('storeextender:sync-offer-colors');
+
+        $this->assertSame(1, $iExitCode);
+        $this->assertStringContainsString('COLOR_LAB_API_HOST is not set', Artisan::output());
+        Http::assertNothingSent();
+        Log::shouldHaveReceived('error')->once()->withArgs(function ($sMessage) {
+            return str_contains($sMessage, 'COLOR_LAB_API_HOST is not set');
+        });
     }
 
     public function testSyncImportsValidEntriesAndSkipsInvalid()

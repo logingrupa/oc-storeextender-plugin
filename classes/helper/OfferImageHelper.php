@@ -129,16 +129,7 @@ class OfferImageHelper
      */
     public static function hero(?File $obImage): string
     {
-        if ($obImage === null) {
-            return '';
-        }
-
-        $arOptions = self::getHeroThumbOptions();
-        if ((int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT) {
-            return (string) $obImage->getThumb(self::HERO_SMALL_WIDTH, 'auto', $arOptions);
-        }
-
-        return (string) $obImage->getThumb(self::HERO_WIDTH, self::HERO_HEIGHT, $arOptions);
+        return self::renderHeroThumb($obImage, self::HERO_WIDTH, self::HERO_HEIGHT, self::getHeroThumbOptions());
     }
 
     /**
@@ -165,14 +156,15 @@ class OfferImageHelper
      * generates a missing derivative inside the request that asked for it -
      * measured at 167ms per picture, 36s for the 218 shades one rail render
      * carries. This one looks the file up and gives up instead, so a caller that
-     * renders hundreds of labels costs one storage existence check each and the
-     * cold shades fall back to whatever picture the caller already had.
+     * renders hundreds of labels costs two storage existence checks each (source
+     * and derivative) and the cold shades fall back to whatever picture the
+     * caller already had.
      *
      * Warming is storeextender:warm-offer-thumbs' job (PERF-05).
      */
     public static function heroIfWarm(?File $obImage): string
     {
-        if ($obImage === null || !$obImage->isImage()) {
+        if ($obImage === null || !$obImage->isImage() || !self::hasSourceFile($obImage)) {
             return '';
         }
 
@@ -203,16 +195,7 @@ class OfferImageHelper
      */
     public static function heroPhone(?File $obImage): string
     {
-        if ($obImage === null) {
-            return '';
-        }
-
-        $arOptions = self::getHeroPhoneThumbOptions();
-        if ((int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT) {
-            return (string) $obImage->getThumb(self::HERO_SMALL_WIDTH, 'auto', $arOptions);
-        }
-
-        return (string) $obImage->getThumb(self::HERO_PHONE_WIDTH, self::HERO_PHONE_HEIGHT, $arOptions);
+        return self::renderHeroThumb($obImage, self::HERO_PHONE_WIDTH, self::HERO_PHONE_HEIGHT, self::getHeroPhoneThumbOptions());
     }
 
     /**
@@ -246,7 +229,7 @@ class OfferImageHelper
      */
     public static function heroPhoneIfWarm(?File $obImage): string
     {
-        if ($obImage === null || !$obImage->isImage()) {
+        if ($obImage === null || !$obImage->isImage() || !self::hasSourceFile($obImage)) {
             return '';
         }
 
@@ -306,6 +289,39 @@ class OfferImageHelper
         $iSize = self::getSlotSize($sSlot);
 
         return (string) $obImage->getThumb($iSize, $iSize, self::getThumbOptions($sSlot));
+    }
+
+    /**
+     * Hero derivative for one slot box. A source shorter than
+     * HERO_MIN_SOURCE_HEIGHT is served at HERO_SMALL_WIDTH, and a source missing
+     * from the disk answers its own URL, as File::getThumb() does.
+     *
+     * @param array{mode: string, quality: int, extension: string} $arOptions
+     */
+    protected static function renderHeroThumb(?File $obImage, int $iWidth, int $iHeight, array $arOptions): string
+    {
+        if ($obImage === null) {
+            return '';
+        }
+
+        if (!self::hasSourceFile($obImage)) {
+            return (string) $obImage->getUrl();
+        }
+
+        if ((int) $obImage->height < self::HERO_MIN_SOURCE_HEIGHT) {
+            return (string) $obImage->getThumb(self::HERO_SMALL_WIDTH, 'auto', $arOptions);
+        }
+
+        return (string) $obImage->getThumb($iWidth, $iHeight, $arOptions);
+    }
+
+    /**
+     * File's height accessor runs getimagesize() on the source, which throws
+     * when the file is missing, so every height read sits behind this check.
+     */
+    protected static function hasSourceFile(File $obImage): bool
+    {
+        return $obImage->getDisk()->exists($obImage->getDiskPath());
     }
 
     /**

@@ -8,7 +8,7 @@ use InvalidArgumentException;
  * The schema.org BreadcrumbList block of a product page: Home at position 1,
  * then the page's crumbs as the template built them, root category first and
  * the product last. Twig, registered in Plugin::registerMarkupTags() as
- * breadcrumb_json_ld.
+ * breadcrumb_json_ld; a crumb build() rejects prints an empty block there.
  */
 class BreadcrumbStructuredData
 {
@@ -22,9 +22,11 @@ class BreadcrumbStructuredData
      */
     public static function render(array $arCrumbList, string $sHomeName, string $sHomeUrl): string
     {
-        $arData = self::build($arCrumbList, $sHomeName, $sHomeUrl);
-
-        return json_encode($arData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_THROW_ON_ERROR);
+        return JsonLdScript::encode(
+            fn () => self::build($arCrumbList, $sHomeName, $sHomeUrl),
+            'BreadcrumbList',
+            ['crumb_list' => $arCrumbList]
+        );
     }
 
     /**

@@ -1,7 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Tests\Unit;
 
+use ErrorException;
 use InvalidArgumentException;
-use LogicException;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use October\Rain\Database\Attach\File;
 use PHPUnit\Framework\TestCase;
@@ -45,61 +45,39 @@ class OfferImageHelperTest extends TestCase
         return $obFile;
     }
 
+    /** disk_name abcdefghij.jpg sits in partition abc/def/ghi */
+    const SOURCE_DISK_PATH = 'public/abc/def/ghi/abcdefghij.jpg';
+    const SOURCE_URL = 'http://localhost/storage/uploads/public/abc/def/ghi/abcdefghij.jpg';
+
     /**
-     * A File that records the geometry every getThumbUrl() call asks it for.
+     * A stored File on a fake storage disk. The disk answers $bSourceOnDisk for
+     * the source path and "exists" for any derivative, and records every path it
+     * is asked about. Both path helpers stay October's own, so a case pins the
+     * exact disk path a lookup checks and the exact URL it hands back.
      *
-     * October generates the derivative inside getThumbUrl(), which needs a
-     * storage disk and a stored source file, and a plain unit test has neither.
-     * The property these cases are about is the geometry the helper ASKS for, so
-     * the override records it and hands back a marker instead of a URL.
+     * getThumbUrl() records the geometry it is asked for instead of resizing,
+     * because a plain unit test has no Storage facade and no stored source.
      *
-     * height is an accessor on File (getHeightAttribute reads the source file
-     * through the Storage facade), so the fake source height overrides the
-     * accessor rather than setting an attribute the accessor would ignore.
+     * height is an accessor on File that runs getimagesize() on the source, so
+     * the fake accessor throws on a missing source, as the real one does.
      */
-    protected function makeSizeRecordingFile(int $iId, int $iSourceHeight): File
+    protected function makeStoredFile(int $iId, int $iSourceHeight, bool $bSourceOnDisk = true, bool $bIsImage = true): File
     {
         $obFile = new class extends File {
             /** @var int */
             public $iFakeHeight = 0;
 
-            /** @var list<array{width: mixed, height: mixed}> */
-            public $arThumbRequestList = [];
-
-            public function getHeightAttribute()
-            {
-                return $this->iFakeHeight;
-            }
-
-            public function getThumbUrl($width, $height, $options = [])
-            {
-                $this->arThumbRequestList[] = ['width' => $width, 'height' => $height];
-
-                return 'recorded';
-            }
-        };
-        $obFile->id = $iId;
-        $obFile->iFakeHeight = $iSourceHeight;
-
-        return $obFile;
-    }
-
-    /**
-     * A File whose storage disk throws the moment it is touched.
-     *
-     * heroPhoneIfWarm() has to answer before it reaches storage twice: for a
-     * file that is not an image, and for a source shorter than the hero floor.
-     * A getDisk() that throws is the assertion itself, because those two cases
-     * only pass when the disk is never asked.
-     */
-    protected function makeDiskForbiddenFile(int $iId, bool $bIsImage, int $iSourceHeight): File
-    {
-        $obFile = new class extends File {
             /** @var bool */
             public $bFakeIsImage = true;
 
-            /** @var int */
-            public $iFakeHeight = 0;
+            /** @var bool */
+            public $bFakeSourceOnDisk = true;
+
+            /** @var list<string> every disk path a lookup asked about */
+            public $arExistsAskList = [];
+
+            /** @var list<array{width: mixed, height: mixed}> */
+            public $arThumbRequestList = [];
 
             public function isImage()
             {
@@ -108,46 +86,18 @@ class OfferImageHelperTest extends TestCase
 
             public function getHeightAttribute()
             {
+                if (!$this->bFakeSourceOnDisk) {
+                    throw new ErrorException('getimagesize(): Failed to open stream: No such file or directory');
+                }
+
                 return $this->iFakeHeight;
             }
 
-            public function getDisk()
+            public function getThumbUrl($width, $height, $options = [])
             {
-                throw new LogicException('heroPhoneIfWarm reached the storage disk');
-            }
-        };
-        $obFile->id = $iId;
-        $obFile->bFakeIsImage = $bIsImage;
-        $obFile->iFakeHeight = $iSourceHeight;
+                $this->arThumbRequestList[] = ['width' => $width, 'height' => $height];
 
-        return $obFile;
-    }
-
-    /**
-     * A File whose storage disk answers "that derivative exists" to whatever
-     * it is asked, and records what it was asked. Both path helpers stay
-     * October's own, so a case built on this pins the exact disk path the
-     * lookup checks and the exact URL it hands back, partition directory and
-     * derivative name included - the two things that drift silently, because
-     * a drifted lookup answers '' and the caller falls back without a log.
-     */
-    protected function makeWarmFile(int $iId, int $iSourceHeight): File
-    {
-        $obFile = new class extends File {
-            /** @var int */
-            public $iFakeHeight = 0;
-
-            /** @var list<string> every disk path the lookup asked about */
-            public $arExistsAskList = [];
-
-            public function isImage()
-            {
-                return true;
-            }
-
-            public function getHeightAttribute()
-            {
-                return $this->iFakeHeight;
+                return 'recorded';
             }
 
             public function getDisk()
@@ -161,7 +111,7 @@ class OfferImageHelperTest extends TestCase
                     {
                         $this->obFile->arExistsAskList[] = $sPath;
 
-                        return true;
+                        return $sPath !== $this->obFile->getDiskPath() || $this->obFile->bFakeSourceOnDisk;
                     }
                 };
             }
@@ -170,6 +120,8 @@ class OfferImageHelperTest extends TestCase
         $obFile->disk_name = 'abcdefghij.jpg';
         $obFile->is_public = true;
         $obFile->iFakeHeight = $iSourceHeight;
+        $obFile->bFakeSourceOnDisk = $bSourceOnDisk;
+        $obFile->bFakeIsImage = $bIsImage;
 
         return $obFile;
     }
@@ -305,27 +257,28 @@ class OfferImageHelperTest extends TestCase
 
     /**
      * A file that is not an image has no derivative to find, so the lookup gives
-     * up before storage. The fixture's getDisk() throws, so this passes only if
-     * the disk was never asked.
+     * up before storage.
      */
     public function testPhoneHeroWarmLookupSkipsANonImageWithoutTouchingTheDisk()
     {
-        $obFile = $this->makeDiskForbiddenFile(10505, false, 821);
+        $obFile = $this->makeStoredFile(10505, 821, true, false);
 
         $this->assertSame('', OfferImageHelper::heroPhoneIfWarm($obFile));
+        $this->assertSame([], $obFile->arExistsAskList);
     }
 
     /**
      * A source shorter than the hero floor answers an empty string, so the
      * caller falls through to the 600px preview or the 96px circle it already
-     * renders instead of pointing at a 780x680 file nothing writes for it. Same
-     * throwing getDisk(): the branch answers before the lookup.
+     * renders instead of pointing at a 780x680 file nothing writes for it. The
+     * disk is asked about the source only, never about a derivative.
      */
     public function testPhoneHeroWarmLookupGivesUpOnASourceShorterThanTheHeroFloor()
     {
-        $obFile = $this->makeDiskForbiddenFile(10505, true, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
+        $obFile = $this->makeStoredFile(10505, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
 
         $this->assertSame('', OfferImageHelper::heroPhoneIfWarm($obFile));
+        $this->assertSame([self::SOURCE_DISK_PATH], $obFile->arExistsAskList);
     }
 
     /**
@@ -335,7 +288,7 @@ class OfferImageHelperTest extends TestCase
      */
     public function testPhoneHeroDoesNotUpscaleASourceShorterThanTheHeroFloor()
     {
-        $obFile = $this->makeSizeRecordingFile(10505, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
+        $obFile = $this->makeStoredFile(10505, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
 
         OfferImageHelper::heroPhone($obFile);
 
@@ -350,7 +303,7 @@ class OfferImageHelperTest extends TestCase
      */
     public function testPhoneHeroAsksForTheMeasuredBoxOnAFullSizeSource()
     {
-        $obFile = $this->makeSizeRecordingFile(10505, 821);
+        $obFile = $this->makeStoredFile(10505, 821);
 
         OfferImageHelper::heroPhone($obFile);
 
@@ -369,7 +322,7 @@ class OfferImageHelperTest extends TestCase
      */
     public function testPhoneHeroWarmLookupReturnsThePathOnceTheDerivativeExists()
     {
-        $obFile = $this->makeWarmFile(10505, 821);
+        $obFile = $this->makeStoredFile(10505, 821);
 
         $sUrl = OfferImageHelper::heroPhoneIfWarm($obFile);
 
@@ -377,12 +330,15 @@ class OfferImageHelperTest extends TestCase
             'http://localhost/storage/uploads/public/abc/def/ghi/thumb_10505_780_680_crop.webp',
             $sUrl
         );
-        $this->assertSame(['public/abc/def/ghi/thumb_10505_780_680_crop.webp'], $obFile->arExistsAskList);
+        $this->assertSame(
+            [self::SOURCE_DISK_PATH, 'public/abc/def/ghi/thumb_10505_780_680_crop.webp'],
+            $obFile->arExistsAskList
+        );
     }
 
     public function testHeroWarmLookupReturnsThePathOnceTheDerivativeExists()
     {
-        $obFile = $this->makeWarmFile(10505, 821);
+        $obFile = $this->makeStoredFile(10505, 821);
 
         $sUrl = OfferImageHelper::heroIfWarm($obFile);
 
@@ -390,7 +346,10 @@ class OfferImageHelperTest extends TestCase
             'http://localhost/storage/uploads/public/abc/def/ghi/thumb_10505_1000_821_auto.webp',
             $sUrl
         );
-        $this->assertSame(['public/abc/def/ghi/thumb_10505_1000_821_auto.webp'], $obFile->arExistsAskList);
+        $this->assertSame(
+            [self::SOURCE_DISK_PATH, 'public/abc/def/ghi/thumb_10505_1000_821_auto.webp'],
+            $obFile->arExistsAskList
+        );
     }
 
     /**
@@ -400,7 +359,7 @@ class OfferImageHelperTest extends TestCase
      */
     public function testHeroWarmLookupNamesTheSmallSourceDerivativeOnAShortSource()
     {
-        $obFile = $this->makeWarmFile(10505, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
+        $obFile = $this->makeStoredFile(10505, OfferImageHelper::HERO_MIN_SOURCE_HEIGHT - 1);
 
         $sUrl = OfferImageHelper::heroIfWarm($obFile);
 
@@ -408,7 +367,33 @@ class OfferImageHelperTest extends TestCase
             'http://localhost/storage/uploads/public/abc/def/ghi/thumb_10505_300_0_auto.webp',
             $sUrl
         );
-        $this->assertSame(['public/abc/def/ghi/thumb_10505_300_0_auto.webp'], $obFile->arExistsAskList);
+        $this->assertSame(
+            [self::SOURCE_DISK_PATH, 'public/abc/def/ghi/thumb_10505_300_0_auto.webp'],
+            $obFile->arExistsAskList
+        );
+    }
+
+    /**
+     * A source file missing from the disk must not reach the height accessor,
+     * whose getimagesize() call throws. The generating pair answers the source
+     * URL, as File::getThumb() does for a missing file, and the lookup pair gives
+     * up before it looks for a derivative.
+     */
+    public function testAMissingSourceFileIsServedWithoutReadingItsHeight()
+    {
+        foreach (['hero', 'heroPhone'] as $sMethod) {
+            $obFile = $this->makeStoredFile(10505, 821, false);
+
+            $this->assertSame(self::SOURCE_URL, OfferImageHelper::$sMethod($obFile), $sMethod);
+            $this->assertSame([], $obFile->arThumbRequestList, $sMethod.' must not resize a missing source');
+        }
+
+        foreach (['heroIfWarm', 'heroPhoneIfWarm'] as $sMethod) {
+            $obFile = $this->makeStoredFile(10505, 821, false);
+
+            $this->assertSame('', OfferImageHelper::$sMethod($obFile), $sMethod);
+            $this->assertSame([self::SOURCE_DISK_PATH], $obFile->arExistsAskList, $sMethod);
+        }
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace Logingrupa\StoreExtender\Classes\Helper;
 
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Lovata\Shopaholic\Classes\Item\OfferItem;
 
@@ -14,11 +15,29 @@ use Lovata\Shopaholic\Classes\Item\OfferItem;
  *
  * Read by ProductStructuredData for the Offer of the Product JSON-LD, and by
  * the theme head for the product:price metas through the Twig function
- * product_offer_price (Plugin::registerMarkupTags()), so the two figures
- * cannot disagree.
+ * product_offer_price (Plugin::registerMarkupTags(), resolveForTwig()), so the
+ * two figures cannot disagree.
  */
 class ProductOfferPrice
 {
+    /**
+     * resolve() for a template: an offer resolve() rejects prints no price
+     * metas, and the page around them still renders.
+     * @param OfferItem|null $obOffer offer the page resolved, null when none
+     * @return array|null resolve()'s answer, null when it rejects the offer
+     */
+    public static function resolveForTwig($obOffer): ?array
+    {
+        try {
+            return self::resolve($obOffer);
+        } catch (InvalidArgumentException $obException) {
+            // Twig render boundary: a price gap leaves the product:price metas out, the page still renders
+            Log::error('ProductOfferPrice: price metas left out: '.$obException->getMessage(), ['exception' => $obException]);
+
+            return null;
+        }
+    }
+
     /**
      * @param OfferItem|null $obOffer offer the page resolved, null when none
      * @return array|null ['amount' => '8.90', 'currency' => 'EUR'], null when nobody can buy the offer

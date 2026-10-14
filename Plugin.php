@@ -49,6 +49,7 @@ use Logingrupa\StoreExtender\Classes\Event\Import\PropertyImportGuardHandler;
 //Color Family property slug pinning
 use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
 use Logingrupa\StoreExtender\Classes\Event\Cache\SatelliteCacheInvalidationHandler;
+use Logingrupa\StoreExtender\Classes\Event\Queue\RequestMapResetHandler;
 use Logingrupa\StoreExtender\Classes\Event\Image\WarmDerivativesOnAttach;
 use Logingrupa\StoreExtender\Classes\Queue\WarmImageDerivatives;
 use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
@@ -226,6 +227,7 @@ class Plugin extends PluginBase
         ShopaholicExtensionRegistrar::extendItemEagerLoading();
         ShopaholicExtensionRegistrar::extendCategoryChildrenMapReset();
         ShopaholicExtensionRegistrar::extendProductOfferMapReset();
+        Event::subscribe(RequestMapResetHandler::class);
         ShopaholicExtensionRegistrar::extendXMLImporter();
         ShopaholicExtensionRegistrar::extendShopaholicOrderModel();
         Event::subscribe(ExtendPaymentGateway::class);
@@ -569,9 +571,10 @@ class Plugin extends PluginBase
                 // schema.org Product JSON for the product page: offers only
                 // when a sellable offer exists, ratings only from real reviews
                 'product_json_ld' => [ProductStructuredData::class, 'render'],
-                // Amount and currency of an offer a shopper can buy, null when
-                // none: the head metas read what the JSON-LD Offer reads
-                'product_offer_price' => [ProductOfferPrice::class, 'resolve'],
+                // Amount and currency of an offer a shopper can buy, null when none
+                // or when the offer has a content gap (logged): the head metas read
+                // what the JSON-LD Offer reads
+                'product_offer_price' => [ProductOfferPrice::class, 'resolveForTwig'],
                 // schema.org BreadcrumbList JSON for the product page: Home
                 // first, then the crumbs the page built, root category to product
                 'breadcrumb_json_ld' => [BreadcrumbStructuredData::class, 'render'],

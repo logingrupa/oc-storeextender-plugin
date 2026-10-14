@@ -73,8 +73,19 @@ class ImageWarmerTest extends StoreExtenderPluginTestCase
 
                 return '/thumb/'.$this->id;
             }
+
+            public function getDisk()
+            {
+                return new class {
+                    public function exists(string $sPath): bool
+                    {
+                        return true;
+                    }
+                };
+            }
         };
         $obFile->id = $iId;
+        $obFile->disk_name = 'abcdefghij.jpg';
         $obFile->iFakeHeight = $iSourceHeight;
         $obFile->file_name = 'picture-'.$iId.'.jpg';
         $obFile->file_size = 1000 + $iId;

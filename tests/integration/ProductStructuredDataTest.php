@@ -179,11 +179,20 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
         $this->assertFalse(ProductStructuredData::isValidGs1Code('400000000008'), 'UPC-A prefix 4 is GTIN-13 prefix 040');
         $this->assertFalse(ProductStructuredData::isValidGs1Code('0400000000008'), 'EAN-13 prefix 040');
         $this->assertTrue(ProductStructuredData::isValidGs1Code('4751039484144'), 'a real EAN-13 still passes');
+        // GS1-8 prefixes 0 and 2 are RCN-8; both codes carry a valid check digit
+        $this->assertFalse(ProductStructuredData::isValidGs1Code('20000004'), 'EAN-8 prefix 2');
+        $this->assertFalse(ProductStructuredData::isValidGs1Code('01234565'), 'EAN-8 prefix 0');
+        $this->assertTrue(ProductStructuredData::isValidGs1Code('96385074'), 'a real EAN-8 still passes');
 
         $obProduct = $this->makeProduct(['id' => 555, 'name' => 'Putekļu nosūcējs', 'code' => '2100000000821']);
         $arData = ProductStructuredData::build($obProduct, null, false, [], self::PAGE_URL, self::SELLER);
         $this->assertSame('2100000000821', $arData['mpn']);
         $this->assertArrayNotHasKey('gtin13', $arData);
+
+        $obRcn8Product = $this->makeProduct(['id' => 556, 'name' => 'Vīle', 'code' => '20000004']);
+        $arRcn8Data = ProductStructuredData::build($obRcn8Product, null, false, [], self::PAGE_URL, self::SELLER);
+        $this->assertSame('20000004', $arRcn8Data['mpn']);
+        $this->assertArrayNotHasKey('gtin8', $arRcn8Data);
     }
 
     public function testImagesAreOfferFirstUniqueAndCapped()
@@ -229,7 +238,7 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
         ]);
 
         $arData = ProductStructuredData::build($obProduct, null, false, [], self::PAGE_URL, self::SELLER);
-        $this->assertSame('Bezskābes praimeris & gels Otrs teikums. Trešais alert(1)', $arData['description']);
+        $this->assertSame('Bezskābes praimeris & gels Otrs teikums. Trešais', $arData['description']);
 
         $sJson = ProductStructuredData::render($obProduct, null, false, [], self::PAGE_URL, self::SELLER);
         $this->assertStringNotContainsString('</', $sJson);

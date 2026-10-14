@@ -23,10 +23,11 @@ use Lovata\Toolbox\Classes\Item\ElementItem;
  *   - reviewBody is the comment as plain text, left out when no text remains
  *   - a numeric offer code with a valid GS1 check digit is a gtin, anything
  *     else non-empty is an mpn
- *   - name follows the same rule as the visible h3: the shade name only when
- *     the visitor chose a shade (OfferRenderContext::bOfferSelected)
+ *   - name is the shade name only when the page names that shade: the caller
+ *     passes its visible title's rule as bOfferSelected
  *
- * Twig, registered in Plugin::registerMarkupTags() as product_json_ld.
+ * Twig, registered in Plugin::registerMarkupTags() as product_json_ld; input
+ * build() rejects prints an empty block there.
  */
 class ProductStructuredData
 {
@@ -38,14 +39,17 @@ class ProductStructuredData
     // GS1 prefixes (first three digits of the 13-digit form) reserved for
     // restricted circulation: 020-029, 040-049, 200-299
     const RESTRICTED_GS1_PREFIX_PATTERNS = ['/^02\d$/', '/^04\d$/', '/^2\d\d$/'];
+    // GS1-8 prefixes (first digit of an 8-digit code) reserved for
+    // restricted circulation, RCN-8
+    const RESTRICTED_GS1_8_PREFIX_LIST = ['0', '2'];
 
     /**
      * @param ElementItem    $obProduct    product (or collection) the page describes
      * @param OfferItem|null $obOffer      offer the page resolved, null when none
-     * @param bool           $bOfferSelected the visitor chose this shade (URL segment)
+     * @param bool           $bOfferSelected the page names this shade in its visible title
      * @param iterable       $obReviewList active reviews of the product
      * @param string         $sPageUrl     canonical URL of the render
-     * @param string         $sSellerName  theme company name
+     * @param string|null    $sSellerName  theme company name, null when the theme has none
      * @return string JSON, safe to inline inside a script element
      */
     public static function render(
@@ -54,11 +58,13 @@ class ProductStructuredData
         bool $bOfferSelected,
         iterable $obReviewList,
         string $sPageUrl,
-        string $sSellerName
+        ?string $sSellerName
     ): string {
-        $arData = self::build($obProduct, $obOffer, $bOfferSelected, $obReviewList, $sPageUrl, $sSellerName);
-
-        return json_encode($arData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_THROW_ON_ERROR);
+        return JsonLdScript::encode(
+            fn () => self::build($obProduct, $obOffer, $bOfferSelected, $obReviewList, $sPageUrl, (string) $sSellerName),
+            'Product',
+            ['product_id' => $obProduct->id, 'page_url' => $sPageUrl]
+        );
     }
 
     /**
@@ -280,12 +286,8 @@ class ProductStructuredData
         if (!ctype_digit($sCode) || !isset(self::GTIN_PROPERTY_BY_LENGTH[strlen($sCode)])) {
             return false;
         }
-
-        $sPrefix = substr(str_pad($sCode, 14, '0', STR_PAD_LEFT), 1, 3);
-        foreach (self::RESTRICTED_GS1_PREFIX_PATTERNS as $sPattern) {
-            if (preg_match($sPattern, $sPrefix)) {
-                return false;
-            }
+        if (self::isRestrictedCirculation($sCode)) {
+            return false;
         }
 
         $arDigitList = array_map('intval', str_split($sCode));
@@ -298,6 +300,28 @@ class ProductStructuredData
         }
 
         return (10 - ($iSum % 10)) % 10 === $iCheckDigit;
+    }
+
+    /**
+     * An 8-digit code carries its own GS1-8 prefix; every longer one is read
+     * by the GS1 prefix of its 13-digit form.
+     * @param string $sCode digits of a known GTIN length
+     * @return bool
+     */
+    protected static function isRestrictedCirculation(string $sCode): bool
+    {
+        if (strlen($sCode) === 8) {
+            return in_array($sCode[0], self::RESTRICTED_GS1_8_PREFIX_LIST, true);
+        }
+
+        $sPrefix = substr(str_pad($sCode, 14, '0', STR_PAD_LEFT), 1, 3);
+        foreach (self::RESTRICTED_GS1_PREFIX_PATTERNS as $sPattern) {
+            if (preg_match($sPattern, $sPrefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -52,8 +52,19 @@ class WarmImageDerivativesJobTest extends TestCase
 
                 return '/thumb/'.$this->id;
             }
+
+            public function getDisk()
+            {
+                return new class {
+                    public function exists(string $sPath): bool
+                    {
+                        return true;
+                    }
+                };
+            }
         };
         $obFile->id = 10505;
+        $obFile->disk_name = 'abcdefghij.jpg';
         $obFile->attachment_type = $sAttachmentType;
         $obFile->attachment_id = $iAttachmentId;
         $obFile->field = $sField;

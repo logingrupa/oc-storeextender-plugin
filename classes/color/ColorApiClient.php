@@ -16,15 +16,15 @@ use Illuminate\Support\Facades\Log;
  *
  * Host comes from services.color_lab.host app config (COLOR_LAB_API_HOST
  * env behind it - read via config so a cached production config still
- * resolves it; runtime env() is empty once config:cache has run).
- * Defaults to the local dev host. Grouping is done by OfferColorGrouper.
+ * resolves it; runtime env() is empty once config:cache has run). There is
+ * no default host; SyncOfferColors refuses to run without one. Grouping is
+ * done by OfferColorGrouper.
  *
  * @package Logingrupa\StoreExtender\Classes\Color
  */
 class ColorApiClient
 {
     const API_PATH = '/api/color-lab/offers.json';
-    const DEFAULT_API_HOST = 'https://nailolab.test';
 
     const CACHE_TTL_SECONDS = 3600;
     const CACHE_TTL_ERROR_SECONDS = 300;
@@ -159,11 +159,11 @@ class ColorApiClient
      * name the environment it just questioned without re-reading the config
      * itself and drifting from what the request actually used.
      *
-     * @return string
+     * @return string empty when COLOR_LAB_API_HOST is not set
      */
     public function getHost(): string
     {
-        return rtrim((string) Config::get('services.color_lab.host', self::DEFAULT_API_HOST), '/');
+        return rtrim((string) Config::get('services.color_lab.host'), '/');
     }
 
     /**
