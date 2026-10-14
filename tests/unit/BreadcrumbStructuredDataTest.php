@@ -7,7 +7,7 @@ use PHPUnit\Framework\TestCase;
 use Logingrupa\StoreExtender\Classes\Helper\BreadcrumbStructuredData;
 
 /**
- * The schema.org BreadcrumbList block of the phone product page (/p2).
+ * The schema.org BreadcrumbList block of the phone product page (/p).
  *
  * The legacy microdata partial numbered Home and the first crumb both as
  * position 1. The JSON-LD builder numbers Home 1 and every crumb after it,
@@ -39,7 +39,7 @@ class BreadcrumbStructuredDataTest extends TestCase
     {
         return [
             ['title' => 'Gel polish', 'url' => 'https://nc.test/lv/c/gel'],
-            ['title' => 'Gellaka 12ml', 'url' => 'https://nc.test/lv/p2/x/'],
+            ['title' => 'Gellaka 12ml', 'url' => 'https://nc.test/lv/p/x/'],
         ];
     }
 
@@ -59,7 +59,7 @@ class BreadcrumbStructuredDataTest extends TestCase
         $this->assertSame('Gel polish', $arData['itemListElement'][1]['name']);
         $this->assertSame('https://nc.test/lv/c/gel', $arData['itemListElement'][1]['item']);
         $this->assertSame('Gellaka 12ml', $arData['itemListElement'][2]['name']);
-        $this->assertSame('https://nc.test/lv/p2/x/', $arData['itemListElement'][2]['item']);
+        $this->assertSame('https://nc.test/lv/p/x/', $arData['itemListElement'][2]['item']);
     }
 
     public function testRenderEscapesAScriptBreakOutInACrumbName(): void
@@ -127,7 +127,7 @@ class BreadcrumbStructuredDataTest extends TestCase
     public function testARelativeUrlThrowsNamingTheIndex(): void
     {
         $arCrumbList = $this->twoCrumbs();
-        $arCrumbList[1]['url'] = '/lv/p2/x/';
+        $arCrumbList[1]['url'] = '/lv/p/x/';
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('crumb 1');

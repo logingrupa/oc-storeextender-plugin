@@ -71,7 +71,8 @@ class OfferImageHelper
     const HERO_SMALL_WIDTH = 300;
 
     /**
-     * Phone hero slide on /p2, cropped to the box a 390px phone measures.
+     * Phone hero slide on the product page, cropped to the box a 390px phone
+     * measures.
      *
      * The box is `width: 100vw; height: min(calc(100vw - 50px), 340px);
      * object-fit: cover` in _pdp-hero.scss, which resolves to 390x340 CSS px on
@@ -189,7 +190,7 @@ class OfferImageHelper
     }
 
     /**
-     * Cropped picture for the /p2 phone hero slide. May resize inside the
+     * Cropped picture for the phone hero slide. May resize inside the
      * request, so only the eager slides call it: the opened slide and one
      * neighbour on each side, three pictures per page at most.
      *

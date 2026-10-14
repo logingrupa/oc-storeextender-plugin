@@ -1228,11 +1228,12 @@ class OfferSheet extends ComponentBase
 
     /**
      * Everything that makes the SAME markup render differently for another
-     * visitor or another release: the cache epoch, site, locale, currency,
-     * price type and the color data version behind the grouping. ONE list,
-     * shared by the server cache key and the client cache epoch token, so the
-     * two stores can never disagree about what is reusable. A new render
-     * dimension goes in this list, nowhere else.
+     * visitor, another page or layout, or another release: the cache epoch,
+     * site, locale, currency, price type, the color data version behind the
+     * grouping, the page id and the rendered layout name. ONE list, shared by
+     * the server cache key and the client cache epoch token, so the two stores
+     * can never disagree about what is reusable. A new render dimension goes
+     * in this list, nowhere else.
      *
      * @return string[]
      */
@@ -1248,9 +1249,33 @@ class OfferSheet extends ComponentBase
             (string) CurrencyHelper::instance()->getActiveCurrencyCode(),
             (string) (PriceTypeHelper::instance()->getActivePriceTypeCode() ?: 'base'),
             $sColorVersion !== '' ? $sColorVersion : 'plain',
-            // Rendered offer URLs are page-relative from this phase on
+            // Rendered offer URLs are page-relative
             (string) ($this->page ? $this->page->id : 'nopage'),
+            // One page id serves two layouts on the product page, and the
+            // cached markup differs between them: offers-sheet-rows.htm draws
+            // the row "+" only off the lean layout, offer-swatches-strip.htm
+            // emits data-hero-src only on it. Without this part a desktop
+            // render reaches a phone and back. Read from the controller, not
+            // from $this->page->layout - a component's page property is the
+            // code object, whose layout is the loaded Layout, and casting
+            // that to string folds the whole layout markup into the key.
+            $this->getRenderedLayoutName(),
         ];
+    }
+
+    /**
+     * Base file name of the layout this render went through, e.g. shop-lean.
+     *
+     * @return string the layout name, or 'nolayout' before the controller has one
+     */
+    protected function getRenderedLayoutName(): string
+    {
+        $obLayout = $this->controller ? $this->controller->getLayout() : null;
+        if ($obLayout === null) {
+            return 'nolayout';
+        }
+
+        return (string) $obLayout->getBaseFileName();
     }
 
     /**

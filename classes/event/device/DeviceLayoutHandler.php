@@ -13,10 +13,8 @@ use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
  * Controller.php:323 and Layout::loadCached() runs at :326, both long after
  * cms.page.beforeDisplay fires at :205.
  *
- * The guard order is what keeps this branch dark. While no page named
- * product2 exists in the theme, the page-name guard returns on every request,
- * so DeviceHint is never consulted and no device header is emitted anywhere
- * on the shop.
+ * The page-name guard runs first, so DeviceHint is consulted on the product
+ * page alone and no device header is emitted anywhere else on the shop.
  *
  * The listener also fires on the Larajax partial-capture path, which is
  * required rather than incidental: Controller::run() resolves $page
@@ -32,10 +30,9 @@ use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
 class DeviceLayoutHandler
 {
     /**
-     * Base file name of the page that carries the phone layout. Phase 7's
-     * flip is one edit here: 'product2' becomes 'product'.
+     * Base file name of the page that carries the phone layout.
      */
-    const MOBILE_PAGE_NAME = 'product2';
+    const MOBILE_PAGE_NAME = 'product';
 
     /** Layout the phone page loads with. This value never changes. */
     const LEAN_LAYOUT_NAME = 'shop-lean';
@@ -59,7 +56,7 @@ class DeviceLayoutHandler
             }
             // Match on the base name: CmsObject.php:251 strips the ".htm"
             // extension, the raw name at :242 keeps it, so matching the raw
-            // name against 'product2' could never be true.
+            // name against MOBILE_PAGE_NAME could never be true.
             if ($obPage->getBaseFileName() !== self::MOBILE_PAGE_NAME) {
                 return;
             }

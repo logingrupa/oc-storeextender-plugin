@@ -36,7 +36,7 @@ class DeviceVaryHeaderTest extends TestCase
      */
     protected function runMiddleware(DeviceVaryHeader $obMiddleware, bool $bSeedExistingVary, ?string $sSeedCacheControl = null): Response
     {
-        $obRequest = Request::create('/lv/p2/some-slug/6405');
+        $obRequest = Request::create('/lv/p/some-slug/6405');
 
         return $obMiddleware->handle($obRequest, function () use ($bSeedExistingVary, $sSeedCacheControl) {
             $obResponse = new Response('ok');
@@ -124,7 +124,7 @@ class DeviceVaryHeaderTest extends TestCase
         $obNextResponse = new Response('ok');
 
         $obReturned = (new ConsultedDeviceVaryHeaderStub())->handle(
-            Request::create('/lv/p2/some-slug/6405'),
+            Request::create('/lv/p/some-slug/6405'),
             function () use ($obNextResponse) {
                 return $obNextResponse;
             }

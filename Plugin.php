@@ -327,7 +327,7 @@ class Plugin extends PluginBase
         ExtendCurrencyConversion::swapCurrencyHelper();
         PrimeCategoryTreeHandler::primeOnPageDisplay();
 
-        //Phone layout branch for the product page - no-ops until a page named product2 exists
+        //Phone layout branch: the product page loads the lean layout on a phone
         DeviceLayoutHandler::switchLayoutOnPageDisplay();
 
         //Extend currency form to allow more decimal places in rate field
@@ -555,8 +555,8 @@ class Plugin extends PluginBase
                 // exists: a template that renders hundreds of labels may not
                 // pay a resize per picture
                 'offer_hero_warm_src' => [OfferImageHelper::class, 'heroIfWarm'],
-                // The phone hero crop, 780x680: the three eager /p2 slides ask
-                // for this one and may pay a resize for it
+                // The phone hero crop, 780x680: the three eager phone hero
+                // slides ask for this one and may pay a resize for it
                 'offer_hero_phone_src' => [OfferImageHelper::class, 'heroPhone'],
                 // The same phone URL as a lookup only, for the label list: the
                 // rest window can render 218 rows and may not pay a resize per
@@ -576,7 +576,8 @@ class Plugin extends PluginBase
                 // first, then the crumbs the page built, root category to product
                 'breadcrumb_json_ld' => [BreadcrumbStructuredData::class, 'render'],
                 // The layout's SeoToolbox reading the page params of a named page
-                // code: /p2 renders the product page's row until the Phase 7 rename
+                // code: both product pages read the 'product' row, the only one
+                // MightySeo holds for them
                 'seo_toolbox_for_page' => [SeoToolboxPageBinder::class, 'bind'],
                 // Cross-domain hreflang: does the other shop list this URL
                 // in its sitemap; fails closed when the sitemap is unreadable

@@ -12,7 +12,7 @@ use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
 
 /**
  * The device branch decides one thing on the real cms.page.beforeDisplay
- * seam: a page whose base file name is product2 loads the lean layout on a
+ * seam: a page whose base file name is product loads the lean layout on a
  * phone, and nothing else on the shop changes.
  *
  * Every fire is asserted to return null. Controller.php:205-212 returns any
@@ -92,9 +92,9 @@ class DeviceLayoutHandlerTest extends StoreExtenderPluginTestCase
 
     public function testFireOnAForeignPageNameLeavesTheLayoutAlone()
     {
-        $obPage = $this->makePage('product.htm', 'shop');
+        $obPage = $this->makePage('product-legacy.htm', 'shop');
 
-        $this->assertNull($this->fireBeforeDisplay('/lv/p/some-slug/6405', $obPage));
+        $this->assertNull($this->fireBeforeDisplay('/lv/p-legacy/some-slug/6405', $obPage));
         $this->assertSame('shop', $obPage->layout);
         $this->assertFalse(DeviceHint::wasConsulted());
     }
@@ -127,20 +127,20 @@ class DeviceLayoutHandlerTest extends StoreExtenderPluginTestCase
 
         $this->assertFalse(DeviceHint::wasConsulted());
 
-        $obForeignPage = $this->makePage('product.htm', 'shop');
-        $this->assertNull($this->fireBeforeDisplay('/lv/p/some-slug/6405', $obForeignPage));
+        $obForeignPage = $this->makePage('product-legacy.htm', 'shop');
+        $this->assertNull($this->fireBeforeDisplay('/lv/p-legacy/some-slug/6405', $obForeignPage));
         $this->assertSame('shop', $obForeignPage->layout);
         $this->assertFalse(DeviceHint::wasConsulted());
 
-        $obMobilePage = $this->makePage('product2.htm', 'shop');
-        $this->assertNull($this->fireBeforeDisplay('/lv/p2/some-slug/6405', $obMobilePage));
+        $obMobilePage = $this->makePage('product.htm', 'shop');
+        $this->assertNull($this->fireBeforeDisplay('/lv/p/some-slug/6405', $obMobilePage));
         $this->assertSame('shop-lean', $obMobilePage->layout);
         $this->assertTrue(DeviceHint::wasConsulted());
 
         request()->headers->set('User-Agent', self::UA_DESKTOP_CHROME);
 
-        $obSecondMobilePage = $this->makePage('product2.htm', 'shop');
-        $this->assertNull($this->fireBeforeDisplay('/lv/p2/other-slug/6406', $obSecondMobilePage));
+        $obSecondMobilePage = $this->makePage('product.htm', 'shop');
+        $this->assertNull($this->fireBeforeDisplay('/lv/p/other-slug/6406', $obSecondMobilePage));
         $this->assertSame('shop-lean', $obSecondMobilePage->layout);
     }
 }

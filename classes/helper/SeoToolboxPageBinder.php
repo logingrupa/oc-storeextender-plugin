@@ -8,9 +8,11 @@ use Lovata\MightySeo\Classes\Item\SeoParamItem;
 use Lovata\MightySeo\Components\SeoToolbox;
 
 /**
- * MightySeo reads page-level SEO params by the CMS page file name. /p2 is the
- * file product2 until the Phase 7 rename, so its head renders the product
- * page's params through the layout's SeoToolbox instead of finding no row.
+ * MightySeo keys page-level SEO params by the CMS page file name, and the only
+ * product row it holds is the one for page code product. Both product pages
+ * bind that row through the layout's SeoToolbox: product.htm for both of its
+ * head branches, and product-legacy.htm, which has no row of its own and
+ * serves an empty title without the bind.
  * Twig, registered in Plugin::registerMarkupTags() as seo_toolbox_for_page.
  */
 class SeoToolboxPageBinder

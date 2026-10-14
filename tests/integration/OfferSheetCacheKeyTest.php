@@ -14,11 +14,11 @@ use Lovata\Shopaholic\Classes\Item\ProductItem;
  * next request may reuse.
  *
  * The page joined that list when offer URLs became page-relative: a sheet row
- * or a swatch rendered under /p carries a /p link and one rendered under /p2
- * carries a /p2 link, so the two may never share an entry. buildCacheKey (the
- * server file cache) and getClientCacheEpochToken (the visitor's localStorage)
- * both read the ONE list, which is what keeps the two stores from disagreeing
- * about what is reusable.
+ * or a swatch rendered under /p carries a /p link and one rendered under
+ * /p-legacy carries a /p-legacy link, so the two may never share an entry.
+ * buildCacheKey (the server file cache) and getClientCacheEpochToken (the
+ * visitor's localStorage) both read the ONE list, which is what keeps the two
+ * stores from disagreeing about what is reusable.
  *
  * Integration, not unit: getRenderContextKeyParts() reads the site, the locale,
  * the active currency, the active price type and the colour data version, and
@@ -44,6 +44,15 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
 
     /** @var string What a render outside any page keys itself as */
     const NO_PAGE_SENTINEL = 'nopage';
+
+    /** Layout the controller stub reports unless a test names another */
+    const DEFAULT_LAYOUT_NAME = 'shop';
+
+    /** Layout DeviceLayoutHandler hands the product page on a phone */
+    const LEAN_LAYOUT_NAME = 'shop-lean';
+
+    /** Answer when the controller has no layout yet */
+    const NO_LAYOUT_SENTINEL = 'nolayout';
 
     /** @var string What the controller stub renders in place of the strip partial */
     const RENDER_MARKER = '<!-- strip -->';
@@ -105,6 +114,23 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      * Stand a page in front of the component. Only the id is read, so a bare
      * object carrying one is the whole fixture.
      */
+    /**
+     * Name the layout the controller stub reports for this render.
+     *
+     * @param string $sLayoutName base file name, e.g. shop-lean
+     * @return void
+     */
+    protected function setLayoutName(string $sLayoutName): void
+    {
+        // A key-only test has no reason to stand up a controller of its own,
+        // and the layout is read off one.
+        if ($this->obControllerStub === null) {
+            $this->setControllerStub();
+        }
+
+        $this->obControllerStub->sLayoutName = $sLayoutName;
+    }
+
     protected function setPageId(?string $sPageId): void
     {
         $obProperty = $this->obReflection->getProperty('page');
@@ -123,9 +149,10 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
     }
 
     /**
-     * Stand a controller in front of the component. Only renderPartial is
-     * called, and what it returns is opaque to the caching decision, so a
-     * marker string is the whole fixture. Each call is kept as [partial, data].
+     * Stand a controller in front of the component. renderPartial's return is
+     * opaque to the caching decision, so a marker string is the whole fixture;
+     * getLayout answers the render context's layout part. Each render call is
+     * kept as [partial, data].
      */
     protected function setControllerStub(): void
     {
@@ -133,11 +160,31 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
             /** @var array<int, array{0: string, 1: array}> */
             public array $arRenderList = [];
 
+            /** @var string base file name getLayout's object answers with */
+            public string $sLayoutName = OfferSheetCacheKeyTest::DEFAULT_LAYOUT_NAME;
+
             public function renderPartial(string $sPartial, array $arData = []): string
             {
                 $this->arRenderList[] = [$sPartial, $arData];
 
                 return OfferSheetCacheKeyTest::RENDER_MARKER;
+            }
+
+            public function getLayout(): object
+            {
+                return new class ($this->sLayoutName) {
+                    private string $sLayoutName;
+
+                    public function __construct(string $sLayoutName)
+                    {
+                        $this->sLayoutName = $sLayoutName;
+                    }
+
+                    public function getBaseFileName(): string
+                    {
+                        return $this->sLayoutName;
+                    }
+                };
             }
         };
         $obProperty = $this->obReflection->getProperty('controller');
@@ -167,7 +214,7 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      */
     public function testAFamilyStripRendersTheFamilyItIsCachedUnder()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
         $this->setControllerStub();
         $obProductItem = ProductItem::make(0);
 
@@ -194,7 +241,7 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      */
     public function testTheHeadStripRendersWithAnExplicitlyEmptyFamily()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
         $this->setControllerStub();
         $obProductItem = ProductItem::make(0);
 
@@ -219,7 +266,7 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      */
     public function testAStripWithSoldOutShadesHiddenIsNeverCached()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
         $this->setControllerStub();
         $obProductItem = ProductItem::make(0);
 
@@ -242,7 +289,7 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      */
     public function testAnUnfilteredStripIsStillCachedUnderTheSameKey()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
         $this->setControllerStub();
         $obProductItem = ProductItem::make(0);
 
@@ -264,7 +311,7 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      */
     public function testAWindowWithSoldOutShadesHiddenIsNeverCached()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
         $this->setControllerStub();
         $obProductItem = ProductItem::make(0);
         $arWindowData = [
@@ -286,29 +333,70 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
         $this->assertEmpty(CCache::get([OfferSheet::CACHE_TAG_SHEET], $sCacheKey));
     }
 
-    public function testThePageIsTheLastRenderContextDimension()
+    public function testThePageAndTheLayoutAreTheLastTwoRenderContextDimensions()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
+        $this->setLayoutName(self::LEAN_LAYOUT_NAME);
 
         $arPartList = $this->callProtected('getRenderContextKeyParts', []);
 
         $this->assertGreaterThan(self::PRE_EXISTING_DIMENSION_COUNT, count($arPartList));
-        $this->assertSame('product2', $arPartList[count($arPartList) - 1]);
+        $this->assertSame('product', $arPartList[count($arPartList) - 2]);
+        $this->assertSame(self::LEAN_LAYOUT_NAME, $arPartList[count($arPartList) - 1]);
     }
 
     public function testTwoPagesKeyTheServerCacheDifferently()
     {
         $arCallerPartList = ['hr.strip', 397, 'head', 0];
+        $this->setLayoutName(self::DEFAULT_LAYOUT_NAME);
 
         $this->setPageId('product');
         $sProductKey = $this->callProtected('buildCacheKey', [$arCallerPartList]);
 
-        $this->setPageId('product2');
-        $sProduct2Key = $this->callProtected('buildCacheKey', [$arCallerPartList]);
+        $this->setPageId('product-legacy');
+        $sLegacyKey = $this->callProtected('buildCacheKey', [$arCallerPartList]);
 
-        $this->assertNotSame($sProductKey, $sProduct2Key);
-        $this->assertStringEndsWith('.product', $sProductKey);
-        $this->assertStringEndsWith('.product2', $sProduct2Key);
+        $this->assertNotSame($sProductKey, $sLegacyKey);
+        $this->assertStringEndsWith('.product.'.self::DEFAULT_LAYOUT_NAME, $sProductKey);
+        $this->assertStringEndsWith('.product-legacy.'.self::DEFAULT_LAYOUT_NAME, $sLegacyKey);
+    }
+
+    /**
+     * One page id serves both device branches of the product page, and the
+     * markup differs between them: the sheet row "+" and the swatch strip's
+     * data-hero-src are gated on the lean layout. Without the layout in the
+     * key a desktop render is served to a phone and back.
+     */
+    public function testTwoLayoutsOnOnePageKeyTheServerCacheDifferently()
+    {
+        $arCallerPartList = ['hr.strip', 397, 'head', 0];
+        $this->setPageId('product');
+
+        $this->setLayoutName(self::DEFAULT_LAYOUT_NAME);
+        $sDesktopKey = $this->callProtected('buildCacheKey', [$arCallerPartList]);
+
+        $this->setLayoutName(self::LEAN_LAYOUT_NAME);
+        $sPhoneKey = $this->callProtected('buildCacheKey', [$arCallerPartList]);
+
+        $this->assertNotSame($sDesktopKey, $sPhoneKey);
+        $this->assertStringEndsWith('.product.'.self::DEFAULT_LAYOUT_NAME, $sDesktopKey);
+        $this->assertStringEndsWith('.product.'.self::LEAN_LAYOUT_NAME, $sPhoneKey);
+    }
+
+    /**
+     * An absent layout is a value of its own, for the same reason an absent
+     * page is: an empty part would collapse into the separator.
+     */
+    public function testARenderWithNoControllerTakesTheLayoutSentinel()
+    {
+        $this->setPageId('product');
+        $obProperty = $this->obReflection->getProperty('controller');
+        $obProperty->setAccessible(true);
+        $obProperty->setValue($this->obComponent, null);
+
+        $arPartList = $this->callProtected('getRenderContextKeyParts', []);
+
+        $this->assertSame(self::NO_LAYOUT_SENTINEL, $arPartList[count($arPartList) - 1]);
     }
 
     /**
@@ -318,7 +406,7 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      */
     public function testARestWindowKeysApartFromATwelveShadeWindow()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
 
         $sPageKey = $this->callProtected('buildCacheKey', [['hr.window', 366, 4151, 0, 0]]);
         $sRestKey = $this->callProtected('buildCacheKey', [['hr.window', 366, 4151, 0, 1]]);
@@ -331,10 +419,10 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
         $this->setPageId('product');
         $sProductToken = $this->callProtected('getClientCacheEpochToken', []);
 
-        $this->setPageId('product2');
-        $sProduct2Token = $this->callProtected('getClientCacheEpochToken', []);
+        $this->setPageId('product-legacy');
+        $sLegacyToken = $this->callProtected('getClientCacheEpochToken', []);
 
-        $this->assertNotSame($sProductToken, $sProduct2Token);
+        $this->assertNotSame($sProductToken, $sLegacyToken);
     }
 
     /**
@@ -348,8 +436,8 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
 
         $arPartList = $this->callProtected('getRenderContextKeyParts', []);
 
-        $this->assertSame(self::NO_PAGE_SENTINEL, $arPartList[count($arPartList) - 1]);
-        $this->assertNotSame('', $arPartList[count($arPartList) - 1]);
+        $this->assertSame(self::NO_PAGE_SENTINEL, $arPartList[count($arPartList) - 2]);
+        $this->assertNotSame('', $arPartList[count($arPartList) - 2]);
     }
 
     /**
@@ -358,7 +446,7 @@ class OfferSheetCacheKeyTest extends StoreExtenderPluginTestCase
      */
     public function testTheServerKeyAndTheClientTokenShareTheSameDimensions()
     {
-        $this->setPageId('product2');
+        $this->setPageId('product');
 
         $sToken = $this->callProtected('getClientCacheEpochToken', []);
         $sKey = $this->callProtected('buildCacheKey', [['hr.sheet', 397, 0]]);

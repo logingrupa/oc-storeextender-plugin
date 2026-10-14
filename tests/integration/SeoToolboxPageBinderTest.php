@@ -12,7 +12,7 @@ use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
  * SeoToolboxPageBinder against the real MightySeo component and item chain.
  *
  * MightySeo keys page-level SEO params by the CMS page file name, so a
- * SeoToolbox running on product2 finds no row and prints an empty meta
+ * SeoToolbox pointed at a page code with no params row prints an empty meta
  * description for every product without its own override. The binder
  * points the component at the params of a named page code and leaves every
  * getter to the upstream code.
@@ -30,6 +30,13 @@ class SeoToolboxPageBinderTest extends StoreExtenderPluginTestCase
     const PAGE_CODE = 'product';
     const META_DESCRIPTION = 'Nagu laka apraksts';
     const OG_TITLE = 'OG virsraksts';
+
+    /**
+     * A code no CMS page can ever claim: October takes a page file name of
+     * letters, digits, underscores, hyphens, dots and slashes only, so the
+     * params table can never hold a row for this one.
+     */
+    const UNCLAIMABLE_PAGE_CODE = 'no-such-page#never';
 
     public function setUp(): void
     {
@@ -72,9 +79,9 @@ class SeoToolboxPageBinderTest extends StoreExtenderPluginTestCase
         $this->assertSame(self::META_DESCRIPTION, $obComponent->getOGDescription(), 'og_description is empty, so the upstream getter falls back to the meta description');
     }
 
-    public function testAnUnknownPageCodeAnswersNoDescription()
+    public function testAPageCodeWithNoParamsRowAnswersNoDescription()
     {
-        $obComponent = SeoToolboxPageBinder::bind(new SeoToolbox(), 'product2', null, []);
+        $obComponent = SeoToolboxPageBinder::bind(new SeoToolbox(), self::UNCLAIMABLE_PAGE_CODE, null, []);
 
         $this->assertSame('', (string) $obComponent->get('seo_description'));
     }
