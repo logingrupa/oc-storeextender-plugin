@@ -291,3 +291,6 @@
 
 2.0.100:
   - 'The phone rail rest request answers with the whole shade list, so a page opened on a shade also loads the shades before it. Card lists prime their offers and labels in one batch (prime_cards), a product build loads none of its offers, and an offer save drops the offer map. A family strip renders the family it is cached under.'
+
+2.0.101:
+  - 'Phones get the lean layout on /p instead of /p2, and the OfferSheet render cache keys on the layout, so phone and desktop /p never share cached markup. New Twig functions is_phone() and offer_picture(). A data gap in a JSON-LD block logs and prints {} instead of a 500, and a missing upload file no longer breaks the hero image.'
