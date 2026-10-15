@@ -102,6 +102,7 @@ use Logingrupa\StoreExtender\Classes\Helper\ProductCardLabelPrimer;
 use Logingrupa\StoreExtender\Classes\Helper\ProductCardOfferPrimer;
 use Logingrupa\StoreExtender\Classes\Helper\ProductOfferPrice;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
+use Logingrupa\StoreExtender\Classes\Helper\SeoMetaText;
 use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
@@ -539,6 +540,8 @@ class Plugin extends PluginBase
                 // Banner artwork uploaded per language ("...-lv.jpg", "-ru.jpg"):
                 // serve the file that matches the locale being read
                 'localized_media' => [LocalizedMediaHelper::class, 'localize'],
+                // Description metas: MightySeo text as plain text capped at 160 characters
+                'seo_meta_text' => [SeoMetaText::class, 'fromSeoValue'],
             ],
             'functions' => [
 
