@@ -105,8 +105,8 @@ class DeviceHint
     }
 
     /**
-     * Read by the DeviceVaryHeader middleware, which uses it to keep the
-     * device headers off every page the branch did not touch.
+     * Read by the DeviceVaryHeader middleware, which adds the device headers
+     * to every response that consulted the hint.
      *
      * @return bool true when isMobile() ran on this request
      */

@@ -18,11 +18,11 @@ use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
  * event has none, and cms.page.display (Controller.php:259-260) can still
  * hand over a raw string.
  *
- * No page name is matched here. DeviceLayoutHandler's guard order decides
- * whether DeviceHint is ever touched, so the consultation flag IS the page
- * match, and every page the branch never reached keeps the headers it has
- * today. CmsController::extend attaches this to the frontend controller only,
- * so no backend guard is needed.
+ * No page name is matched here. DeviceHint is consulted by DeviceLayoutHandler
+ * (product page) and by the is_phone() Twig function (shop, main,
+ * catalog_default, content and light layouts), so the consultation flag marks
+ * every response whose markup depends on the device. CmsController::extend
+ * attaches this to the frontend controller only, so no backend guard is needed.
  */
 class DeviceVaryHeader
 {

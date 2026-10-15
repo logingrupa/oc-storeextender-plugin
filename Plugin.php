@@ -92,6 +92,7 @@ use Logingrupa\StoreExtender\Classes\Color\ColorSyncSchedule;
 
 //Vite asset pipeline for migrated theme pages
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
+use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
 use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
@@ -596,6 +597,8 @@ class Plugin extends PluginBase
                 // it shows, in one batch per store
                 'prime_cards' => fn ($obProductList) => ProductCardOfferPrimer::prime(ProductCardLabelPrimer::prime($obProductList)),
                 'theme_var' => [ThemeVariable::class, 'get'],
+                // Picks the phone header on every layout; never selects data
+                'is_phone' => [DeviceHint::class, 'isMobile'],
                 // Order page: where the order stands with its payment, and the bank details
                 'order_payment_state' => [OrderPageData::class, 'paymentState'],
                 'order_bank_details' => [OrderPageData::class, 'bankDetails'],

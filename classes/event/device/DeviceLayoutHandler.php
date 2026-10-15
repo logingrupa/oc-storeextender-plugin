@@ -13,8 +13,9 @@ use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
  * Controller.php:323 and Layout::loadCached() runs at :326, both long after
  * cms.page.beforeDisplay fires at :205.
  *
- * The page-name guard runs first, so DeviceHint is consulted on the product
- * page alone and no device header is emitted anywhere else on the shop.
+ * The page-name guard runs first, so this handler consults DeviceHint on the
+ * product page alone; the is_phone() Twig function consults it on every shop,
+ * main, catalog_default, content and light render.
  *
  * The listener also fires on the Larajax partial-capture path, which is
  * required rather than incidental: Controller::run() resolves $page
