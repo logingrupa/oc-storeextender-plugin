@@ -55,6 +55,7 @@ use Logingrupa\StoreExtender\Classes\Queue\WarmImageDerivatives;
 use Logingrupa\StoreExtender\Classes\Event\Price\EqualOldPriceHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\SlugHistoryHandler;
 use Logingrupa\StoreExtender\Classes\Event\Seo\LegacyUrlRedirectHandler;
+use Logingrupa\StoreExtender\Classes\Event\Seo\StaticPageCacheKeyHandler;
 use Logingrupa\StoreExtender\Classes\Event\Review\ReviewValidationHandler;
 
 //CartPosition events
@@ -279,6 +280,7 @@ class Plugin extends PluginBase
         Event::subscribe(EqualOldPriceHandler::class);
         Event::subscribe(SlugHistoryHandler::class);
         Event::subscribe(LegacyUrlRedirectHandler::class);
+        Event::subscribe(StaticPageCacheKeyHandler::class);
         Event::subscribe(ReviewValidationHandler::class);
         //CartPosition events
         Event::subscribe(CartPositionItemHandler::class);
