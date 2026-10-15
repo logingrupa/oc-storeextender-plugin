@@ -141,18 +141,22 @@ class OfferSheet extends ComponentBase
             return null;
         }
 
-        $iTotalCount = $obProductItem->offer->count();
+        // Display preference only (sold-out shades), mirrored from the
+        // rendered strip: the sheet lists the shades the strip counts
+        $bHideSoldOut = (bool) input('hide_oos');
+        $arRowList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
+        $iTotalCount = count($arRowList);
         $iNextOffset = min($this->getPageSize(), $iTotalCount);
 
         return [
             '#hr-sheet-title' => e($obProductItem->name),
             '#hr-sheet-content' => $this->controller->renderPartial('home-redesign/shared/offers-sheet', [
                 'obProduct' => $obProductItem,
-                'sRowListHtml' => $this->getRowListHtml($obProductItem, 0),
+                'sRowListHtml' => $this->getRowListHtml($obProductItem, $arRowList, 0, $bHideSoldOut),
                 'iTotalCount' => $iTotalCount,
                 'iNextOffset' => $iNextOffset,
                 'bHasMore' => $iNextOffset < $iTotalCount,
-                'arFamilyChipList' => $this->getFamilyChipList($obProductItem),
+                'arFamilyChipList' => $this->getFamilyChipList($arRowList),
             ]),
             // trimmed: select mode renders no CTA and only a whitespace-free
             // footer matches the :empty rule that collapses it
@@ -182,7 +186,10 @@ class OfferSheet extends ComponentBase
             return null;
         }
 
-        $iTotalCount = $obProductItem->offer->count();
+        // Mirrored like page one's, so every page is cut from the same list
+        $bHideSoldOut = (bool) input('hide_oos');
+        $arRowList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
+        $iTotalCount = count($arRowList);
         if ($iOffset >= $iTotalCount) {
             return [
                 'sRowListHtml' => '',
@@ -194,7 +201,7 @@ class OfferSheet extends ComponentBase
         $iNextOffset = min($iOffset + $iPageSize, $iTotalCount);
 
         return [
-            'sRowListHtml' => $this->getRowListHtml($obProductItem, $iOffset),
+            'sRowListHtml' => $this->getRowListHtml($obProductItem, $arRowList, $iOffset, $bHideSoldOut),
             'iNextOffset' => $iNextOffset,
             'bHasMore' => $iNextOffset < $iTotalCount,
             'arCartOfferIdList' => $this->getCartOfferIdList(),
@@ -448,9 +455,10 @@ class OfferSheet extends ComponentBase
      * caller's own sold-out preference. A batch of one starts at that shade, so
      * the partial's iFirstIndex is this shade's own global index.
      *
-     * Null when the shade has no position in that list - a sold-out shade
-     * picked in the sheet on a shop that hides sold-out shades. The partial
-     * renders no position attribute for it, so nothing downstream numbers it.
+     * Null when the shade has no position in that list - a shade picked from a
+     * sheet body opened before it sold out, on a product that hides sold-out
+     * shades. The partial renders no position attribute for it, so nothing
+     * downstream numbers it.
      *
      * @param int|null $iFirstIndex position of this shade in the visible row list
      */
@@ -903,13 +911,16 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Chip per family in group order: label + representative swatch + count
+     * Chip per family in group order: label + representative swatch + count.
+     * The chips count the rows the caller lists, so 'All (N)' is their sum.
+     *
+     * @param array $arRowList as getVisibleRowList returns it
      * @return array [['sFamily' => string, 'sHex' => string|null, 'iCount' => int]]
      */
-    protected function getFamilyChipList(ProductItem $obProductItem): array
+    protected function getFamilyChipList(array $arRowList): array
     {
         $arChipList = [];
-        foreach ($this->getOrderedRowList($obProductItem) as $arRow) {
+        foreach ($arRowList as $arRow) {
             if ($arRow['sFamily'] === null) {
                 continue;
             }
@@ -925,11 +936,23 @@ class OfferSheet extends ComponentBase
     /**
      * One cached page of rendered row HTML. Cart-agnostic on purpose - see
      * class docblock. Color data version keys the grouping.
+     *
+     * A page with sold-out rows dropped is rendered every time and keyed
+     * nowhere, the rule getVisibleRowList states.
+     *
+     * @param array $arRowList as getVisibleRowList returns it, for the same flag
      */
-    protected function getRowListHtml(ProductItem $obProductItem, int $iOffset): string
-    {
-        if ($iOffset >= $obProductItem->offer->count()) {
+    protected function getRowListHtml(
+        ProductItem $obProductItem,
+        array $arRowList,
+        int $iOffset,
+        bool $bHideSoldOut
+    ): string {
+        if ($iOffset >= count($arRowList)) {
             return '';
+        }
+        if ($bHideSoldOut) {
+            return $this->renderRowListPage($obProductItem, $arRowList, $iOffset);
         }
 
         $sCacheKey = $this->buildCacheKey(['hr.sheet', $obProductItem->id, $iOffset]);
@@ -939,21 +962,27 @@ class OfferSheet extends ComponentBase
             return $sRowListHtml;
         }
 
-        $arPageRowList = array_slice($this->getOrderedRowList($obProductItem), $iOffset, $this->getPageSize());
-        if (empty($arPageRowList)) {
-            return '';
-        }
+        $sRowListHtml = $this->renderRowListPage($obProductItem, $arRowList, $iOffset);
+        CCache::put($arCacheTagList, $sCacheKey, $sRowListHtml, self::CACHE_TTL_MINUTES);
+
+        return $sRowListHtml;
+    }
+
+    /**
+     * One page of the row list, rendered. No cache of its own: the caller
+     * decides whether the answer may be kept.
+     */
+    protected function renderRowListPage(ProductItem $obProductItem, array $arRowList, int $iOffset): string
+    {
+        $arPageRowList = array_slice($arRowList, $iOffset, $this->getPageSize());
         foreach ($arPageRowList as $iIndex => $arRow) {
             $arPageRowList[$iIndex]['obOffer'] = OfferItem::make($arRow['iOfferId']);
         }
 
-        $sRowListHtml = $this->controller->renderPartial('home-redesign/shared/offers-sheet-rows', [
+        return (string) $this->controller->renderPartial('home-redesign/shared/offers-sheet-rows', [
             'obProduct' => $obProductItem,
             'arRowList' => $arPageRowList,
         ]);
-        CCache::put($arCacheTagList, $sCacheKey, $sRowListHtml, self::CACHE_TTL_MINUTES);
-
-        return $sRowListHtml;
     }
 
     /**
@@ -1006,7 +1035,7 @@ class OfferSheet extends ComponentBase
                 ? $this->findVisibleRowIndex($arVisibleList, (int) $arShownRowList[0]['iOfferId'])
                 : 0,
             'bUseSheet' => $bUseSheet,
-            'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($obProductItem) : [],
+            'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($arVisibleList) : [],
             'sActiveFamily' => $sActiveFamily,
         ];
     }
@@ -1023,22 +1052,28 @@ class OfferSheet extends ComponentBase
      * and it moves with every order - caching it under a ten minute TTL beside
      * markup that does not change would sell stock the shop no longer has.
      *
-     * That is the rule for ALL THREE renders, not only this list. Only an
-     * import rotates the render epoch; an order that drains an offer does not.
-     * So getSwatchStripHtml and getSwatchWindowHtml render on this same slow
-     * path whenever the filter is on, and key nothing. Only hideTradeOffers
-     * products pay it, and they already pay for this list (T-3-71).
+     * That is the rule for EVERY render, not only this list. Only an import
+     * rotates the render epoch; an order that drains an offer does not. So
+     * getSwatchStripHtml, getSwatchWindowHtml and getRowListHtml render on
+     * this same slow path whenever the filter is on, and key nothing. Only
+     * hideTradeOffers products pay it, and they already pay for this list
+     * (T-3-71).
      *
-     * @return array [['iOfferId' => int, 'sFamily' => string|null]]
+     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'bGroupStart' => bool]]
      */
     protected function getVisibleRowList(ProductItem $obProductItem, bool $bHideOutOfStock): array
     {
         $arVisibleList = [];
+        $sPreviousFamily = null;
         foreach ($this->getOrderedRowList($obProductItem) as $arRow) {
             if ($bHideOutOfStock && (int) OfferItem::make($arRow['iOfferId'])->quantity === 0) {
                 continue;
             }
-            $arVisibleList[] = ['iOfferId' => (int) $arRow['iOfferId'], 'sFamily' => $arRow['sFamily']];
+            $arRow['iOfferId'] = (int) $arRow['iOfferId'];
+            // a family whose first shade is dropped starts at its first sellable one
+            $arRow['bGroupStart'] = $arRow['sFamily'] !== null && $arRow['sFamily'] !== $sPreviousFamily;
+            $sPreviousFamily = $arRow['sFamily'];
+            $arVisibleList[] = $arRow;
         }
 
         return $arVisibleList;
@@ -1053,11 +1088,11 @@ class OfferSheet extends ComponentBase
      *
      * An id that is not in the list answers NULL, because every integer here is
      * a position and zero is the first one: the strip would number a missing
-     * shade one of N and the hero would announce it. It happens - the sheet
-     * renders sold-out rows and they are tappable, so on a shop that hides
-     * sold-out shades a batch of one asks this about a shade the list filtered
-     * out. Every caller has to carry the null through to the markup, where the
-     * position attribute is simply not rendered.
+     * shade one of N and the hero would announce it. It happens - a sheet body
+     * opened before a shade sold out still lists it, so on a product that
+     * hides sold-out shades a batch of one asks this about a shade the list
+     * has since filtered out. Every caller has to carry the null through to
+     * the markup, where the position attribute is simply not rendered.
      *
      * @return int|null null when the list holds no such shade
      */

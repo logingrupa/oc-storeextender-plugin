@@ -351,9 +351,9 @@ class OfferSheetWindowTest extends TestCase
     /**
      * A shade the visible list does not hold has NO position in it, and zero is
      * a position: the strip would number it one of N and the hero would
-     * announce it. The sheet renders sold-out rows and they are tappable, so on
-     * a shop that hides sold-out shades the batch of one asks this question
-     * about a shade the list filtered out.
+     * announce it. A sheet body opened before a shade sold out still lists it,
+     * so on a product that hides sold-out shades the batch of one asks this
+     * question about a shade the list has since filtered out.
      */
     public function testAShadeOutsideTheVisibleListHasNoIndexAtAll()
     {
