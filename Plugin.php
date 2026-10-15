@@ -95,6 +95,7 @@ use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
 use Logingrupa\StoreExtender\Classes\Helper\DeviceHint;
 use Logingrupa\StoreExtender\Classes\Helper\LocalizedMediaHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
+use Logingrupa\StoreExtender\Classes\Helper\OfferPicture;
 use Logingrupa\StoreExtender\Classes\Helper\OfferRenderContext;
 use Logingrupa\StoreExtender\Classes\Helper\BreadcrumbStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\ProductCardLabelPrimer;
@@ -565,6 +566,9 @@ class Plugin extends PluginBase
                 // rest window can render 218 rows and may not pay a resize per
                 // picture, so a cold shade gets an empty string
                 'offer_hero_phone_warm_src' => [OfferImageHelper::class, 'heroPhoneIfWarm'],
+                // The picture a product page shows for a shade: a lone shade
+                // without one shows the product photo
+                'offer_picture' => [OfferPicture::class, 'resolve'],
                 // Which offer a product-card fragment renders - decided in ONE
                 // place, because one batched response renders many offers and
                 // request state cannot answer that question for a single render
