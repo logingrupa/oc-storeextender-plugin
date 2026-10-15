@@ -25,6 +25,8 @@ use Lovata\Toolbox\Classes\Item\ElementItem;
  *     else non-empty is an mpn
  *   - name is the shade name only when the page names that shade: the caller
  *     passes its visible title's rule as bOfferSelected
+ *   - render() prints {} for a product with neither an Offer nor a rated
+ *     review; build() still answers the data
  *
  * Twig, registered in Plugin::registerMarkupTags() as product_json_ld; input
  * build() rejects prints an empty block there.
@@ -42,6 +44,8 @@ class ProductStructuredData
     // GS1-8 prefixes (first digit of an 8-digit code) reserved for
     // restricted circulation, RCN-8
     const RESTRICTED_GS1_8_PREFIX_LIST = ['0', '2'];
+    // Google reads a Product with none of these as an invalid item
+    const RICH_RESULT_KEY_LIST = ['offers', 'review', 'aggregateRating'];
 
     /**
      * @param ElementItem    $obProduct    product (or collection) the page describes
@@ -61,10 +65,19 @@ class ProductStructuredData
         ?string $sSellerName
     ): string {
         return JsonLdScript::encode(
-            fn () => self::build($obProduct, $obOffer, $bOfferSelected, $obReviewList, $sPageUrl, (string) $sSellerName),
+            fn () => self::itemOrNull(self::build($obProduct, $obOffer, $bOfferSelected, $obReviewList, $sPageUrl, (string) $sSellerName)),
             'Product',
             ['product_id' => $obProduct->id, 'page_url' => $sPageUrl]
         );
+    }
+
+    /**
+     * @param array $arData schema.org Product
+     * @return array|null the block, null when it carries none of RICH_RESULT_KEY_LIST
+     */
+    protected static function itemOrNull(array $arData): ?array
+    {
+        return array_intersect_key($arData, array_flip(self::RICH_RESULT_KEY_LIST)) === [] ? null : $arData;
     }
 
     /**

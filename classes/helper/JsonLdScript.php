@@ -20,7 +20,8 @@ class JsonLdScript
     const EMPTY_BLOCK = '{}';
 
     /**
-     * @param Closure $fnBuild   answers the block as an array, throws InvalidArgumentException on a content gap
+     * @param Closure $fnBuild   answers the block as an array, null when the page has no item to state,
+     *                           throws InvalidArgumentException on a content gap
      * @param string  $sBlock    the block's name in the log line
      * @param array   $arContext what identifies the render in the log
      * @return string JSON, safe to inline inside a script element
@@ -28,7 +29,12 @@ class JsonLdScript
     public static function encode(Closure $fnBuild, string $sBlock, array $arContext): string
     {
         try {
-            return json_encode($fnBuild(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_THROW_ON_ERROR);
+            $arBlock = $fnBuild();
+            if ($arBlock === null) {
+                return self::EMPTY_BLOCK;
+            }
+
+            return json_encode($arBlock, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_THROW_ON_ERROR);
         } catch (InvalidArgumentException | JsonException $obException) {
             // Twig render boundary: a content gap leaves one structured-data block out, the page still renders
             Log::error($sBlock.' JSON-LD left out: '.$obException->getMessage(), $arContext + ['exception' => $obException]);

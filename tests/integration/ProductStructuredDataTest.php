@@ -3,6 +3,8 @@
 require_once __DIR__ . '/../StoreExtenderPluginTestCase.php';
 require_once __DIR__ . '/../doubles/ShopItemDoubles.php';
 
+use Illuminate\Support\Facades\Log;
+use Logingrupa\StoreExtender\Classes\Helper\JsonLdScript;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use October\Rain\Database\Collection;
 
@@ -61,6 +63,13 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
         $this->assertSame('LOSJONIEM -35%', $arData['name']);
         $this->assertSame('SKU-371', $arData['sku']);
         $this->assertSame(['@type' => 'Brand', 'name' => self::SELLER], $arData['brand']);
+
+        Log::shouldReceive('error')->never();
+        $this->assertSame(
+            JsonLdScript::EMPTY_BLOCK,
+            ProductStructuredData::render($obProduct, null, false, [], self::PAGE_URL, self::SELLER),
+            'Google reads a Product with no offer and no rating as an invalid item'
+        );
     }
 
     public function testAnEmptyOrZeroPricedOfferIsNotAnOffer()
@@ -71,6 +80,21 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
 
         $this->assertArrayNotHasKey('offers', ProductStructuredData::build($obProduct, $obEmptyOffer, false, [], self::PAGE_URL, self::SELLER));
         $this->assertArrayNotHasKey('offers', ProductStructuredData::build($obProduct, $obFreeOffer, false, [], self::PAGE_URL, self::SELLER));
+        $this->assertSame(JsonLdScript::EMPTY_BLOCK, ProductStructuredData::render($obProduct, $obEmptyOffer, false, [], self::PAGE_URL, self::SELLER));
+        $this->assertSame(JsonLdScript::EMPTY_BLOCK, ProductStructuredData::render($obProduct, $obFreeOffer, false, [], self::PAGE_URL, self::SELLER));
+    }
+
+    public function testAProductWithoutAnOfferButWithARatedReviewKeepsItsBlock()
+    {
+        $obProduct = $this->makeProduct(['id' => 1, 'name' => 'P']);
+        $arReviewList = [$this->makeReview(['id' => 1, 'name' => 'Anna', 'rating' => 5, 'comment' => 'Super'])];
+
+        $arData = json_decode(ProductStructuredData::render($obProduct, null, false, $arReviewList, self::PAGE_URL, self::SELLER), true);
+
+        $this->assertSame('Product', $arData['@type']);
+        $this->assertSame(1, $arData['aggregateRating']['reviewCount']);
+        $this->assertCount(1, $arData['review']);
+        $this->assertArrayNotHasKey('offers', $arData);
     }
 
     public function testASoldOutOfferIsOutOfStock()
@@ -237,10 +261,12 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
             'description' => "<p>Bezsk&#257;bes  \n\n praimeris &amp; gels</p><p>Otrs teikums.<br>Trešais</p><script>alert(1)</script></script>",
         ]);
 
-        $arData = ProductStructuredData::build($obProduct, null, false, [], self::PAGE_URL, self::SELLER);
+        $obOffer = $this->makeOffer(['id' => 2, 'product_id' => 1, 'quantity' => 1], 1.0, 'EUR');
+
+        $arData = ProductStructuredData::build($obProduct, $obOffer, false, [], self::PAGE_URL, self::SELLER);
         $this->assertSame('Bezskābes praimeris & gels Otrs teikums. Trešais', $arData['description']);
 
-        $sJson = ProductStructuredData::render($obProduct, null, false, [], self::PAGE_URL, self::SELLER);
+        $sJson = ProductStructuredData::render($obProduct, $obOffer, false, [], self::PAGE_URL, self::SELLER);
         $this->assertStringNotContainsString('</', $sJson);
         $this->assertSame($arData, json_decode($sJson, true));
 
