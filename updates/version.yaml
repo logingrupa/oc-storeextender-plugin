@@ -294,3 +294,6 @@
 
 2.0.101:
   - 'Phones get the lean layout on /p instead of /p2, and the OfferSheet render cache keys on the layout, so phone and desktop /p never share cached markup. New Twig functions is_phone() and offer_picture(). A data gap in a JSON-LD block logs and prints {} instead of a 500, and a missing upload file no longer breaks the hero image.'
+
+2.0.102:
+  - 'New Twig filter seo_meta_text prints description metas as plain text capped at 160 characters. A product with no offer and no rated review prints no Product JSON-LD. robots.txt and sitemap.xml cache the static page map under their own key, so /en/help pages stop flipping to 404. The shade sheet lists only the shades the strip counts on products that hide sold-out shades.'
