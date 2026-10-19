@@ -297,3 +297,6 @@
 
 2.0.102:
   - 'New Twig filter seo_meta_text prints description metas as plain text capped at 160 characters. A product with no offer and no rated review prints no Product JSON-LD. robots.txt and sitemap.xml cache the static page map under their own key, so /en/help pages stop flipping to 404. The shade sheet lists only the shades the strip counts on products that hide sold-out shades.'
+
+2.0.103:
+  - 'Order mails link the order page and the proforma on the site the mail is written for, so a Russian or English mail opens them in its own language instead of the reader''s browser language. Product links from the shop-product pagefinder types never carry the offer of the page they render on.'
