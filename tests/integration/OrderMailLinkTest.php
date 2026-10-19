@@ -10,9 +10,8 @@ use Logingrupa\StoreExtender\Classes\Mail\OrderMailState;
 use Lovata\OrdersShopaholic\Models\Order;
 
 /**
- * An order mail links the order page and the proforma on the site the mail is written for.
- * A bare /checkout/<key> redirects to the language of the reader's browser, so a Russian
- * mail opened in a Latvian browser showed the order in Latvian.
+ * An order mail links the order page and the proforma on the site the mail is written for:
+ * a bare /checkout/<key> redirects to the language of the reader's browser instead.
  *
  * The links resolve against the active theme's real order pages (/checkout/:slug and
  * /proforma/:slug/:print?).
@@ -31,6 +30,10 @@ class OrderMailLinkTest extends StoreExtenderPluginTestCase
     /** @var array site id per locale */
     protected $arSiteIdList = [];
 
+    /**
+     * Three prefixed sites, lv primary, on a fixed https app URL.
+     * @return void
+     */
     public function setUp(): void
     {
         parent::setUp();
@@ -54,6 +57,10 @@ class OrderMailLinkTest extends StoreExtenderPluginTestCase
         parent::tearDown();
     }
 
+    /**
+     * A customer mail renders in the language of the site the order was placed on.
+     * @return void
+     */
     public function testCustomerMailLinksOpenOnTheOrderSite()
     {
         foreach (['ru', 'en', 'lv'] as $sLocale) {
@@ -64,6 +71,10 @@ class OrderMailLinkTest extends StoreExtenderPluginTestCase
         }
     }
 
+    /**
+     * A manager mail renders in the shop's language whatever site the order came from.
+     * @return void
+     */
     public function testManagerMailLinksOpenOnTheShopSite()
     {
         $arData = OrderMailData::forManager($this->makeOrder($this->arSiteIdList['ru']), OrderMailState::PAID);
@@ -128,6 +139,10 @@ class OrderMailLinkTest extends StoreExtenderPluginTestCase
         }
     }
 
+    /**
+     * Every order link is keyed by the secret key, so a mail without one fails fast.
+     * @return void
+     */
     public function testOrderWithoutASecretKeyIsRejected()
     {
         $obOrder = $this->makeOrder($this->arSiteIdList['lv']);
