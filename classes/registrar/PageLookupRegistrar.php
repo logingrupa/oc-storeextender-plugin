@@ -72,10 +72,7 @@ class PageLookupRegistrar
             // Build URL via Page::url() because getPageUrl() fails when the
             // ProductPage component is aliased as "CustomProductPage ProductPage"
             // - Lovata's PageHelper regex only matches keys starting with "ProductPage".
-            $sPageUrl = \Cms\Classes\Page::url(
-                $obItem->cmsPage ?: 'product',
-                ['slug' => $obProductItem->slug]
-            );
+            $sPageUrl = self::slugPageUrl($obItem->cmsPage ?: 'product', $obProductItem->slug);
 
             return [
                 'title' => $obProductItem->name,
@@ -185,10 +182,7 @@ class PageLookupRegistrar
             // No model load: Page::url resolves the route in the ACTIVE locale,
             // which is what makes one stored value render /lv/, /en/ and /ru/
             // links from the same repeater row
-            $sPageUrl = \Cms\Classes\Page::url(
-                $obItem->cmsPage ?: $arTypeList[$sType]['page'],
-                ['slug' => $sSlug]
-            );
+            $sPageUrl = self::slugPageUrl($obItem->cmsPage ?: $arTypeList[$sType]['page'], $sSlug);
 
             return [
                 'title'    => $sSlug,
@@ -273,5 +267,18 @@ class PageLookupRegistrar
                 'isActive' => $sPageUrl == $sURL,
             ];
         });
+    }
+
+    /**
+     * slugPageUrl builds the URL of a slug-routed page. Page::url() merges the
+     * current route params, so offer is nulled: a link rendered on a product
+     * page must not inherit that page's :offer.
+     * @param string $sPage
+     * @param string $sSlug
+     * @return string|null
+     */
+    protected static function slugPageUrl(string $sPage, string $sSlug): ?string
+    {
+        return \Cms\Classes\Page::url($sPage, ['slug' => $sSlug, 'offer' => null]);
     }
 }
