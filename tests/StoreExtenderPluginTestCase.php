@@ -115,7 +115,8 @@ abstract class StoreExtenderPluginTestCase extends PluginTestCase
     /**
      * defineSites replaces the site definitions the core migrations seed with a shop shape,
      * so site resolution and RainLab locale validity can be exercised hermetically.
-     * @param array $arSiteList list of [locale, is_primary, is_enabled]
+     * @param array $arSiteList list of [locale, is_primary, is_enabled, route prefix], an empty
+     *                          or missing route prefix leaves the site unprefixed
      * @return array site id per locale
      */
     protected function defineSites($arSiteList)
@@ -123,7 +124,9 @@ abstract class StoreExtenderPluginTestCase extends PluginTestCase
         Db::table('system_site_definitions')->delete();
 
         $arSiteIdList = [];
-        foreach (array_values($arSiteList) as $iIndex => [$sLocale, $bIsPrimary, $bIsEnabled]) {
+        foreach (array_values($arSiteList) as $iIndex => $arSite) {
+            [$sLocale, $bIsPrimary, $bIsEnabled] = $arSite;
+            $sRoutePrefix = (string) ($arSite[3] ?? '');
             $iSiteId = $iIndex + 1;
             Db::table('system_site_definitions')->insert([
                 'id' => $iSiteId,
@@ -134,6 +137,8 @@ abstract class StoreExtenderPluginTestCase extends PluginTestCase
                 'is_primary' => $bIsPrimary,
                 'is_enabled' => $bIsEnabled,
                 'is_enabled_edit' => $bIsEnabled,
+                'is_prefixed' => $sRoutePrefix !== '',
+                'route_prefix' => $sRoutePrefix,
             ]);
 
             $arSiteIdList[$sLocale] = $iSiteId;

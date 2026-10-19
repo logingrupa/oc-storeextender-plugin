@@ -30,6 +30,11 @@ class OrderMailTest extends StoreExtenderPluginTestCase
 
     const IBAN = 'LT197300010152721946';
 
+    const SECRET_KEY = '6b1763d7a3578d710e58b3c18b2e0555';
+
+    /** The site the rendered mails are written for, prefix included */
+    const SITE_URL = 'https://nailscosmetics.lt/lt';
+
     /** @var array list of [view, data, recipient list] captured from the mailer */
     protected $arSentMailList = [];
 
@@ -138,8 +143,34 @@ class OrderMailTest extends StoreExtenderPluginTestCase
     {
         $sHtml = (string) $this->render(Plugin::MAIL_ORDER_PAYMENT_REMINDER_USER, OrderMailState::REMINDER_LAST, 'lt')->getHtmlBody();
 
-        $this->assertStringContainsString('/checkout/6b1763d7a3578d710e58b3c18b2e0555?cancel=1', $sHtml);
+        $this->assertStringContainsString('href="'.self::SITE_URL.'/checkout/'.self::SECRET_KEY.'?cancel=1"', $sHtml);
         $this->assertStringContainsString('Užbaigti mokėjimą', $sHtml);
+    }
+
+    /**
+     * The links come from the mail data, built for the site the mail is written for. The
+     * bare shop URL in site_url carries no language and redirects by the reader's browser.
+     */
+    public function testEveryOrderLinkComesFromTheMailData()
+    {
+        $sOrderUrl = self::SITE_URL.'/checkout/'.self::SECRET_KEY;
+        $sProformaUrl = self::SITE_URL.'/proforma/'.self::SECRET_KEY;
+        $arCaseList = [
+            [Plugin::MAIL_ORDER_CREATED_USER, OrderMailState::BANK, [$sProformaUrl, $sProformaUrl.'/print', $sOrderUrl]],
+            [Plugin::MAIL_ORDER_CREATED_MANAGER, OrderMailState::BANK, [$sProformaUrl, $sProformaUrl.'/print']],
+            [Plugin::MAIL_ORDER_PAID_USER, OrderMailState::PAID, [$sOrderUrl]],
+            [Plugin::MAIL_ORDER_PAYMENT_REMINDER_USER, OrderMailState::REMINDER_LAST, [$sOrderUrl, $sOrderUrl.'?cancel=1']],
+        ];
+
+        foreach ($arCaseList as [$sCode, $sState, $arExpectedList]) {
+            $obEmail = $this->render($sCode, $sState, 'lt');
+            preg_match_all('%href="([^"]*/(?:checkout|proforma)/[^"]*)"%', (string) $obEmail->getHtmlBody(), $arMatchList);
+
+            $this->assertSame($arExpectedList, $arMatchList[1], $sCode);
+            if (in_array($sOrderUrl, $arExpectedList, true)) {
+                $this->assertStringContainsString($sOrderUrl, (string) $obEmail->getTextBody(), $sCode.' text part');
+            }
+        }
     }
 
     public function testBankMailOffersToPayOnlineInstead()
@@ -258,6 +289,7 @@ class OrderMailTest extends StoreExtenderPluginTestCase
         $obOrder = new Order();
         $obOrder->id = 434;
         $obOrder->order_number = self::ORDER_NUMBER;
+        $obOrder->secret_key = self::SECRET_KEY;
         $obOrder->property = $arProperty;
         $obOrder->setRelation('payment_method', $obPaymentMethod);
 
@@ -332,7 +364,7 @@ class OrderMailTest extends StoreExtenderPluginTestCase
         $arOrder = [
             'id' => 434,
             'order_number' => self::ORDER_NUMBER,
-            'secret_key' => '6b1763d7a3578d710e58b3c18b2e0555',
+            'secret_key' => self::SECRET_KEY,
             'created_at' => '2026-10-02 08:07:23',
             'currency_symbol' => '€',
             'total_price' => '8.18',
@@ -360,6 +392,9 @@ class OrderMailTest extends StoreExtenderPluginTestCase
             'order' => $arOrder,
             'order_number' => self::ORDER_NUMBER,
             'site_url' => 'https://nailscosmetics.lt',
+            'order_url' => self::SITE_URL.'/checkout/'.self::SECRET_KEY,
+            'proforma_url' => self::SITE_URL.'/proforma/'.self::SECRET_KEY,
+            'proforma_print_url' => self::SITE_URL.'/proforma/'.self::SECRET_KEY.'/print',
             'mail_state' => $sState,
             'mail_view' => OrderMailState::view($sState),
             'can_pay_online' => OrderMailState::view($sState)['pay_online'],

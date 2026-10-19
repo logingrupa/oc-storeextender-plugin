@@ -3,7 +3,6 @@ name = "Order mail body"
 {% set bManager = audience == 'manager' %}
 {% set arParam = {'number': order.order_number, 'total': order.currency_symbol ~ order.total_price} %}
 {% set sKey = 'logingrupa.storeextender::order_mail.' %}
-{% set sOrderUrl = site_url|trim('/', 'right') ~ '/checkout/' ~ order.secret_key %}
 {% if bManager %}
 {{ (sKey ~ 'manager.' ~ mail_view.manager_title)|trans(arParam) }}
 {{ (sKey ~ 'manager.text_' ~ mail_state)|trans(arParam) }}
@@ -16,17 +15,17 @@ name = "Order mail body"
 {% if bManager %}
 {{ (sKey ~ 'manager.open_admin')|trans }}: {{ backend_order_url }}
 {% elseif mail_view.action %}
-{{ (sKey ~ 'action.' ~ mail_view.action)|trans }}: {{ sOrderUrl }}
+{{ (sKey ~ 'action.' ~ mail_view.action)|trans }}: {{ order_url }}
 {% endif %}
 {% if mail_view.bank_details %}
 
 {% partial 'orderMailBank' %}
 {% endif %}
 {% if can_pay_online and not bManager %}
-{{ (sKey ~ 'action.pay_online')|trans }}: {{ sOrderUrl }}
+{{ (sKey ~ 'action.pay_online')|trans }}: {{ order_url }}
 {% endif %}
 {% if mail_view.cancel and not bManager %}
-{{ (sKey ~ 'action.cancel_hint')|trans }} {{ sOrderUrl }}?cancel=1
+{{ (sKey ~ 'action.cancel_hint')|trans }} {{ order_url }}?cancel=1
 {% endif %}
 
 {% partial 'orderMailItems' %}
@@ -40,8 +39,6 @@ name = "Order mail body"
 {% set bManager = audience == 'manager' %}
 {% set arParam = {'number': order.order_number, 'total': order.currency_symbol ~ order.total_price} %}
 {% set sKey = 'logingrupa.storeextender::order_mail.' %}
-{% set sOrderUrl = site_url|trim('/', 'right') ~ '/checkout/' ~ order.secret_key %}
-{% set sProformaUrl = site_url|trim('/', 'right') ~ '/proforma/' ~ order.secret_key %}
 {% set sAddress = order.property.shipping_address2|replace({'undefined': ' ', 'NaN': ' ', '- BEZMAKSAS': ' ', '- NEMOKAMAI': ' '})|trim %}
 <span class="om-badge om-badge-{{ mail_view.tone }}">{{ (sKey ~ 'state.' ~ mail_state ~ '.badge')|trans }}</span>
 {% if bManager %}
@@ -55,17 +52,17 @@ name = "Order mail body"
 {% if bManager %}
 <div class="om-actions">{% partial 'orderMailButton' url=backend_order_url label=(sKey ~ 'manager.open_admin')|trans %}</div>
 {% elseif mail_view.action %}
-<div class="om-actions">{% partial 'orderMailButton' url=sOrderUrl label=(sKey ~ 'action.' ~ mail_view.action)|trans %}</div>
+<div class="om-actions">{% partial 'orderMailButton' url=order_url label=(sKey ~ 'action.' ~ mail_view.action)|trans %}</div>
 {% endif %}
 {% if mail_view.cancel and not bManager %}
-<p class="om-meta">{{ (sKey ~ 'action.cancel_hint')|trans }} <a href="{{ sOrderUrl }}?cancel=1" class="om-link" target="_blank">{{ (sKey ~ 'action.cancel_order')|trans }}</a></p>
+<p class="om-meta">{{ (sKey ~ 'action.cancel_hint')|trans }} <a href="{{ order_url }}?cancel=1" class="om-link" target="_blank">{{ (sKey ~ 'action.cancel_order')|trans }}</a></p>
 {% endif %}
 {% if mail_view.bank_details %}
 {% partial 'orderMailBank' %}
-<p class="om-meta"><a href="{{ sProformaUrl }}" class="om-link" target="_blank">{{ (sKey ~ 'action.open_proforma')|trans }}</a> &nbsp;&middot;&nbsp; <a href="{{ sProformaUrl }}/print" class="om-link" target="_blank">{{ (sKey ~ 'action.print_proforma')|trans }}</a></p>
+<p class="om-meta"><a href="{{ proforma_url }}" class="om-link" target="_blank">{{ (sKey ~ 'action.open_proforma')|trans }}</a> &nbsp;&middot;&nbsp; <a href="{{ proforma_print_url }}" class="om-link" target="_blank">{{ (sKey ~ 'action.print_proforma')|trans }}</a></p>
 {% endif %}
 {% if can_pay_online and not bManager %}
-<p class="om-meta">{{ (sKey ~ 'action.pay_online_hint')|trans }} <a href="{{ sOrderUrl }}" class="om-link" target="_blank">{{ (sKey ~ 'action.pay_online')|trans }}</a></p>
+<p class="om-meta">{{ (sKey ~ 'action.pay_online_hint')|trans }} <a href="{{ order_url }}" class="om-link" target="_blank">{{ (sKey ~ 'action.pay_online')|trans }}</a></p>
 {% endif %}
 {% partial 'orderMailItems' %}
 <div class="om-section">

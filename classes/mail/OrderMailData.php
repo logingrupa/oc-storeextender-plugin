@@ -1,12 +1,15 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Mail;
 
-use App;
 use Site;
 use Backend;
+use InvalidArgumentException;
+use RuntimeException;
+use System\Models\SiteDefinition;
 use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\OrdersShopaholic\Models\PaymentMethod;
 use Lovata\OrdersShopaholic\Classes\Collection\PaymentMethodCollection;
 use Logingrupa\StoreExtender\Classes\Helper\BankTransferDetails;
+use Logingrupa\StoreExtender\Classes\Helper\SitePageUrl;
 
 /**
  * Class OrderMailData
@@ -14,13 +17,19 @@ use Logingrupa\StoreExtender\Classes\Helper\BankTransferDetails;
  *
  * The variables every order mail view reads besides the order itself. The paid mail is
  * sent from a gateway webhook, where the request carries no shop locale (.lt runs
- * APP_LOCALE=en), so the locale comes from the site the order was placed on.
+ * APP_LOCALE=en), so the mail is written for the site the order was placed on: its locale
+ * and its links to the order page and the proforma. A link without the site's route prefix
+ * redirects to the language of the reader's browser.
  *
- * Manager mails are the exception: they stay in the shop's own language whatever
- * language the customer ordered in.
+ * Manager mails are the exception: they stay on the shop's own site whatever language the
+ * customer ordered in.
  */
 class OrderMailData
 {
+    const ORDER_PAGE = 'order-complete';
+
+    const PROFORMA_PAGE = 'order-complete-proforma';
+
     /**
      * @param Order $obOrder
      * @param string $sState a key of OrderMailState::VIEW_MAP
@@ -28,11 +37,11 @@ class OrderMailData
      */
     public static function make(Order $obOrder, string $sState): array
     {
-        return self::build($obOrder, $sState, self::getOrderLocale($obOrder));
+        return self::build($obOrder, $sState, self::getOrderSite($obOrder));
     }
 
     /**
-     * The same data in the shop's language: an order from the ru site must not reach the
+     * The same data for the shop's site: an order from the ru site must not reach the
      * shop staff in Russian.
      * @param Order $obOrder
      * @param string $sState a key of OrderMailState::VIEW_MAP
@@ -41,7 +50,7 @@ class OrderMailData
     public static function forManager(Order $obOrder, string $sState): array
     {
         // the customer copy renders first and pins every relation it reads to its own language
-        return ['order' => self::reload($obOrder)] + self::build($obOrder, $sState, self::getShopLocale());
+        return ['order' => self::reload($obOrder)] + self::build($obOrder, $sState, self::getShopSite());
     }
 
     /**
@@ -56,10 +65,10 @@ class OrderMailData
     /**
      * @param Order $obOrder
      * @param string $sState a key of OrderMailState::VIEW_MAP
-     * @param string $sLocale the locale the mail renders in
+     * @param SiteDefinition $obSite the site the mail is written for
      * @return array
      */
-    protected static function build(Order $obOrder, string $sState, string $sLocale): array
+    protected static function build(Order $obOrder, string $sState, SiteDefinition $obSite): array
     {
         $arView = OrderMailState::view($sState);
 
@@ -67,9 +76,28 @@ class OrderMailData
             'mail_state' => $sState,
             'mail_view' => $arView,
             'can_pay_online' => $arView['pay_online'] && self::hasOnlinePaymentMethod(),
-            '_current_locale' => $sLocale,
+            '_current_locale' => (string) $obSite->hard_locale,
             'backend_order_url' => Backend::url('lovata/ordersshopaholic/orders/update/'.$obOrder->id),
             'bank_detail_list' => $arView['bank_details'] ? BankTransferDetails::forOrder($obOrder) : [],
+        ] + self::getLinkList($obOrder, $obSite);
+    }
+
+    /**
+     * @param Order $obOrder
+     * @param SiteDefinition $obSite
+     * @return array order_url, proforma_url and proforma_print_url, absolute, on $obSite
+     */
+    protected static function getLinkList(Order $obOrder, SiteDefinition $obSite): array
+    {
+        $sSecretKey = (string) $obOrder->secret_key;
+        if ($sSecretKey === '') {
+            throw new InvalidArgumentException('Order '.$obOrder->id.' has no secret_key to link the mail to');
+        }
+
+        return [
+            'order_url' => SitePageUrl::make($obSite, self::ORDER_PAGE, ['slug' => $sSecretKey]),
+            'proforma_url' => SitePageUrl::make($obSite, self::PROFORMA_PAGE, ['slug' => $sSecretKey, 'print' => null]),
+            'proforma_print_url' => SitePageUrl::make($obSite, self::PROFORMA_PAGE, ['slug' => $sSecretKey, 'print' => 'print']),
         ];
     }
 
@@ -86,37 +114,34 @@ class OrderMailData
     }
 
     /**
+     * The site the order was placed on. Orders ported from the old shop carry none and
+     * belong to the shop's own site.
      * @param Order $obOrder
-     * @return string
+     * @return SiteDefinition
      */
-    protected static function getOrderLocale(Order $obOrder): string
+    protected static function getOrderSite(Order $obOrder): SiteDefinition
     {
         $obSite = empty($obOrder->site_id) ? null : Site::getSiteFromId($obOrder->site_id);
 
-        return self::localeOf($obSite);
+        return $obSite ?: self::getShopSite();
     }
 
     /**
-     * The shop's own language: the primary site, or the first enabled one when the primary
+     * The shop's own site: the primary site, or the first enabled one when the primary
      * site is disabled, which is how .no runs - its primary site is the Latvian source.
-     * @return string
+     * @return SiteDefinition
      */
-    protected static function getShopLocale(): string
+    protected static function getShopSite(): SiteDefinition
     {
         $obSite = Site::getPrimarySite();
         if (empty($obSite) || !$obSite->is_enabled) {
             $obSite = Site::listEnabled()->first();
         }
 
-        return self::localeOf($obSite);
-    }
+        if (empty($obSite)) {
+            throw new RuntimeException('The shop has no enabled site to write order mails for');
+        }
 
-    /**
-     * @param \System\Models\SiteDefinition|null $obSite
-     * @return string the app locale when the shop defines no site
-     */
-    protected static function localeOf($obSite): string
-    {
-        return $obSite ? (string) $obSite->hard_locale : App::getLocale();
+        return $obSite;
     }
 }
