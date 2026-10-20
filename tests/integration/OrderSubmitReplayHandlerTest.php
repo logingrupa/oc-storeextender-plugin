@@ -2,13 +2,17 @@
 
 require_once __DIR__.'/../StoreExtenderPluginTestCase.php';
 require_once __DIR__.'/../doubles/OrderStubTables.php';
-require_once __DIR__.'/../doubles/CartStubTables.php';
+require_once __DIR__.'/../doubles/ShippingLadderStubTables.php';
+require_once __DIR__.'/../doubles/TaxHelperDouble.php';
 
 use Carbon\Carbon;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Kharanenka\Helper\Result;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Database\Events\TransactionCommitting;
+use Illuminate\Database\Events\TransactionRolledBack;
+use Lovata\Shopaholic\Models\Settings;
 use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 use Lovata\OrdersShopaholic\Classes\Processor\OrderProcessor;
@@ -17,12 +21,15 @@ use Logingrupa\StoreExtender\Classes\Helper\PlacedOrderMemory;
 /**
  * A checkout submit whose answer never reached the browser leaves a placed order and an
  * empty cart. The next submit from that cart within ten minutes opens the placed order's
- * page instead of "Cart is empty". The cart row holds only the order id and an HMAC of the
- * secret key, because every Cart AJAX answer returns cart.property to the browser.
+ * page instead of "Cart is empty" or a second order. The record and the emptied cart
+ * commit with the order. The cart row holds only the order id and an HMAC of the secret
+ * key, because every Cart AJAX answer returns cart.property to the browser.
  */
 class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
 {
     protected $autoMigrate = false;
+
+    const ORDERS_TABLE = 'lovata_orders_shopaholic_orders';
 
     const CARTS_TABLE = 'lovata_orders_shopaholic_carts';
 
@@ -30,8 +37,11 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
 
     const ACCOUNT_USER_ID = 42;
 
+    const SECOND_CONNECTION = 'sqlite_second';
+
     /**
-     * Order stubs plus the cart and cart position tables, Result reset to true.
+     * Order stubs, the cart and promo tables a cart clear reads, the tax helper double,
+     * Result reset to true.
      * @return void
      */
     public function setUp(): void
@@ -39,19 +49,22 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
         parent::setUp();
 
         OrderStubTables::create();
-        CartStubTables::create();
+        ShippingLadderStubTables::create();
+        TaxHelperDouble::install();
 
         Result::setTrue();
     }
 
     /**
-     * Drop the cart seam and the processor singleton, both outlive the app.
+     * Drop the cart seam and the singletons, they outlive the app.
      * @return void
      */
     public function tearDown(): void
     {
         CartProcessor::$iTestCartID = null;
         CartProcessor::forgetInstance();
+        TaxHelperDouble::reset();
+        Settings::clearInternalCache();
         Result::setTrue();
 
         parent::tearDown();
@@ -76,6 +89,261 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
     }
 
     /**
+     * The record and the cleared cart are written inside the checkout transaction: a
+     * committing listener running after the handler sees level 1 and no positions.
+     * @return void
+     */
+    public function testCommitRecordsTheOrderAndClearsTheCartInsideTheTransaction()
+    {
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+        $arSeenList = [];
+        Event::listen(TransactionCommitting::class, function (TransactionCommitting $obCommitting) use (&$arSeenList, $iCartID) {
+            $arSeenList[] = [$obCommitting->connection->transactionLevel(), $this->countPositions($iCartID)];
+        });
+
+        $this->firePlacedOrder($obOrder, $iCartID);
+
+        $this->assertSame([[1, 0]], $arSeenList, 'level and position count seen before the PDO commit');
+        $this->assertSame(0, $this->countPositions($iCartID));
+        $this->assertSame(['id' => $obOrder->id, 'mac' => $this->hmacOf($obOrder)], $this->readCartProperty($iCartID)[PlacedOrderMemory::PROPERTY_KEY]);
+    }
+
+    /**
+     * A checkout rolled back with Result false places nothing: a later commit in the same
+     * request neither records nor clears.
+     * @return void
+     */
+    public function testRolledBackCheckoutLeavesTheCartAndWritesNoRecord()
+    {
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+        CartProcessor::$iTestCartID = $iCartID;
+
+        DB::beginTransaction();
+        Event::fire(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, $obOrder);
+        DB::rollBack();
+        DB::beginTransaction();
+        DB::commit();
+
+        $this->assertSame(2, $this->countPositions($iCartID));
+        $this->assertArrayNotHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+    }
+
+    /**
+     * A savepoint rolled back inside the checkout keeps the pending order for the outer commit.
+     * @return void
+     */
+    public function testSavepointRollbackKeepsThePendingOrder()
+    {
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+        CartProcessor::$iTestCartID = $iCartID;
+
+        DB::beginTransaction();
+        Event::fire(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, $obOrder);
+        DB::beginTransaction();
+        DB::rollBack();
+        $this->assertSame(1, DB::transactionLevel());
+        DB::commit();
+
+        $this->assertSame(0, $this->countPositions($iCartID));
+        $this->assertArrayHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+    }
+
+    /**
+     * A savepoint commit is not the checkout commit: nothing happens until the outer one.
+     * @return void
+     */
+    public function testSavepointCommitWaitsForTheOuterCommit()
+    {
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+        CartProcessor::$iTestCartID = $iCartID;
+
+        DB::beginTransaction();
+        Event::fire(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, $obOrder);
+        DB::beginTransaction();
+        DB::commit();
+
+        $this->assertSame(1, DB::transactionLevel());
+        $this->assertSame(2, $this->countPositions($iCartID));
+        $this->assertArrayNotHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+
+        DB::commit();
+
+        $this->assertSame(0, $this->countPositions($iCartID));
+        $this->assertArrayHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+    }
+
+    /**
+     * Any other transaction of the request leaves the cart and its property alone.
+     * @return void
+     */
+    public function testUnrelatedCommitTouchesNeitherTheCartNorItsProperty()
+    {
+        $iCartID = $this->insertCart(null, ['coupon_hint' => 'kept']);
+        $this->insertPositions($iCartID, 2);
+        CartProcessor::$iTestCartID = $iCartID;
+
+        DB::beginTransaction();
+        DB::commit();
+
+        $this->assertSame(2, $this->countPositions($iCartID));
+        $this->assertSame(['coupon_hint' => 'kept'], $this->readCartProperty($iCartID));
+    }
+
+    /**
+     * disable_cart_clear_on_new_order keeps the positions; the record is still written.
+     * @return void
+     */
+    public function testDisabledCartClearKeepsThePositionsAndWritesTheRecord()
+    {
+        Settings::set('disable_cart_clear_on_new_order', '1');
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+
+        $this->firePlacedOrder($obOrder, $iCartID);
+
+        $this->assertSame(2, $this->countPositions($iCartID));
+        $this->assertArrayHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+    }
+
+    /**
+     * An order created listener that throws after the commit (mail, popularity) no longer
+     * leaves a full cart behind: the repeated submit opens the placed order.
+     * @return void
+     */
+    public function testThrowingOrderCreatedListenerAfterTheCommitStillReplays()
+    {
+        // only the October facade (events.priority) honours the priority argument
+        Event::listen(OrderProcessor::EVENT_ORDER_CREATED, function () {
+            throw new RuntimeException('mail transport down');
+        }, 100);
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+        $this->firePlacedOrder($obOrder, $iCartID);
+
+        try {
+            Event::fire(OrderProcessor::EVENT_ORDER_CREATED, $obOrder);
+            $this->fail('the order created listener should have thrown');
+        } catch (RuntimeException $obException) {
+            $this->assertSame('mail transport down', $obException->getMessage());
+        }
+
+        $this->assertSame(0, $this->countPositions($iCartID));
+        $this->assertReplaysTo($obOrder, $this->fireRepeatedSubmit($iCartID));
+    }
+
+    /**
+     * The post-commit order save throwing skips every order created listener, the
+     * repeated submit still opens the placed order.
+     * @return void
+     */
+    public function testThrowingPostCommitSaveStillReplays()
+    {
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+        $this->firePlacedOrder($obOrder, $iCartID);
+        // above the Toolbox ModelHandler priority 1000
+        $obOrder->bindEvent('model.afterSave', function () {
+            throw new RuntimeException('after save listener failed');
+        }, 1001);
+
+        try {
+            $obOrder->save();
+            $this->fail('the after save listener should have thrown');
+        } catch (RuntimeException $obException) {
+            $this->assertSame('after save listener failed', $obException->getMessage());
+        }
+
+        $this->assertSame(0, $this->countPositions($iCartID));
+        $this->assertReplaysTo($obOrder, $this->fireRepeatedSubmit($iCartID));
+    }
+
+    /**
+     * A failure while settling at commit aborts the order: rolled back, the cart intact,
+     * the exception rethrown, no open transaction left behind.
+     * @return void
+     */
+    public function testCommittingFailureRollsTheOrderBackAndRethrows()
+    {
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        CartProcessor::$iTestCartID = $iCartID;
+        $iRolledBackLevel = null;
+        Event::listen(TransactionRolledBack::class, function (TransactionRolledBack $obRolledBack) use (&$iRolledBackLevel) {
+            $iRolledBackLevel = $obRolledBack->connection->transactionLevel();
+        });
+
+        DB::beginTransaction();
+        $obOrder = Order::create(['property' => ['email' => 'buyer@example.com']]);
+        Event::fire(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, $obOrder);
+        config(['app.key' => '']);
+
+        try {
+            DB::commit();
+            $this->fail('the commit should have rethrown the record failure');
+        } catch (RuntimeException $obException) {
+            $this->assertStringContainsString('APP_KEY is empty', $obException->getMessage());
+        }
+
+        $this->assertSame(0, DB::transactionLevel());
+        $this->assertSame(0, $iRolledBackLevel, 'TransactionRolledBack fired for the outer transaction');
+        $this->assertSame(0, DB::table(self::ORDERS_TABLE)->count(), 'the order row was rolled back');
+        $this->assertSame(2, $this->countPositions($iCartID));
+        $this->assertArrayNotHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+    }
+
+    /**
+     * A commit on another connection is not the checkout commit.
+     * @return void
+     */
+    public function testCommitOnAnotherConnectionLeavesThePendingOrder()
+    {
+        config(['database.connections.'.self::SECOND_CONNECTION => config('database.connections.sqlite')]);
+        $iCartID = $this->insertCart();
+        $this->insertPositions($iCartID, 2);
+        $obOrder = $this->makeOrder(null, 0);
+        CartProcessor::$iTestCartID = $iCartID;
+
+        DB::beginTransaction();
+        Event::fire(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, $obOrder);
+        DB::connection(self::SECOND_CONNECTION)->beginTransaction();
+        DB::connection(self::SECOND_CONNECTION)->commit();
+
+        $this->assertSame(2, $this->countPositions($iCartID));
+        $this->assertArrayNotHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+
+        DB::commit();
+
+        $this->assertSame(0, $this->countPositions($iCartID));
+        $this->assertArrayHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+    }
+
+    /**
+     * The order created event no longer writes the record; the commit does.
+     * @return void
+     */
+    public function testOrderCreatedEventAloneWritesNoRecord()
+    {
+        $iCartID = $this->insertCart();
+        $obOrder = $this->makeOrder(null, 0);
+        CartProcessor::$iTestCartID = $iCartID;
+
+        Event::fire(OrderProcessor::EVENT_ORDER_CREATED, $obOrder);
+
+        $this->assertArrayNotHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));
+    }
+
+    /**
      * Submit 1 registered an account: its new cart row carries the record and replays after the cookie moved there.
      * @return void
      */
@@ -93,9 +361,7 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
         $this->assertArrayHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iGuestCartID), 'the guest cart that placed the order keeps its record');
 
         // The next Cart request moved the cookie to the account's cart
-        $sRedirectUrl = $this->fireRepeatedSubmit($iAccountCartID);
-
-        $this->assertTrue(str_ends_with((string) $sRedirectUrl, '/checkout/'.$obOrder->secret_key), 'got: '.var_export($sRedirectUrl, true));
+        $this->assertReplaysTo($obOrder, $this->fireRepeatedSubmit($iAccountCartID));
     }
 
     /**
@@ -135,9 +401,7 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
         $obOrder = $this->makeOrder(null, 2);
         $this->firePlacedOrder($obOrder, $iCartID);
 
-        $sRedirectUrl = $this->fireRepeatedSubmit($iCartID);
-
-        $this->assertTrue(str_ends_with((string) $sRedirectUrl, '/checkout/'.$obOrder->secret_key), 'got: '.var_export($sRedirectUrl, true));
+        $this->assertReplaysTo($obOrder, $this->fireRepeatedSubmit($iCartID));
     }
 
     /**
@@ -213,7 +477,7 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
         $iCartID = $this->insertCart();
         $obOrder = $this->makeOrder(null, 2);
         $this->firePlacedOrder($obOrder, $iCartID);
-        DB::table(self::CART_POSITIONS_TABLE)->insert(['cart_id' => $iCartID, 'item_id' => 7, 'quantity' => 1]);
+        $this->insertPositions($iCartID, 1);
 
         $this->assertNull($this->fireRepeatedSubmit($iCartID));
     }
@@ -252,6 +516,27 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
 
     /**
      * @param int $iCartID
+     * @param int $iCount
+     * @return void
+     */
+    protected function insertPositions($iCartID, $iCount)
+    {
+        for ($iIndex = 1; $iIndex <= $iCount; $iIndex++) {
+            DB::table(self::CART_POSITIONS_TABLE)->insert(['cart_id' => $iCartID, 'item_id' => $iIndex, 'quantity' => 1]);
+        }
+    }
+
+    /**
+     * @param int $iCartID
+     * @return int live (not soft deleted) positions
+     */
+    protected function countPositions($iCartID)
+    {
+        return DB::table(self::CART_POSITIONS_TABLE)->where('cart_id', $iCartID)->whereNull('deleted_at')->count();
+    }
+
+    /**
+     * @param int $iCartID
      * @return array
      */
     protected function readCartProperty($iCartID)
@@ -270,13 +555,14 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
         $this->assertNotEmpty($obOrder->secret_key, 'Order::create generates the secret key');
 
         $sCreatedAt = Carbon::now()->subMinutes($iAgeMinutes)->toDateTimeString();
-        DB::table('lovata_orders_shopaholic_orders')->where('id', $obOrder->id)->update(['created_at' => $sCreatedAt]);
+        DB::table(self::ORDERS_TABLE)->where('id', $obOrder->id)->update(['created_at' => $sCreatedAt]);
 
         return $obOrder->fresh();
     }
 
     /**
-     * EVENT_ORDER_CREATED as OrderProcessor::create fires it, before the cart is cleared.
+     * The checkout transaction as OrderProcessor::create runs it: after_create inside,
+     * then the outer commit.
      * @param Order $obOrder
      * @param int   $iCartID
      * @return void
@@ -284,7 +570,9 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
     protected function firePlacedOrder($obOrder, $iCartID)
     {
         CartProcessor::$iTestCartID = $iCartID;
-        Event::fire(OrderProcessor::EVENT_ORDER_CREATED, $obOrder);
+        DB::beginTransaction();
+        Event::fire(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, $obOrder);
+        DB::commit();
         CartProcessor::forgetInstance();
     }
 
@@ -296,10 +584,21 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
      */
     protected function fireRepeatedSubmit($iCartID)
     {
+        CartProcessor::forgetInstance();
         CartProcessor::$iTestCartID = $iCartID;
         Result::setFalse();
 
         return Event::fire(OrderProcessor::EVENT_ORDER_GET_REDIRECT_URL, null, true);
+    }
+
+    /**
+     * @param Order       $obOrder
+     * @param string|null $sRedirectUrl
+     * @return void
+     */
+    protected function assertReplaysTo($obOrder, $sRedirectUrl)
+    {
+        $this->assertTrue(str_ends_with((string) $sRedirectUrl, '/checkout/'.$obOrder->secret_key), 'got: '.var_export($sRedirectUrl, true));
     }
 
     /**

@@ -5,6 +5,9 @@ namespace Logingrupa\StoreExtender\Classes\Event\Order;
 use Throwable;
 use Kharanenka\Helper\Result;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Events\TransactionCommitting;
+use Illuminate\Database\Events\TransactionRolledBack;
+use Lovata\Shopaholic\Models\Settings;
 use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\OrdersShopaholic\Models\CartPosition;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
@@ -17,13 +20,23 @@ use Logingrupa\StoreExtender\Classes\Helper\PlacedOrderMemory;
  * @package Logingrupa\StoreExtender\Classes\Event\Order
  *
  * A checkout submit can place the order while its answer never reaches the browser
- * (aborted request). The cart is cleared by then, so the shopper's next submit used to
- * answer "Cart is empty". The placed order is remembered on the cart before the clear,
- * and a submit that finds the cart empty within the replay window redirects to that
- * order's page.
+ * (aborted request, or a throw after the commit). The placed order is recorded on the
+ * cart and the cart is emptied in the same transaction as the order, so a submit that
+ * finds the cart empty within the replay window redirects to that order's page instead
+ * of placing a second one.
+ *
+ * Triggers:
+ * - shopaholic.order.after_create: the checkout order waits for its commit
+ * - TransactionCommitting on the order's connection: record, then clear the cart unless
+ *   disable_cart_clear_on_new_order; a failure rolls the order back and rethrows
+ * - The outermost TransactionRolledBack drops the waiting order
+ * - shopaholic.order.get_redirect_url: the replay answer
  */
 class OrderSubmitReplayHandler
 {
+    /** @var Order|null checkout order between after_create and its commit */
+    private ?Order $obPendingOrder = null;
+
     /**
      * Add listeners
      * @param \Illuminate\Events\Dispatcher $obEvent untyped: October passes its own dispatcher
@@ -31,9 +44,18 @@ class OrderSubmitReplayHandler
      */
     public function subscribe($obEvent): void
     {
-        // Fires after the commit and before CartProcessor::clear()
-        $obEvent->listen(OrderProcessor::EVENT_ORDER_CREATED, function ($obOrder) {
-            $this->rememberPlacedOrder($obOrder);
+        // Fired inside the checkout transaction, only by OrderProcessor::create
+        $obEvent->listen(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, function ($obOrder): void {
+            $this->obPendingOrder = $obOrder instanceof Order ? $obOrder : null;
+        });
+
+        // Connection events reach priority 0 listeners only
+        $obEvent->listen(TransactionCommitting::class, function (TransactionCommitting $obCommitting): void {
+            $this->settlePendingOrder($obCommitting);
+        });
+
+        $obEvent->listen(TransactionRolledBack::class, function (TransactionRolledBack $obRolledBack): void {
+            $this->dropPendingOrderOnOuterRollback($obRolledBack);
         });
 
         // Fired with halt = true: the first non-null answer becomes the redirect URL
@@ -43,22 +65,51 @@ class OrderSubmitReplayHandler
     }
 
     /**
-     * @param Order|null $obOrder
+     * Record the pending order on the cart and empty the cart before the order commits.
+     * @param TransactionCommitting $obCommitting
      * @return void
+     * @throws Throwable when the record or the clear fails, after rolling the order back
      */
-    protected function rememberPlacedOrder($obOrder): void
+    protected function settlePendingOrder(TransactionCommitting $obCommitting): void
     {
-        $obCart = CartProcessor::instance()->getCartObject();
-        if (empty($obCart) || !$obOrder instanceof Order) {
+        $obOrder = $this->obPendingOrder;
+        if (empty($obOrder) || $obCommitting->connectionName !== $obOrder->getConnection()->getName()) {
             return;
         }
 
-        // The order is already committed; a lost replay record must never fail it
+        $this->obPendingOrder = null;
+
+        $obCartProcessor = CartProcessor::instance();
+        $obCart = $obCartProcessor->getCartObject();
+        if (empty($obCart)) {
+            return;
+        }
+
         try {
             PlacedOrderMemory::remember($obCart, $obOrder);
+            if (!Settings::get('disable_cart_clear_on_new_order')) {
+                $obCartProcessor->clear();
+            }
         } catch (Throwable $obException) {
-            Log::error('Placed order record failed for order '.$obOrder->id.': '.$obException->getMessage());
+            Log::error('Checkout commit aborted for order '.$obOrder->id.': '.$obException->getMessage());
+            // Laravel leaves the transaction open when a committing listener throws
+            $obCommitting->connection->rollBack();
+            throw $obException;
         }
+    }
+
+    /**
+     * A savepoint rollback fires the same event and keeps the pending order.
+     * @param TransactionRolledBack $obRolledBack
+     * @return void
+     */
+    protected function dropPendingOrderOnOuterRollback(TransactionRolledBack $obRolledBack): void
+    {
+        if ($obRolledBack->connection->transactionLevel() !== 0) {
+            return;
+        }
+
+        $this->obPendingOrder = null;
     }
 
     /**
