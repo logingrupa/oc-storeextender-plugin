@@ -2,6 +2,8 @@
 
 require_once __DIR__.'/../StoreExtenderUserPluginTestCase.php';
 
+use Random\Engine;
+use Random\Randomizer;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Illuminate\Support\Facades\Validator;
 use RainLab\User\Models\Setting;
@@ -88,6 +90,42 @@ class CheckoutPasswordTest extends StoreExtenderUserPluginTestCase
 
         $this->setPolicy(40, false, true, false);
         $this->assertSame(40, strlen(CheckoutPassword::make()));
+    }
+
+    /**
+     * An engine that always returns the same bytes still yields every class: the
+     * guarantee comes from the seeds, not from luck.
+     * @return void
+     */
+    public function testConstantEngineStillYieldsEveryClass()
+    {
+        $this->setPolicy(8, true, true, true);
+        $obConstantEngine = new class implements Engine {
+            public function generate(): string
+            {
+                return str_repeat("\x00", 8);
+            }
+        };
+
+        $sPassword = CheckoutPassword::make(new Randomizer($obConstantEngine));
+        $obValidator = Validator::make(['password' => $sPassword], ['password' => [Setting::makePasswordRule()]]);
+
+        $this->assertMatchesRegularExpression('/[a-z]/', $sPassword);
+        $this->assertMatchesRegularExpression('/[A-Z]/', $sPassword);
+        $this->assertMatchesRegularExpression('/[0-9]/', $sPassword);
+        $this->assertMatchesRegularExpression('/[^a-zA-Z0-9]/', $sPassword);
+        $this->assertFalse($obValidator->fails(), $sPassword.' '.implode(' ', $obValidator->errors()->all()));
+    }
+
+    /**
+     * Every symbol the generator can draw counts for Password::symbols().
+     * @return void
+     */
+    public function testEverySymbolSatisfiesTheSymbolsRule()
+    {
+        foreach (str_split(CheckoutPassword::SYMBOLS) as $sSymbol) {
+            $this->assertMatchesRegularExpression('/\p{Z}|\p{S}|\p{P}/u', $sSymbol);
+        }
     }
 
     /**

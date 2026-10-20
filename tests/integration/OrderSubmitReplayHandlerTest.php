@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Kharanenka\Helper\Result;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Database\Events\TransactionCommitting;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Lovata\Shopaholic\Models\Settings;
@@ -282,6 +283,10 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
         Event::listen(TransactionRolledBack::class, function (TransactionRolledBack $obRolledBack) use (&$iRolledBackLevel) {
             $iRolledBackLevel = $obRolledBack->connection->transactionLevel();
         });
+        $arLoggedList = [];
+        Event::listen(MessageLogged::class, function (MessageLogged $obLogged) use (&$arLoggedList) {
+            $arLoggedList[] = [$obLogged->message, DB::transactionLevel()];
+        });
 
         DB::beginTransaction();
         $obOrder = Order::create(['property' => ['email' => 'buyer@example.com']]);
@@ -297,6 +302,11 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
 
         $this->assertSame(0, DB::transactionLevel());
         $this->assertSame(0, $iRolledBackLevel, 'TransactionRolledBack fired for the outer transaction');
+        $arAbortLogList = array_values(array_filter($arLoggedList, function ($arLogged) use ($obOrder) {
+            return str_starts_with($arLogged[0], 'Checkout commit aborted for order '.$obOrder->id.':');
+        }));
+        $this->assertCount(1, $arAbortLogList, 'the abort is logged once with the order id');
+        $this->assertSame(0, $arAbortLogList[0][1], 'the log line is written after the rollback');
         $this->assertSame(0, DB::table(self::ORDERS_TABLE)->count(), 'the order row was rolled back');
         $this->assertSame(2, $this->countPositions($iCartID));
         $this->assertArrayNotHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iCartID));

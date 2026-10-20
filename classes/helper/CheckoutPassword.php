@@ -3,7 +3,6 @@
 namespace Logingrupa\StoreExtender\Classes\Helper;
 
 use Random\Randomizer;
-use Illuminate\Support\Str;
 use RainLab\User\Models\Setting;
 
 /**
@@ -16,18 +15,32 @@ final class CheckoutPassword
 {
     const LENGTH = 32;
 
+    const LOWERCASE = 'abcdefghijklmnopqrstuvwxyz';
+
+    const UPPERCASE = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+    const DIGITS = '0123456789';
+
+    /** ASCII \p{S} and \p{P} characters, both satisfy Password::symbols() */
+    const SYMBOLS = '~!#$%^&*()-_.,<>?/\\{}[]|:;';
+
     /**
-     * Str::password guarantees a letter, a digit and a symbol; the two seeds add mixed case.
+     * A seed from each class, the rest from their union, shuffled, all from one randomizer.
+     * @param Randomizer $obRandomizer
      * @return string
      */
-    public static function make(): string
+    public static function make(Randomizer $obRandomizer = new Randomizer()): string
     {
         $iLength = max(self::LENGTH, (int) Setting::instance()->password_min_length);
 
-        $obRandomizer = new Randomizer();
-        $sCaseSeed = $obRandomizer->getBytesFromString('abcdefghijklmnopqrstuvwxyz', 1)
-            .$obRandomizer->getBytesFromString('ABCDEFGHIJKLMNOPQRSTUVWXYZ', 1);
+        $sSeed = $obRandomizer->getBytesFromString(self::LOWERCASE, 1)
+            .$obRandomizer->getBytesFromString(self::UPPERCASE, 1)
+            .$obRandomizer->getBytesFromString(self::DIGITS, 1)
+            .$obRandomizer->getBytesFromString(self::SYMBOLS, 1);
 
-        return $obRandomizer->shuffleBytes($sCaseSeed.Str::password($iLength - 2));
+        $sPool = self::LOWERCASE.self::UPPERCASE.self::DIGITS.self::SYMBOLS;
+        $sFill = $obRandomizer->getBytesFromString($sPool, $iLength - strlen($sSeed));
+
+        return $obRandomizer->shuffleBytes($sSeed.$sFill);
     }
 }

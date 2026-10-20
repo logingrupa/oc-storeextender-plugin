@@ -91,9 +91,10 @@ class OrderSubmitReplayHandler
                 $obCartProcessor->clear();
             }
         } catch (Throwable $obException) {
-            Log::error('Checkout commit aborted for order '.$obOrder->id.': '.$obException->getMessage());
-            // Laravel leaves the transaction open when a committing listener throws
+            // Laravel leaves the transaction open when a committing listener throws. Roll back
+            // before logging: log_events writes the line to system_event_logs on this connection.
             $obCommitting->connection->rollBack();
+            Log::error('Checkout commit aborted for order '.$obOrder->id.': '.$obException->getMessage());
             throw $obException;
         }
     }
