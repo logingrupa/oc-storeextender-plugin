@@ -12,6 +12,7 @@ use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\OrdersShopaholic\Models\CartPosition;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 use Lovata\OrdersShopaholic\Classes\Processor\OrderProcessor;
+use Lovata\CouponsShopaholic\Classes\Helper\CouponHelper;
 use Logingrupa\StoreExtender\Classes\Helper\OrderPageUrl;
 use Logingrupa\StoreExtender\Classes\Helper\PlacedOrderMemory;
 
@@ -27,8 +28,9 @@ use Logingrupa\StoreExtender\Classes\Helper\PlacedOrderMemory;
  *
  * Triggers:
  * - shopaholic.order.after_create: the checkout order waits for its commit
- * - TransactionCommitting on the order's connection: record, then clear the cart unless
- *   disable_cart_clear_on_new_order; a failure rolls the order back and rethrows
+ * - TransactionCommitting on the order's connection: record, clear the cart unless
+ *   disable_cart_clear_on_new_order, detach its coupons; a failure rolls the order back
+ *   and rethrows
  * - The outermost TransactionRolledBack drops the waiting order
  * - shopaholic.order.get_redirect_url: the replay answer
  */
@@ -65,10 +67,11 @@ class OrderSubmitReplayHandler
     }
 
     /**
-     * Record the pending order on the cart and empty the cart before the order commits.
+     * Record the pending order on the cart, empty the cart and detach its coupons before
+     * the order commits.
      * @param TransactionCommitting $obCommitting
      * @return void
-     * @throws Throwable when the record or the clear fails, after rolling the order back
+     * @throws Throwable when the record, the clear or the detach fails, after rolling the order back
      */
     protected function settlePendingOrder(TransactionCommitting $obCommitting): void
     {
@@ -89,6 +92,12 @@ class OrderSubmitReplayHandler
             PlacedOrderMemory::remember($obCart, $obOrder);
             if (!Settings::get('disable_cart_clear_on_new_order')) {
                 $obCartProcessor->clear();
+            }
+
+            // Cart::coupon exists only while Lovata.CouponsShopaholic runs. Like its own
+            // order.created detach, this ignores disable_cart_clear_on_new_order.
+            if ($obCart->hasRelation('coupon')) {
+                CouponHelper::instance()->clearCouponList();
             }
         } catch (Throwable $obException) {
             // Laravel leaves the transaction open when a committing listener throws. Roll back

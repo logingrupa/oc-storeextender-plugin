@@ -306,3 +306,6 @@
 
 2.0.105:
   - 'Guest checkout accounts always meet the password rules (rule messages now translated), and a resubmit after an error on a saved order opens that order instead of placing it twice.'
+
+2.0.106:
+  - 'Cart coupons are removed when the order commits, so an error after the order is saved no longer leaves the coupon on the shopper''s next cart.'
