@@ -64,6 +64,7 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 //Order position
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPropertySecretHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\CheckoutPasswordHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderUserPhoneHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderMailDataHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPaidMailHandler;
@@ -290,6 +291,8 @@ class Plugin extends PluginBase
 
         // Keeps raw checkout credentials out of the order property snapshot.
         Event::subscribe(OrderPropertySecretHandler::class);
+        // Its generated password reaches order.property; OrderPropertySecretHandler strips it.
+        Event::subscribe(CheckoutPasswordHandler::class);
         Event::subscribe(OrderUserPhoneHandler::class);
         Event::subscribe(OrderMailDataHandler::class);
         Event::subscribe(OrderPaidMailHandler::class);

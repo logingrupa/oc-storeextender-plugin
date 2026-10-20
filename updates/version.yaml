@@ -303,3 +303,6 @@
 
 2.0.104:
   - 'A repeated checkout submit after the order already went through opens that order''s page instead of saying the cart is empty.'
+
+2.0.105:
+  - 'Guest checkout accounts always meet the password rules (rule messages now translated), and a resubmit after an error on a saved order opens that order instead of placing it twice.'
