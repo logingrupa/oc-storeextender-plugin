@@ -300,3 +300,6 @@
 
 2.0.103:
   - 'Order mails link the order page and the proforma on the site the mail is written for, so a Russian or English mail opens them in its own language instead of the reader''s browser language. Product links from the shop-product pagefinder types never carry the offer of the page they render on.'
+
+2.0.104:
+  - 'A repeated checkout submit after the order already went through opens that order''s page instead of saying the cart is empty.'

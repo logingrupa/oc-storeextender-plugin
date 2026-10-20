@@ -68,6 +68,7 @@ use Logingrupa\StoreExtender\Classes\Event\Order\OrderUserPhoneHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderMailDataHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPaidMailHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPaymentChoiceMailHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderSubmitReplayHandler;
 //Product events
 use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductFieldsHandler as StoreExtenderExtendProductFieldsHandler;
 use Logingrupa\StoreExtender\Classes\Event\Product\ProductModelHandler as StoreExtenderProductModelHandler;
@@ -293,6 +294,7 @@ class Plugin extends PluginBase
         Event::subscribe(OrderMailDataHandler::class);
         Event::subscribe(OrderPaidMailHandler::class);
         Event::subscribe(OrderPaymentChoiceMailHandler::class);
+        Event::subscribe(OrderSubmitReplayHandler::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
 

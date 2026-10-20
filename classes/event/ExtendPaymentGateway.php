@@ -1,7 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event;
 
-use Cms\Classes\Page;
 use Lovata\PayPalShopaholic\Classes\Helper\PayPalExpressPaymentGateway;
+use Logingrupa\StoreExtender\Classes\Helper\OrderPageUrl;
 
 /**
  * Class ExtendPaymentGateway
@@ -18,7 +18,7 @@ class ExtendPaymentGateway
     {
         $obEvent->listen(PayPalExpressPaymentGateway::EVENT_GET_PAYMENT_GATEWAY_RETURN_URL, function ($obOrder, $obPaymentMethod) {
             /** @var \Lovata\OrdersShopaholic\Models\Order $obOrder */
-            return Page::url('order-complete', ['slug' => $obOrder->secret_key]);
+            return OrderPageUrl::make($obOrder);
         });
     }
 }
