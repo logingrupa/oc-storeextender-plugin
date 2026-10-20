@@ -49,8 +49,7 @@ final class PlacedOrderMemory
             return;
         }
 
-        $obUserCart = Cart::getByUser($iUserID)->first() ?: Cart::create(['user_id' => $iUserID]);
-        self::writeRecord($obUserCart, $arRecord);
+        self::writeRecord(AccountCart::forUser($iUserID), $arRecord);
     }
 
     /**

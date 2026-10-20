@@ -1,7 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event\User;
 
 use Logingrupa\StoreExtender\Classes\Event\Cart\CartComponentHandler;
-use Lovata\OrdersShopaholic\Models\Cart;
+use Logingrupa\StoreExtender\Classes\Helper\AccountCart;
 
 /**
  * Class AccountCartIdentityHandler
@@ -60,8 +60,7 @@ class AccountCartIdentityHandler
             return;
         }
 
-        // Same row CartProcessor::findUserCart() binds the cookie to on the next request
-        $obCart = Cart::getByUser($obUser->id)->first() ?: Cart::create(['user_id' => $obUser->id]);
+        $obCart = AccountCart::forUser((int) $obUser->id);
 
         $obCart->user_data = array_merge((array) $obCart->user_data, $arAccountData);
         $obCart->email = array_get($obCart->user_data, 'email');

@@ -2,15 +2,13 @@
 
 require_once __DIR__.'/../StoreExtenderPluginTestCase.php';
 require_once __DIR__.'/../doubles/OrderStubTables.php';
+require_once __DIR__.'/../doubles/CartStubTables.php';
 
 use Carbon\Carbon;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Kharanenka\Helper\Result;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Schema;
-use October\Rain\Database\Schema\Blueprint;
-use Lovata\OrdersShopaholic\Models\Cart;
 use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 use Lovata\OrdersShopaholic\Classes\Processor\OrderProcessor;
@@ -41,27 +39,7 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
         parent::setUp();
 
         OrderStubTables::create();
-        $this->createStubTable(self::CARTS_TABLE, function (Blueprint $obTable) {
-            $obTable->increments('id');
-            $obTable->integer('user_id')->nullable();
-            $obTable->integer('shipping_type_id')->nullable();
-            $obTable->integer('payment_method_id')->nullable();
-            $obTable->string('email')->nullable();
-            $obTable->text('user_data')->nullable();
-            $obTable->text('property')->nullable();
-            $obTable->text('shipping_address')->nullable();
-            $obTable->text('billing_address')->nullable();
-            $obTable->timestamps();
-        });
-        $this->createStubTable(self::CART_POSITIONS_TABLE, function (Blueprint $obTable) {
-            $obTable->increments('id');
-            $obTable->integer('cart_id')->default(0);
-            $obTable->integer('item_id')->default(0);
-            $obTable->string('item_type')->default('Lovata\Shopaholic\Models\Offer');
-            $obTable->integer('quantity')->default(0);
-            $obTable->timestamps();
-            $obTable->timestamp('deleted_at')->nullable();
-        });
+        CartStubTables::create();
 
         Result::setTrue();
     }
@@ -121,23 +99,28 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
     }
 
     /**
-     * A logged-in checkout writes its own cart row once and creates no second row.
+     * A logged-in checkout writes its own cart row once: no account cart lookup follows
+     * the write, because re-saving an unchanged record would issue no UPDATE to catch.
      * @return void
      */
     public function testRecordIsWrittenOnceWhenTheProcessorCartIsTheAccountCart()
     {
         $iAccountCartID = $this->insertCart(self::ACCOUNT_USER_ID);
         $obOrder = $this->makeOrder(self::ACCOUNT_USER_ID, 0);
-        $iCartUpdateCount = 0;
-        DB::listen(function ($obQuery) use (&$iCartUpdateCount) {
-            if (str_starts_with($obQuery->sql, 'update "'.self::CARTS_TABLE.'"')) {
-                $iCartUpdateCount++;
+        $arCartQueryList = [];
+        DB::listen(function ($obQuery) use (&$arCartQueryList) {
+            if (str_contains($obQuery->sql, '"'.self::CARTS_TABLE.'"')) {
+                $arCartQueryList[] = $obQuery->sql;
             }
         });
 
         $this->firePlacedOrder($obOrder, $iAccountCartID);
 
-        $this->assertSame(1, $iCartUpdateCount);
+        $arUpdateIndexList = array_keys(array_filter($arCartQueryList, function ($sQuery) {
+            return str_starts_with($sQuery, 'update ');
+        }));
+        $this->assertCount(1, $arUpdateIndexList, implode(PHP_EOL, $arCartQueryList));
+        $this->assertSame([], array_slice($arCartQueryList, $arUpdateIndexList[0] + 1), 'no cart query after the record write');
         $this->assertSame(1, DB::table(self::CARTS_TABLE)->count());
         $this->assertArrayHasKey(PlacedOrderMemory::PROPERTY_KEY, $this->readCartProperty($iAccountCartID));
     }
@@ -326,18 +309,5 @@ class OrderSubmitReplayHandlerTest extends StoreExtenderPluginTestCase
     protected function hmacOf($obOrder)
     {
         return hash_hmac('sha256', $obOrder->secret_key, (string) config('app.key'));
-    }
-
-    /**
-     * @param string   $sTableName
-     * @param \Closure $fnDefineTable
-     * @return void
-     */
-    protected function createStubTable($sTableName, $fnDefineTable)
-    {
-        if (Schema::hasTable($sTableName)) {
-            return;
-        }
-        Schema::create($sTableName, $fnDefineTable);
     }
 }

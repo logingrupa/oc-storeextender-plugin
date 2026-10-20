@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__.'/CartStubTables.php';
+
 use Illuminate\Support\Facades\Schema;
 use October\Rain\Database\Schema\Blueprint;
 
@@ -64,29 +66,7 @@ final class ShippingLadderStubTables
             $obTable->primary(['shipping_type_id', 'campaign_id']);
         });
 
-        self::createIfMissing('lovata_orders_shopaholic_carts', function (Blueprint $obTable) {
-            $obTable->increments('id');
-            $obTable->integer('user_id')->nullable();
-            $obTable->integer('shipping_type_id')->nullable();
-            $obTable->integer('payment_method_id')->nullable();
-            $obTable->string('email')->nullable();
-            $obTable->text('user_data')->nullable();
-            $obTable->text('property')->nullable();
-            $obTable->text('shipping_address')->nullable();
-            $obTable->text('billing_address')->nullable();
-            $obTable->timestamps();
-        });
-
-        self::createIfMissing('lovata_orders_shopaholic_cart_positions', function (Blueprint $obTable) {
-            $obTable->increments('id');
-            $obTable->integer('cart_id')->default(0);
-            $obTable->integer('item_id')->default(0);
-            $obTable->string('item_type')->default('Lovata\Shopaholic\Models\Offer');
-            $obTable->integer('quantity')->default(0);
-            $obTable->text('property')->nullable();
-            $obTable->timestamps();
-            $obTable->timestamp('deleted_at')->nullable();
-        });
+        CartStubTables::create();
     }
 
     /**
