@@ -20,6 +20,7 @@
     <php>
         <env name="APP_ENV" value="testing" />
         <env name="CACHE_DRIVER" value="array" />
+        <env name="CACHE_STORE" value="array" />
         <env name="SESSION_DRIVER" value="array" />
         <env name="CMS_TWIG_CACHE" value="false" />
         <env name="ENABLE_CSRF" value="false" />
