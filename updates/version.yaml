@@ -312,3 +312,7 @@
 
 2.0.107:
   - 'The order page text Change payment method is gone: a bank transfer order heads its online payment option with Pay online instead.'
+
+2.0.108:
+  - 'Canceling an order returns its stock where the shop keeps stock itself (.lt, .no; the 1C import sets .lv stock). Reopening the order takes the stock again, a shipped order keeps it. A late payment callback no longer turns a canceled order back into an unpaid one.'
+  - create_table_order_stock_holds.php

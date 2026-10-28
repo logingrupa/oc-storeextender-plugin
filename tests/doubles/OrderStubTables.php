@@ -6,7 +6,8 @@ use October\Rain\Database\Schema\Blueprint;
 /**
  * SQLite stubs of the order tables, columns per the production DESCRIBE of 2026-10-02.
  * The full Lovata migration chain is SQLite-incompatible, so the tables are hand-built
- * and only created when missing. The payment reminder log comes from its real migration.
+ * and only created when missing. The payment reminder log and the stock holds come from
+ * their real migrations.
  */
 final class OrderStubTables
 {
@@ -76,6 +77,10 @@ final class OrderStubTables
 
         require_once __DIR__.'/../../updates/create_table_order_payment_reminders.php';
         (new \Logingrupa\StoreExtender\Updates\CreateTableOrderPaymentReminders())->up();
+
+        // every Order save reconciles its stock holds
+        require_once __DIR__.'/../../updates/create_table_order_stock_holds.php';
+        (new \Logingrupa\StoreExtender\Updates\CreateTableOrderStockHolds())->up();
     }
 
     /**

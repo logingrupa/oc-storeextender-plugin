@@ -84,6 +84,7 @@ final class CheckoutStubTables
             $obTable->decimal('price', 15, 2)->nullable();
             $obTable->decimal('old_price', 15, 2)->nullable();
             $obTable->integer('price_type_id')->nullable();
+            $obTable->timestamps();
         });
 
         self::createIfMissing('lovata_shopaholic_currency', function (Blueprint $obTable) {
@@ -172,6 +173,12 @@ final class CheckoutStubTables
             $obTable->string('model_type')->nullable();
             $obTable->string('item')->nullable();
             $obTable->text('value')->nullable();
+        });
+
+        // An Offer save (stock decrement on) reads the offer's site list
+        self::createIfMissing('lovata_shopaholic_offer_site_relation', function (Blueprint $obTable) {
+            $obTable->integer('offer_id');
+            $obTable->integer('site_id');
         });
     }
 
