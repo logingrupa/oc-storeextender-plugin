@@ -309,3 +309,6 @@
 
 2.0.106:
   - 'Cart coupons are removed when the order commits, so an error after the order is saved no longer leaves the coupon on the shopper''s next cart.'
+
+2.0.107:
+  - 'The order page text Change payment method is gone: a bank transfer order heads its online payment option with Pay online instead.'
