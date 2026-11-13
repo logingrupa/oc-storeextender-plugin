@@ -319,3 +319,6 @@
 
 2.0.109:
   - 'A colour chip row reads its family names from the theme messages when the colour-lab export carries no name for the active language, so the Norwegian store shows Norwegian chips instead of English ones beside its Norwegian swatch labels. Languages the export does carry are unchanged.'
+
+2.0.110:
+  - 'The three shops now recognise each other''s products and categories by their 1C id instead of by an identical web address, so each shop keeps its cross-language links when its addresses are written in its own language. A page no longer calls the other shops while a visitor waits: every shop holds its own copy of the others'' catalogues and refreshes it by itself every ten minutes. Until that refresh has run a shop shows no cross-language links, which is also what a cache clear does. A command that rebuilds product and category addresses from their names ships with this release and is run by hand, never by a deploy.'
