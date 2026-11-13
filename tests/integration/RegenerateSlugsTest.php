@@ -137,6 +137,30 @@ class RegenerateSlugsTest extends StoreExtenderPluginTestCase
         ], $this->parsePlan($sOutput), $sOutput);
     }
 
+    /**
+     * Sluggable reads a taken suffix through ctype_digit and casts it to an
+     * int, so "foo-02" occupies counter 2 and the next free value is "foo-3".
+     * A simulation that compared slug strings would predict "foo-2", clear it
+     * through the preflight, and let the real save take an unvalidated "foo-3"
+     * whose SlugHistory row record() then deletes.
+     */
+    public function testANumericAliasSuffixOccupiesItsCounterJustAsSluggableReadsIt()
+    {
+        // Row 2 keeps foo-02: a row that gave it up would free the counter and
+        // the string comparison would look right by accident.
+        $this->seedProducts([
+            ['id' => 1, 'name' => 'Foo', 'slug' => 'foo'],
+            ['id' => 2, 'name' => 'Foo 02', 'slug' => 'foo-02'],
+            ['id' => 3, 'name' => 'Foo', 'slug' => 'c'],
+        ]);
+
+        [, $sOutput] = $this->runDryRun('products');
+
+        $this->assertStringContainsString('#2 UNCHANGED', $sOutput, 'foo-02 stays taken');
+        $this->assertSame('foo-3', $this->parsePlan($sOutput)['3'] ?? null, $sOutput);
+        $this->assertSame('foo-3', $this->slugSluggableAssigns(3), 'Sluggable agrees, which is the point');
+    }
+
     public function testASoftDeletedRowStillCountsTowardTheSuffix()
     {
         $this->seedProducts([
@@ -317,6 +341,39 @@ class RegenerateSlugsTest extends StoreExtenderPluginTestCase
         $this->assertStringContainsString('HALTED', $sOutput);
         $this->assertSame('a', $this->slugOf(1));
         $this->assertSame('b', $this->slugOf(2), 'no later row was touched');
+    }
+
+    /**
+     * A row is written whole or not at all.
+     *
+     * This harness supplies the failure for free: a save reaches Lovata's
+     * multisite afterSave and throws on a Shopaholic relation table these
+     * hand-built tables do not provide - AFTER SlugHistoryHandler has already
+     * rewritten the redirect ledger in model.beforeUpdate. Without a
+     * transaction the ledger would point at a slug nothing serves.
+     */
+    public function testAFailedRowRollsBackItsRedirectLedgerAndHaltsTheRun()
+    {
+        $this->seedProducts([
+            ['id' => 1, 'name' => 'Bar', 'slug' => 'foo', 'updated_at' => '2026-10-01 10:00:00'],
+            ['id' => 2, 'name' => 'Aceton', 'slug' => 'second', 'updated_at' => '2026-10-01 10:00:00'],
+        ]);
+        SlugHistory::record(SlugHistory::TYPE_PRODUCT, 'older', 'foo');
+
+        [$iExit, $sOutput] = $this->runCommand(new RegenerateSlugs, ['--kind' => 'products']);
+
+        $this->assertSame(Command::FAILURE, $iExit, $sOutput);
+        $this->assertStringContainsString('HALTED', $sOutput);
+        $this->assertStringContainsString('rolled back', $sOutput);
+
+        $this->assertSame('foo', $this->slugOf(1), 'the row kept its slug');
+        $this->assertSame(
+            'foo',
+            SlugHistory::findTarget(SlugHistory::TYPE_PRODUCT, 'older'),
+            'the ledger was not rewritten to a slug nothing serves'
+        );
+        $this->assertNull(SlugHistory::findTarget(SlugHistory::TYPE_PRODUCT, 'foo'), 'no half-written rename');
+        $this->assertSame('second', $this->slugOf(2), 'the run stopped instead of spreading it');
     }
 
     public function testACleanRunReportsThatThePreflightPassed()

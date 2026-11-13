@@ -22,8 +22,11 @@ use October\Rain\Support\Str;
  * by-hand step.
  *
  * It needs no cache-busting step. The published id map's cache key carries
- * ShopIdMap::catalogueStamp(), so the first saved slug makes the old body
- * unreachable - which also covers an interrupted run.
+ * ShopIdMap::catalogueStamp(), so a saved slug makes the old body unreachable
+ * after the next second - updated_at has one-second granularity, so a save
+ * inside the same second as a build leaves that build reachable for the rest
+ * of its ten-minute TTL, which is the only thing closing that window. The same
+ * mechanism covers an interrupted run.
  *
  *   php artisan storeextender:regenerate-slugs --kind=categories --dry-run
  *   php artisan storeextender:regenerate-slugs --kind=products
@@ -284,17 +287,50 @@ class RegenerateSlugs extends Command
     }
 
     /**
-     * @param array<string,bool> $arTaken
+     * What Sluggable would assign, by its rule rather than by a lookalike.
+     *
+     * getSluggableUniqueAttributeValue collects every taken suffix through
+     * ctype_digit and casts it to an INT, so an existing "foo-02" occupies
+     * counter 2 and the next free value is "foo-3". Comparing slug strings
+     * would miss that and predict "foo-2", and the preflight would then clear
+     * a slug the run never takes while the real save takes an unvalidated one.
+     *
+     * @param array<string,bool> $arTaken lowercased slugs
      */
     protected function firstFreeSlug(string $sBase, string $sSeparator, array $arTaken): string
     {
-        if (!isset($arTaken[mb_strtolower($sBase)])) {
+        $sBaseLower = mb_strtolower($sBase);
+        $sPrefixLower = $sBaseLower . $sSeparator;
+        $iPrefixLength = mb_strlen($sPrefixLower);
+
+        $bBaseTaken = false;
+        $arCounterTaken = [];
+
+        foreach (array_keys($arTaken) as $sSlug) {
+            $sSlug = (string) $sSlug;
+
+            if ($sSlug === $sBaseLower) {
+                $bBaseTaken = true;
+
+                continue;
+            }
+
+            if (mb_substr($sSlug, 0, $iPrefixLength) !== $sPrefixLower) {
+                continue;
+            }
+
+            $sSuffix = mb_substr($sSlug, $iPrefixLength);
+            if ($sSuffix !== '' && ctype_digit($sSuffix)) {
+                $arCounterTaken[(int) $sSuffix] = true;
+            }
+        }
+
+        if (!$bBaseTaken) {
             return $sBase;
         }
 
-        // Sluggable starts its counter at 2 and compares case insensitively
         $iCounter = 2;
-        while (isset($arTaken[mb_strtolower($sBase . $sSeparator . $iCounter)])) {
+        while (isset($arCounterTaken[$iCounter])) {
             $iCounter++;
         }
 
@@ -399,27 +435,38 @@ class RegenerateSlugs extends Command
     }
 
     /**
+     * One row, all of it or none of it.
+     *
+     * SlugHistoryHandler writes the redirect ledger in model.beforeUpdate, so
+     * BEFORE the UPDATE it describes, and SlugHistory::record() also rewrites
+     * existing chains and deletes a row whose old_slug equals the incoming new
+     * slug. Outside a transaction a failure between those writes and the UPDATE
+     * leaves the ledger pointing at a slug nothing serves, and a slug the
+     * simulation did not predict leaves that destructive delete standing. One
+     * transaction per row covers the ledger, the UPDATE and the comparison, so
+     * a mismatch or a throw rolls the row back whole and stops the run.
+     *
      * @param array{id:int,old:string,new:?string} $arRow
      */
     protected function writeRow(string $sKind, $obModel, array $arRow): bool
     {
-        $obModel->slug = '';
-
         try {
-            $obModel->save();
+            Db::transaction(function () use ($obModel, $arRow) {
+                $obModel->slug = '';
+                $obModel->save();
+
+                // The simulation is a second implementation of a rule
+                // Sluggable owns, so a drift rolls this row back instead of
+                // being carried into the hazard the preflight prevents.
+                if (mb_strtolower((string) $obModel->slug) !== mb_strtolower((string) $arRow['new'])) {
+                    throw new \RuntimeException('got slug "' . $obModel->slug
+                        . '" where the simulation expected "' . $arRow['new'] . '"');
+                }
+            });
         } catch (\Throwable $obException) {
             $this->arTotalList['failed']++;
-            $this->error('  #' . $arRow['id'] . ' failed to save: ' . $obException->getMessage());
-
-            return true;
-        }
-
-        // The simulation is a second implementation of a rule Sluggable owns,
-        // so a drift between them stops the run instead of being carried into
-        // the hazard the preflight exists to prevent.
-        if (mb_strtolower((string) $obModel->slug) !== mb_strtolower((string) $arRow['new'])) {
-            $this->sHaltReason = $sKind . ' #' . $arRow['id'] . ' got slug "' . $obModel->slug
-                . '" where the simulation expected "' . $arRow['new'] . '"';
+            $this->sHaltReason = $sKind . ' #' . $arRow['id'] . ' ' . $obException->getMessage()
+                . ' - the row was rolled back, including its redirect ledger writes';
 
             return false;
         }
