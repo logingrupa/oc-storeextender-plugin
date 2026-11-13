@@ -1,6 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Helper;
 
 use Cache;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -10,25 +11,46 @@ use Illuminate\Support\Facades\Log;
  * The cross-domain hreflang block used to assume every path exists on every
  * shop, so each page advertised two URLs that were often 404 on the other
  * domains (products one shop does not carry, static pages of another
- * language). A link is now emitted only for a URL the other shop lists.
+ * language). A link is emitted only for a URL the other shop lists, which also
+ * means a renamed slug stops advertising the pair instead of pointing at a
+ * dead URL.
  *
  * The url set is filled by storeextender:warm-sibling-maps, never by a page
  * render: urlSet() is a cache read and nothing else, because hreflang.htm asks
  * it once per cross-domain site and a miss used to fetch a sibling sitemap
- * inline, 5 s timeout each. An unfilled set means no cross-domain link until
- * the next successful warm. That holds on ALL THREE shops, so blank alternates
- * after a cache clear are the fail-closed contract and not a regression; the
- * ten-minute schedule refills them.
+ * inline, 5 s timeout each, two siblings, serially - a measured 0.9 s cold and
+ * a real 10 s for a visitor on 2026-11-12. An unfilled set means no
+ * cross-domain link until the next successful warm. That holds on ALL THREE
+ * shops, so blank alternates after a cache clear are the fail-closed contract
+ * and not a regression; the ten-minute schedule refills them.
  *
- * This surface is only the path fallback, for pages that are no catalogue
- * entity. A product or category resolves through SiblingShopMap by 1C id.
+ * This class also holds the freshness lease and the last-success stamp the
+ * warm command reads, so --status can tell a stopped scheduler from a
+ * transient failure.
  */
 class SiblingShopSitemap
 {
     const CACHE_KEY = 'storeextender.sibling_sitemap.';
+    const LEASE_KEY = 'storeextender.sibling_warm_lease.';
+    const SUCCESS_KEY = 'storeextender.sibling_warm_success.';
+
     const TTL_OK_MINUTES = 24 * 60;
     const TTL_FAILED_MINUTES = 60;
+
+    /** How long a successful warm keeps the next scheduled tick from fetching */
+    const TTL_LEASE_MINUTES = 60;
+
+    /** The last-success stamp outlives the lease so --status can report a stopped scheduler */
+    const TTL_SUCCESS_MINUTES = 30 * 24 * 60;
+
     const TIMEOUT_SECONDS = 5;
+
+    /** The shops of the family, in the order the hreflang partial lists them */
+    const CROSS_DOMAIN_LIST = [
+        'https://nailscosmetics.no',
+        'https://nailscosmetics.lv',
+        'https://nailscosmetics.lt',
+    ];
 
     /**
      * Twig: shop_has_url('https://nailscosmetics.no', '/p/slug')
@@ -74,7 +96,7 @@ class SiblingShopSitemap
         }
 
         Cache::put(static::cacheKey($sDomain), $arUrlSet, now()->addMinutes(self::TTL_OK_MINUTES));
-        SiblingShopMap::markWarmed(SiblingShopMap::SURFACE_SITEMAP, $sDomain);
+        static::markWarmed($sDomain);
 
         return count($arUrlSet);
     }
@@ -82,6 +104,44 @@ class SiblingShopSitemap
     public static function forget(string $sDomain): void
     {
         Cache::forget(static::cacheKey(rtrim($sDomain, '/')));
+    }
+
+    /**
+     * True while a successful warm is still inside its lease, which is what
+     * keeps the ten-minute schedule at one cache read per sibling in steady
+     * state.
+     */
+    public static function leaseIsFresh(string $sDomain): bool
+    {
+        return Cache::get(static::leaseKey(rtrim($sDomain, '/'))) !== null;
+    }
+
+    public static function markWarmed(string $sDomain): void
+    {
+        $sDomain = rtrim($sDomain, '/');
+        $sNow = now()->toIso8601String();
+
+        Cache::put(static::leaseKey($sDomain), $sNow, now()->addMinutes(self::TTL_LEASE_MINUTES));
+        Cache::put(static::successKey($sDomain), $sNow, now()->addMinutes(self::TTL_SUCCESS_MINUTES));
+    }
+
+    public static function forgetLease(string $sDomain): void
+    {
+        Cache::forget(static::leaseKey(rtrim($sDomain, '/')));
+    }
+
+    /**
+     * When this sibling last warmed successfully, or null when it never did on
+     * this box - which reads as stale, the loud direction.
+     */
+    public static function lastSuccessAt(string $sDomain): ?Carbon
+    {
+        $sStamp = Cache::get(static::successKey(rtrim($sDomain, '/')));
+        if (!is_string($sStamp) || $sStamp === '') {
+            return null;
+        }
+
+        return Carbon::parse($sStamp);
     }
 
     public static function cacheKey(string $sDomain): string
@@ -124,5 +184,15 @@ class SiblingShopSitemap
         }
 
         return $arUrlSet;
+    }
+
+    protected static function leaseKey(string $sDomain): string
+    {
+        return self::LEASE_KEY . md5($sDomain);
+    }
+
+    protected static function successKey(string $sDomain): string
+    {
+        return self::SUCCESS_KEY . md5($sDomain);
     }
 }

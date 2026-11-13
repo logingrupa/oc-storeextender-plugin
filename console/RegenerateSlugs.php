@@ -21,12 +21,10 @@ use October\Rain\Support\Str;
  * address of every catalogue page, so it is a deliberate, dry-run-first,
  * by-hand step.
  *
- * It needs no cache-busting step. The published id map's cache key carries
- * ShopIdMap::catalogueStamp(), so a saved slug makes the old body unreachable
- * after the next second - updated_at has one-second granularity, so a save
- * inside the same second as a build leaves that build reachable for the rest
- * of its ten-minute TTL, which is the only thing closing that window. The same
- * mechanism covers an interrupted run.
+ * It needs no cache-busting step of its own. sitemap.xml is read straight from
+ * Eloquent on every request, so it is correct the moment a slug is saved, and
+ * the other shops pick the new URLs up on their next warm - or at once if
+ * storeextender:forget-sibling-maps is run there.
  *
  *   php artisan storeextender:regenerate-slugs --kind=categories --dry-run
  *   php artisan storeextender:regenerate-slugs --kind=products
