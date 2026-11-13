@@ -169,6 +169,9 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.warmofferthumbs', 'Logingrupa\StoreExtender\Console\WarmOfferThumbs');
         $this->registerConsoleCommand('storeextender.warmsiblingmaps', 'Logingrupa\StoreExtender\Console\WarmSiblingMaps');
         $this->registerConsoleCommand('storeextender.forgetsiblingmaps', 'Logingrupa\StoreExtender\Console\ForgetSiblingMaps');
+        // Never scheduled and never called from a deploy: it rewrites every
+        // catalogue URL, so it is run by hand, dry-run first.
+        $this->registerConsoleCommand('storeextender.regenerateslugs', 'Logingrupa\StoreExtender\Console\RegenerateSlugs');
         $this->registerConsoleCommand('storeextender.purgeorderpropertysecrets', 'Logingrupa\StoreExtender\Console\PurgeOrderPropertySecrets');
         $this->registerConsoleCommand('storeextender.refreshpickuppoints', 'Logingrupa\StoreExtender\Console\RefreshPickupPoints');
         $this->registerConsoleCommand('storeextender.sendpaymentreminders', 'Logingrupa\StoreExtender\Console\SendPaymentReminders');
