@@ -11,8 +11,17 @@ use Illuminate\Support\Facades\Log;
  * shop, so each page advertised two URLs that were often 404 on the other
  * domains (products one shop does not carry, static pages of another
  * language). A link is now emitted only for a URL the other shop lists.
- * Fails closed: an unreachable sitemap means no cross links until the next
- * successful fetch, never a link to a page that may not exist.
+ *
+ * The url set is filled by storeextender:warm-sibling-maps, never by a page
+ * render: urlSet() is a cache read and nothing else, because hreflang.htm asks
+ * it once per cross-domain site and a miss used to fetch a sibling sitemap
+ * inline, 5 s timeout each. An unfilled set means no cross-domain link until
+ * the next successful warm. That holds on ALL THREE shops, so blank alternates
+ * after a cache clear are the fail-closed contract and not a regression; the
+ * ten-minute schedule refills them.
+ *
+ * This surface is only the path fallback, for pages that are no catalogue
+ * entity. A product or category resolves through SiblingShopMap by 1C id.
  */
 class SiblingShopSitemap
 {
@@ -33,26 +42,51 @@ class SiblingShopSitemap
     }
 
     /**
+     * Cache only, by contract: this runs inside the page render.
+     *
      * @return array<string,true> every <loc> of the sitemap, trailing slash trimmed
      */
     public static function urlSet(string $sDomain): array
     {
-        $sKey = self::CACHE_KEY . md5($sDomain);
-        $arCached = Cache::get($sKey);
-        if (is_array($arCached)) {
-            return $arCached;
-        }
+        $arCached = Cache::get(static::cacheKey($sDomain));
+
+        return is_array($arCached) ? $arCached : [];
+    }
+
+    /**
+     * Fetch one sibling's sitemap and cache it. Console only.
+     *
+     * @return int|null how many urls were stored, null when the sitemap could
+     *                  not be read
+     */
+    public static function warm(string $sDomain): ?int
+    {
+        $sDomain = rtrim($sDomain, '/');
 
         $arUrlSet = static::fetch($sDomain);
-        $iMinutes = $arUrlSet === null ? self::TTL_FAILED_MINUTES : self::TTL_OK_MINUTES;
-        Cache::put($sKey, $arUrlSet ?? [], now()->addMinutes($iMinutes));
+        if ($arUrlSet === null) {
+            // A failed fetch may not replace a good url set with blank alternates
+            if (static::urlSet($sDomain) === []) {
+                Cache::put(static::cacheKey($sDomain), [], now()->addMinutes(self::TTL_FAILED_MINUTES));
+            }
 
-        return $arUrlSet ?? [];
+            return null;
+        }
+
+        Cache::put(static::cacheKey($sDomain), $arUrlSet, now()->addMinutes(self::TTL_OK_MINUTES));
+        SiblingShopMap::markWarmed(SiblingShopMap::SURFACE_SITEMAP, $sDomain);
+
+        return count($arUrlSet);
     }
 
     public static function forget(string $sDomain): void
     {
-        Cache::forget(self::CACHE_KEY . md5(rtrim($sDomain, '/')));
+        Cache::forget(static::cacheKey(rtrim($sDomain, '/')));
+    }
+
+    public static function cacheKey(string $sDomain): string
+    {
+        return self::CACHE_KEY . md5(rtrim($sDomain, '/'));
     }
 
     /**
@@ -65,6 +99,7 @@ class SiblingShopSitemap
                 ->withHeaders(['User-Agent' => 'nailscosmetics-hreflang/1.0'])
                 ->get($sDomain . '/sitemap.xml');
         } catch (\Throwable $obException) {
+            // Boundary layer: an unreachable sibling is a cached miss, not a fatal
             Log::warning('SiblingShopSitemap: ' . $sDomain . ' unreachable: ' . $obException->getMessage());
 
             return null;
@@ -78,6 +113,8 @@ class SiblingShopSitemap
 
         preg_match_all('#<loc>\s*([^<\s]+)\s*</loc>#', $obResponse->body(), $arMatches);
         if (empty($arMatches[1])) {
+            Log::warning('SiblingShopSitemap: ' . $sDomain . ' listed no url');
+
             return null;
         }
 
