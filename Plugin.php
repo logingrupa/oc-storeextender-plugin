@@ -109,6 +109,7 @@ use Logingrupa\StoreExtender\Classes\Helper\ProductOfferPrice;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\SeoMetaText;
 use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
+use Logingrupa\StoreExtender\Classes\Helper\SiblingShopMap;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\TextHighlighter;
@@ -604,6 +605,12 @@ class Plugin extends PluginBase
                 // Cross-domain hreflang: does the other shop list this URL
                 // in its sitemap; fails closed when the sitemap is unreadable
                 'shop_has_url' => [SiblingShopSitemap::class, 'hasUrl'],
+                // Cross-domain hreflang by 1C id: classifies this page once,
+                // then reads each sibling's published map from cache only. A
+                // catalogue page the sibling has no entry for gets no link
+                // rather than a path guess, which on another shop may be a
+                // different product
+                'shop_cross_alternates' => [SiblingShopMap::class, 'crossAlternates'],
                 // Color Family storefront queries: the ?color= offer filter
                 // and the search-sheet family pill row
                 'color_family_offer_filter' => [ColorFamilyHelper::class, 'filterOfferIds'],
