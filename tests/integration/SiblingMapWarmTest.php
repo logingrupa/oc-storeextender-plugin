@@ -253,6 +253,35 @@ class SiblingMapWarmTest extends StoreExtenderPluginTestCase
         );
     }
 
+    /**
+     * A sibling that deactivated its last publishable row answers 200 with an
+     * empty map. Treating that as a failure would keep the previous map until
+     * its 24 h expiry and go on advertising entities the sibling stopped
+     * serving.
+     */
+    public function testAValidEmptyMapReplacesWhatWeHold()
+    {
+        $this->fakeHealthySibling(self::SIBLING_LV);
+        $this->runWarm(['--domain' => self::SIBLING_LV]);
+        $this->assertNotSame([], SiblingShopMap::read(self::SIBLING_LV), 'a map is held first');
+
+        $this->fakeHttp([
+            self::SIBLING_LV . SiblingShopMap::ROUTE_PATH => Http::response([
+                'shop' => self::SIBLING_LV,
+                'map' => [],
+            ]),
+            self::SIBLING_LV . '/sitemap.xml' => Http::response($this->sitemapBody(self::SIBLING_LV)),
+        ]);
+
+        [$iExit, $sOutput] = $this->runWarm(['--domain' => self::SIBLING_LV, '--force' => true]);
+
+        $this->assertSame(Command::SUCCESS, $iExit, $sOutput);
+        $this->assertStringContainsString('id-map: 0 entries', $sOutput);
+        $this->assertSame([], Cache::get(SiblingShopMap::cacheKey(self::SIBLING_LV)), 'the stale map is gone');
+        $this->assertSame(SiblingShopMap::TTL_OK_MINUTES, $this->cacheTtlMinutes(SiblingShopMap::cacheKey(self::SIBLING_LV)), 'stored as a good answer, not as a failure');
+        $this->assertTrue(SiblingShopMap::leaseIsFresh(SiblingShopMap::SURFACE_ID_MAP, self::SIBLING_LV));
+    }
+
     public function testAMapWithNothingOnTheSiblingOriginIsAFailure()
     {
         $this->fakeHttp([

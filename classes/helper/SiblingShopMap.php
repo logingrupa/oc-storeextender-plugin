@@ -93,8 +93,9 @@ class SiblingShopMap
     /**
      * Fetch one sibling's map and cache it. Console only.
      *
-     * @return int|null how many entries were stored, null when the sibling
-     *                  could not be read or published nothing usable
+     * @return int|null how many entries were stored, 0 when the sibling
+     *                  publishes nothing right now, null when it could not be
+     *                  read or every row it published failed validation
      */
     public static function warm(string $sDomain): ?int
     {
@@ -229,8 +230,13 @@ class SiblingShopMap
             return null;
         }
 
-        $arMap = static::validated($sDomain, $arBody['map']);
-        if ($arMap === []) {
+        // A sibling that deactivated its last publishable row answers 200 with
+        // an empty map, and that must REPLACE what we hold: keeping the old
+        // one would advertise entities the sibling no longer serves. Only a
+        // map that had rows and lost all of them to validation is a failure.
+        $arSourceMap = $arBody['map'];
+        $arMap = static::validated($sDomain, $arSourceMap);
+        if ($arMap === [] && $arSourceMap !== []) {
             Log::warning('SiblingShopMap: ' . $sDomain . ' published no usable entry');
 
             return null;
