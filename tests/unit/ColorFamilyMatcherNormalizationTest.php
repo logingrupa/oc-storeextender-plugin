@@ -89,4 +89,18 @@ class ColorFamilyMatcherNormalizationTest extends TestCase
 
         $this->assertSame('Red', $arResolved['red']['name'], 'a locale outside the export reads English before Latvian');
     }
+
+    public function testResolveEntriesReportsWhetherTheNameCameFromTheRequestedLocale()
+    {
+        $arIndex = [
+            'red' => ['names' => ['en' => 'Red', 'lv' => 'Sarkans'], 'family' => 'Red', 'hex' => null],
+        ];
+
+        $arExact = ColorFamilyMatcher::resolveEntries($arIndex, 'lv');
+        $this->assertTrue($arExact['red']['exact_locale'], 'a name the export carries for the locale is exact');
+
+        $arFallback = ColorFamilyMatcher::resolveEntries($arIndex, 'nb-no');
+        $this->assertFalse($arFallback['red']['exact_locale'], 'an English fallback must be marked overridable');
+        $this->assertSame('Red', $arFallback['red']['family'], 'the theme-message key rides along');
+    }
 }

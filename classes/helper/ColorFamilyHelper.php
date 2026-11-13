@@ -183,7 +183,43 @@ class ColorFamilyHelper
     {
         $arFamilyMap = (new ColorFamilyMatcher())->families(is_string($sLocale) ? $sLocale : ColorFamilyMatcher::LOCALE_DEFAULT);
 
-        return static::buildChipList($arFamilyMap);
+        return static::buildChipList(static::applyThemeMessageNames($arFamilyMap));
+    }
+
+    /**
+     * Fill a chip name the color-lab export has no locale name for from the
+     * theme message keyed on the raw family name - the same source the offer
+     * sheet and swatch strip render with ({{ sFamily|_ }}). Without this the
+     * matcher falls back to English, so the Norwegian store drew English chips
+     * beside Norwegian swatch labels. A locale the export does carry keeps the
+     * exported name, so .lv and .ru chips are untouched.
+     *
+     * @param array $arFamilyMap ['<valueSlug>' => ['name' => string, 'family' => string, 'exact_locale' => bool, ...]]
+     * @return array same shape, name replaced only where the locale had none
+     */
+    protected static function applyThemeMessageNames(array $arFamilyMap): array
+    {
+        if (!class_exists(\RainLab\Translate\Models\Message::class)) {
+            return $arFamilyMap;
+        }
+
+        foreach ($arFamilyMap as $sSlug => $arFamily) {
+            if (!empty($arFamily['exact_locale'])) {
+                continue;
+            }
+            $sFamily = (string) ($arFamily['family'] ?? '');
+            if ($sFamily === '') {
+                continue;
+            }
+            // Message::trans echoes the key back when nothing is translated
+            $sMessage = (string) \RainLab\Translate\Models\Message::trans($sFamily);
+            if ($sMessage === '' || $sMessage === $sFamily) {
+                continue;
+            }
+            $arFamilyMap[$sSlug]['name'] = $sMessage;
+        }
+
+        return $arFamilyMap;
     }
 
     /**
