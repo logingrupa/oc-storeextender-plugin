@@ -400,13 +400,14 @@ class Plugin extends PluginBase
         // Unpaid online orders get a reminder an hour and a day after the order.
         $obSchedule->command('storeextender:send-payment-reminders')->everyTenMinutes()->withoutOverlapping();
 
-        // Both sibling readers are cache-only, so this interval is the longest a
-        // shop can go without cross-domain alternates after a failed fetch, and
-        // it is what gives the id map's 5-minute failure TTL a purpose instead
-        // of a near-hour blank window. The freshness lease keeps the steady
-        // state at one cache read per sibling, so the fetch still happens about
-        // hourly. The lock expiry is explicit so a killed process cannot wedge
-        // every later tick; --status is how to check the schedule still runs.
+        // Both sibling readers are cache-only, so this is the RETRY interval
+        // after a failed fetch, not a recovery guarantee: repeated failures
+        // keep a shop without cross-domain alternates for as long as they last.
+        // Ten minutes is what gives the id map's 5-minute failure TTL a purpose
+        // instead of a near-hour blank window. The freshness lease keeps the
+        // steady state at one cache read per sibling, so the fetch still happens
+        // about hourly. The lock expiry is explicit so a killed process cannot
+        // wedge every later tick; --status is how to check the schedule runs.
         $obSchedule->command('storeextender:warm-sibling-maps')->everyTenMinutes()->withoutOverlapping(15);
     }
 
