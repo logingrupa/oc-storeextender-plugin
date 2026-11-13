@@ -37,6 +37,7 @@ class SiblingShopMapTest extends StoreExtenderPluginTestCase
     const TOOLS_CATEGORY_ID = 'c1b2c3d4-0000-0000-0000-000000000002';
     const FILES_CATEGORY_ID = 'c1b2c3d4-0000-0000-0000-000000000003';
     const RETIRED_CATEGORY_ID = 'c1b2c3d4-0000-0000-0000-000000000004';
+    const LEAF_CATEGORY_ID = 'c1b2c3d4-0000-0000-0000-000000000007';
 
     const SIBLING_LV = 'https://nailscosmetics.lv';
     const SIBLING_LT = 'https://nailscosmetics.lt';
@@ -257,6 +258,93 @@ class SiblingShopMapTest extends StoreExtenderPluginTestCase
         $this->assertSame(
             ['kind' => ShopIdMap::PAGE_ENTITY, 'external_id' => self::FILES_CATEGORY_ID],
             ShopIdMap::resolvePath('/root/tools/files')
+        );
+    }
+
+    /**
+     * The publish side walks only the parents its predicate keeps, so an
+     * active child of an inactive parent is published at its own slug. The
+     * lookup must use the SAME rule, or that published path would classify as
+     * no-entity on its own page and fall through to the sibling path check,
+     * where another shop listing the same path for a different category hands
+     * it the wrong alternate.
+     */
+    public function testAnActiveChildOfAnInactiveParentHasOnePathOnBothSides()
+    {
+        Db::table('lovata_shopaholic_categories')->insert([
+            ['id' => 6, 'name' => 'Branch', 'slug' => 'branch', 'external_id' => 'c1b2c3d4-0000-0000-0000-000000000006', 'parent_id' => 1, 'active' => 0, 'nest_left' => 6, 'updated_at' => '2026-11-06 10:00:00'],
+            ['id' => 7, 'name' => 'Leaf', 'slug' => 'leaf', 'external_id' => self::LEAF_CATEGORY_ID, 'parent_id' => 6, 'active' => 1, 'nest_left' => 7, 'updated_at' => '2026-11-07 10:00:00'],
+        ]);
+        $this->forgetResolvedPaths();
+
+        $this->assertContains('/leaf', array_column(ShopIdMap::catalogueRows(), 'path'), 'the inactive parent is not in the path');
+        $this->assertSame(ShopIdMap::primaryBaseUrl() . '/leaf', ShopIdMap::publishMap()[self::LEAF_CATEGORY_ID]);
+
+        $this->assertSame(
+            ['kind' => ShopIdMap::PAGE_ENTITY, 'external_id' => self::LEAF_CATEGORY_ID],
+            ShopIdMap::resolvePath('/leaf'),
+            'the published path classifies as the row that published it'
+        );
+        $this->assertSame(
+            ['kind' => ShopIdMap::PAGE_NONE, 'external_id' => null],
+            ShopIdMap::resolvePath('/root/branch/leaf'),
+            'a path the publish side never produces is no catalogue path'
+        );
+    }
+
+    /**
+     * Overlapping imports have reparented this tree before, so a chain that
+     * revisits an id must be reported and dropped rather than spun on inside
+     * the sitemap render and this map's build.
+     */
+    public function testALoopingParentChainIsDroppedInsteadOfHanging()
+    {
+        Db::table('lovata_shopaholic_categories')->insert([
+            ['id' => 8, 'name' => 'Loop A', 'slug' => 'loop-a', 'external_id' => 'c1b2c3d4-0000-0000-0000-000000000008', 'parent_id' => 9, 'active' => 1, 'nest_left' => 8, 'updated_at' => '2026-11-08 10:00:00'],
+            ['id' => 9, 'name' => 'Loop B', 'slug' => 'loop-b', 'external_id' => 'c1b2c3d4-0000-0000-0000-000000000009', 'parent_id' => 8, 'active' => 1, 'nest_left' => 9, 'updated_at' => '2026-11-09 10:00:00'],
+        ]);
+        $this->forgetResolvedPaths();
+        Log::spy();
+
+        $arPathList = array_column(ShopIdMap::catalogueRows(), 'path');
+
+        $this->assertContains('/root', $arPathList, 'the healthy rows are still published');
+        $this->assertNotContains('/loop-a/loop-b', $arPathList);
+        $this->assertNotContains('/loop-b/loop-a', $arPathList);
+        $this->assertArrayNotHasKey('c1b2c3d4-0000-0000-0000-000000000008', ShopIdMap::publishMap());
+        $this->assertSame(
+            ['kind' => ShopIdMap::PAGE_NONE, 'external_id' => null],
+            ShopIdMap::resolvePath('/loop-a'),
+            'the lookup side is bounded too'
+        );
+        Log::shouldHaveReceived('warning');
+    }
+
+    /**
+     * Routing hands a page decoded parameters while getPathInfo() stays raw,
+     * so the lookup decodes per segment - and an encoded slash stays inside
+     * its segment instead of opening a boundary routing never matched.
+     */
+    public function testAnEncodedPathClassifiesTheWayRoutingResolvedIt()
+    {
+        $this->assertSame(
+            ['kind' => ShopIdMap::PAGE_ENTITY, 'external_id' => self::FILES_CATEGORY_ID],
+            ShopIdMap::resolvePath('/%72oot/tools/files'),
+            'the same category as its decoded path'
+        );
+        $this->assertSame(
+            ['kind' => ShopIdMap::PAGE_ENTITY, 'external_id' => self::PRODUCT_ID],
+            ShopIdMap::resolvePath('/p/polygel%2Duvled')
+        );
+        $this->assertSame(
+            ['kind' => ShopIdMap::PAGE_NONE, 'external_id' => null],
+            ShopIdMap::resolvePath('/root/tools%2Ffiles'),
+            'an encoded slash is one segment, which no slug can be'
+        );
+        $this->assertSame(
+            ['kind' => ShopIdMap::PAGE_ENTITY, 'external_id' => self::FILES_CATEGORY_ID],
+            ShopIdMap::resolvePath('/root/tools/files'),
+            'and the real path is not poisoned by the memo of the encoded one'
         );
     }
 

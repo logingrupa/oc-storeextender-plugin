@@ -22,7 +22,16 @@ use System\Models\SiteDefinition;
  * DIFFERENT product.
  *
  * One builder for both, and the sitemap page consumes catalogueRows() too, so
- * the path contract and the predicate cannot drift between the three.
+ * the path contract and the predicate cannot drift between the three. A path
+ * classifies as an entity only when it equals the path the publish side would
+ * produce for that row, ancestry rule included.
+ *
+ * The lookup runs on the page's CANONICAL path by design: hreflang.htm prefers
+ * sPageCanonicalPath, and a product page publishes its canonical with the slug
+ * alone. So a shade URL (/p/slug/:offer) is classified as its product and
+ * INHERITS the product's sibling alternates, which is what agreeing with the
+ * canonical means. resolvePath() still answers "entity, nothing publishable"
+ * for a raw path carrying extra segments, for any caller that hands it one.
  */
 class ShopIdMap
 {
@@ -64,16 +73,19 @@ class ShopIdMap
 
         $arRowList = [];
         foreach ($obCategoryList as $obCategory) {
-            $arSlugList = [$obCategory->slug];
-            $iParentID = $obCategory->parent_id;
-            while ($iParentID && isset($obCategoryList[$iParentID])) {
-                $arSlugList[] = $obCategoryList[$iParentID]->slug;
-                $iParentID = $obCategoryList[$iParentID]->parent_id;
+            $sPath = static::categoryPath($obCategory, function ($iParentID) use ($obCategoryList) {
+                return $obCategoryList[$iParentID] ?? null;
+            });
+
+            // A looping parent chain is a data fault, not a page: skip the row
+            // rather than hang the sitemap and this map on a public route
+            if ($sPath === null) {
+                continue;
             }
 
             $arRowList[] = [
                 'kind' => self::KIND_CATEGORY,
-                'path' => static::categoryPath(array_reverse($arSlugList)),
+                'path' => $sPath,
                 'external_id' => $obCategory->external_id,
                 'lastmod' => optional($obCategory->updated_at)->toDateString(),
             ];
@@ -179,13 +191,16 @@ class ShopIdMap
      */
     public static function resolvePath(string $sPath): array
     {
-        $sNormalised = static::normalisePath($sPath);
-        if (isset(static::$arResolvedPathList[$sNormalised])) {
-            return static::$arResolvedPathList[$sNormalised];
+        // Memoised on the RAW path: two different raw paths can decode to the
+        // same string, so a decoded key would let one answer the other's page
+        $sKey = trim($sPath, '/');
+        if (isset(static::$arResolvedPathList[$sKey])) {
+            return static::$arResolvedPathList[$sKey];
         }
 
-        $arResolved = static::classifyPath($sNormalised);
-        static::$arResolvedPathList[$sNormalised] = $arResolved;
+        $arSegmentList = static::segmentList($sPath);
+        $arResolved = static::classifyPath($arSegmentList, static::joinSegments($arSegmentList));
+        static::$arResolvedPathList[$sKey] = $arResolved;
 
         return $arResolved;
     }
@@ -221,18 +236,47 @@ class ShopIdMap
         return rtrim((string) $obSite->base_url, '/');
     }
 
-    public static function normalisePath(string $sPath): string
+    /**
+     * The request path as the segments routing sees.
+     *
+     * Routing hands a page DECODED parameters while getPathInfo() stays raw,
+     * so a path is decoded per segment and kept as a list: decoding the whole
+     * string would let an encoded %2F open a path boundary that routing never
+     * saw.
+     *
+     * @return string[]
+     */
+    protected static function segmentList(string $sPath): array
     {
-        return '/' . trim($sPath, '/');
+        $sPath = trim($sPath, '/');
+
+        return $sPath === '' ? [] : array_map('rawurldecode', explode('/', $sPath));
     }
 
-    protected static function classifyPath(string $sPath): array
+    /**
+     * @param string[] $arSegmentList
+     */
+    protected static function joinSegments(array $arSegmentList): string
     {
-        if ($sPath === '/') {
+        return '/' . implode('/', $arSegmentList);
+    }
+
+    /**
+     * @param string[] $arSegmentList
+     */
+    protected static function classifyPath(array $arSegmentList, string $sPath): array
+    {
+        if ($arSegmentList === []) {
             return static::noEntity();
         }
 
-        $arSegmentList = explode('/', trim($sPath, '/'));
+        // An encoded slash is not a path boundary: routing matched it inside
+        // one segment, and no slug can contain it, so this is no catalogue path
+        foreach ($arSegmentList as $sSegment) {
+            if (strpos($sSegment, '/') !== false) {
+                return static::noEntity();
+            }
+        }
 
         if ($arSegmentList[0] === self::PRODUCT_SEGMENT) {
             return static::entity(static::publishableProductId($arSegmentList));
@@ -265,8 +309,10 @@ class ShopIdMap
     /**
      * A category page is an entity whether or not it is active, but only an
      * active one can be published. The leaf slug is looked up without the
-     * active filter and accepted only when its own ancestry rebuilds exactly
-     * the requested path, so a static page cannot be mistaken for a category.
+     * active filter and accepted only when the SHARED path method rebuilds
+     * exactly the requested path, so a static page cannot be mistaken for a
+     * category and a published path always classifies as the row that
+     * published it.
      *
      * @param string[] $arSegmentList
      */
@@ -280,7 +326,7 @@ class ShopIdMap
             return static::noEntity();
         }
 
-        if (static::categoryPath(static::ancestrySlugList($obCategory)) !== $sPath) {
+        if (static::categoryPath($obCategory, [static::class, 'publishableParent']) !== $sPath) {
             return static::noEntity();
         }
 
@@ -288,31 +334,59 @@ class ShopIdMap
     }
 
     /**
-     * @return string[] slugs from the root down to $obCategory
+     * The one ancestry rule both sides use: the parents the publish predicate
+     * keeps, root first. The publish side resolves a parent from the active
+     * collection it already loaded, the lookup side queries it, and the rule
+     * is the same - an active child of an inactive parent therefore has the
+     * same path on both sides.
+     *
+     * Bounded twice on purpose. Overlapping imports have reparented this tree
+     * before, so a parent chain that revisits an id, or that runs past the
+     * depth the catalogue uses, is reported and the row dropped rather than
+     * looping inside a public route.
+     *
+     * @param callable $fnParentOf id -> parent row or null
+     * @return string|null null when the chain loops or runs too deep
      */
-    protected static function ancestrySlugList(Category $obCategory): array
+    protected static function categoryPath($obCategory, callable $fnParentOf): ?string
     {
-        $arSlugList = [];
-        $iGuard = 0;
-        while (!empty($obCategory) && $iGuard++ < self::ANCESTRY_CEILING) {
-            array_unshift($arSlugList, $obCategory->slug);
-            $obCategory = $obCategory->parent_id ? Category::find($obCategory->parent_id) : null;
+        $arSlugList = [$obCategory->slug];
+        $arVisitedList = [(int) $obCategory->id => true];
+        $iParentID = $obCategory->parent_id;
+
+        while (!empty($iParentID)) {
+            if (isset($arVisitedList[(int) $iParentID]) || count($arSlugList) > self::ANCESTRY_CEILING) {
+                Log::warning('ShopIdMap: category ' . $obCategory->id . ' has a parent chain that loops at ' . $iParentID);
+
+                return null;
+            }
+
+            $obParent = $fnParentOf((int) $iParentID);
+            if (empty($obParent)) {
+                break;
+            }
+
+            $arVisitedList[(int) $iParentID] = true;
+            $arSlugList[] = $obParent->slug;
+            $iParentID = $obParent->parent_id;
         }
 
-        return $arSlugList;
+        return '/' . implode('/', array_reverse($arSlugList));
+    }
+
+    /**
+     * The lookup side's parent resolver, the publish predicate as a query.
+     */
+    protected static function publishableParent(int $iCategoryID)
+    {
+        return Category::where('id', $iCategoryID)
+            ->where('active', true)
+            ->first(['id', 'slug', 'parent_id']);
     }
 
     protected static function productPath(string $sSlug): string
     {
         return '/' . self::PRODUCT_SEGMENT . '/' . $sSlug;
-    }
-
-    /**
-     * @param string[] $arSlugList root category first
-     */
-    protected static function categoryPath(array $arSlugList): string
-    {
-        return '/' . implode('/', $arSlugList);
     }
 
     protected static function publishableId($sExternalId): ?string
