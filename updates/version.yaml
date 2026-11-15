@@ -323,3 +323,6 @@
 2.0.110:
   - 'A shop no longer calls the other shops while a visitor waits. Each shop keeps its own copy of the other shops'' address lists and refreshes it by itself every ten minutes, where before a page with a cold cache fetched both other shops mid-render and a visitor could wait up to ten seconds for it. Until that refresh has run a shop shows no cross-language links, which is also what a cache clear does, and the refresh repairs it on its next pass.'
   - 'Also ships a command that rebuilds product and category addresses from their names, for the Norwegian store. It is run by hand after a review of what it would change, never by a deploy, and it stops with a report instead of writing when two products would swap addresses in the same run.'
+
+2.0.111:
+  - 'The address rebuild command takes a --skip list, so a run can leave named rows alone and keep their addresses reserved against the rest of the run. Two rows on the Norwegian store still carry Latvian names and would otherwise take an address another row is giving up, which stops the whole run.'

@@ -58,7 +58,8 @@ class RegenerateSlugs extends Command
     protected $signature = 'storeextender:regenerate-slugs
         {--dry-run : Compute and print every row, write nothing}
         {--kind=all : all, products or categories}
-        {--limit=0 : Stop after this many rows per kind (0 = every row)}';
+        {--limit=0 : Stop after this many rows per kind (0 = every row)}
+        {--skip= : Comma-separated row ids to leave alone, ids are per kind}';
 
     /** @var string */
     protected $description = 'Rebuild product and category slugs from their source names';
@@ -170,10 +171,22 @@ class RegenerateSlugs extends Command
             $arTaken[mb_strtolower((string) $sSlug)] = true;
         }
 
+        $arSkipList = $this->skipIdList();
+
         $arPlan = [];
         foreach ($this->candidateList($sKind) as $obRow) {
             $sOldSlug = (string) $obRow->slug;
             $sName = trim((string) $obRow->name);
+
+            // An explicit skip wins over every other classification, and it
+            // returns before the unset below so the row's slug stays taken:
+            // a skipped row keeps its slug AND reserves it against the rest
+            // of the run.
+            if (isset($arSkipList[(int) $obRow->id])) {
+                $arPlan[] = $this->planRow($obRow->id, $sName, $sOldSlug, null, null, 'asked to skip');
+
+                continue;
+            }
 
             if ($sName === '') {
                 $arPlan[] = $this->planRow($obRow->id, $sName, $sOldSlug, null, null, 'the source name is empty');
@@ -478,6 +491,25 @@ class RegenerateSlugs extends Command
      * Every non-soft-deleted product regardless of active, every category: a
      * later activation must not bring back a Latvian URL.
      */
+    /**
+     * Row ids --skip named, as an id-keyed set. Ids are per kind, which is why
+     * a mixed run is meant to be driven one --kind at a time.
+     *
+     * @return array<int,true>
+     */
+    protected function skipIdList(): array
+    {
+        $arResult = [];
+        foreach (explode(',', (string) $this->option('skip')) as $sId) {
+            $sId = trim($sId);
+            if ($sId !== '' && ctype_digit($sId)) {
+                $arResult[(int) $sId] = true;
+            }
+        }
+
+        return $arResult;
+    }
+
     protected function candidateList(string $sKind)
     {
         $obQuery = $this->modelOf($sKind)->newQuery()->orderBy('id');

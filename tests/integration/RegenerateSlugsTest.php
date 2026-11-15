@@ -218,6 +218,46 @@ class RegenerateSlugsTest extends StoreExtenderPluginTestCase
         $this->assertNothingMoved(['1' => 'foo', '2' => 'baz']);
     }
 
+    public function testSkippingTheTakerClearsTheRefusalAndLeavesThatRowAlone()
+    {
+        $this->seedProducts([
+            ['id' => 1, 'name' => 'Bar', 'slug' => 'foo', 'updated_at' => '2026-10-01 10:00:00'],
+            ['id' => 2, 'name' => 'Foo', 'slug' => 'baz', 'updated_at' => '2026-10-01 10:00:00'],
+        ]);
+
+        // Asserted through --dry-run: a real save() cannot run in this harness,
+        // it dies in Lovata's multisite afterSave on a missing relation table
+        // (R-16). The plan is the seam that shows the refusal is gone.
+        [$iExit, $sOutput] = $this->runCommand(new RegenerateSlugs, ['--kind' => 'products', '--skip' => '2', '--dry-run' => true]);
+
+        $this->assertSame(Command::SUCCESS, $iExit, 'skipping the taker removes the only conflict. OUTPUT: ' . $sOutput);
+        $this->assertStringNotContainsString('PREFLIGHT REFUSED', $sOutput);
+        $this->assertStringContainsString('PREFLIGHT PASSED', $sOutput);
+        $this->assertStringContainsString('#2 SKIP (asked to skip)', $sOutput);
+        $this->assertStringContainsString('#1 CHANGE', $sOutput);
+        $this->assertStringContainsString('new="bar"', $sOutput, '#1 still moves off the slug it was vacating');
+        $this->assertNothingMoved(['1' => 'foo', '2' => 'baz']);
+    }
+
+    public function testASkippedRowStillReservesItsSlugAgainstTheRestOfTheRun()
+    {
+        $this->seedProducts([
+            ['id' => 1, 'name' => 'Baz', 'slug' => 'baz', 'updated_at' => '2026-10-01 10:00:00'],
+            ['id' => 2, 'name' => 'Baz', 'slug' => 'other', 'updated_at' => '2026-10-01 10:00:00'],
+        ]);
+
+        [$iExit, $sOutput] = $this->runCommand(new RegenerateSlugs, ['--kind' => 'products', '--skip' => '1', '--dry-run' => true]);
+
+        $this->assertSame(Command::SUCCESS, $iExit, 'OUTPUT: ' . $sOutput);
+        $this->assertStringContainsString('#1 SKIP (asked to skip)', $sOutput);
+        $this->assertStringContainsString(
+            'new="baz-2"',
+            $sOutput,
+            'a skipped row must keep its slug RESERVED, or the next row takes it and strands the redirect'
+        );
+        $this->assertStringNotContainsString('new="baz"', $sOutput);
+    }
+
     public function testTheSuffixedVariantIsRefusedToo()
     {
         $this->seedProducts([
