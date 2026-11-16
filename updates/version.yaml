@@ -326,3 +326,6 @@
 
 2.0.111:
   - 'The address rebuild command takes a --skip list, so a run can leave named rows alone and keep their addresses reserved against the rest of the run. Two rows on the Norwegian store still carry Latvian names and would otherwise take an address another row is giving up, which stops the whole run.'
+
+2.0.112:
+  - 'Color family pills and the catalog filter sheet now take their names from the shop theme messages in every language, the same names the offer sheet and swatch labels already show. Before, a language the nailolab color export also covered kept the export name, so Latvian pills read Sarkans beside Sarkani on the offer sheet. A family the theme has no name for still shows the export name.'

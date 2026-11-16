@@ -181,38 +181,36 @@ class ColorFamilyHelper
      */
     public static function familyList($sLocale = ColorFamilyMatcher::LOCALE_DEFAULT): array
     {
-        $arFamilyMap = (new ColorFamilyMatcher())->families(is_string($sLocale) ? $sLocale : ColorFamilyMatcher::LOCALE_DEFAULT);
+        $sResolvedLocale = is_string($sLocale) ? $sLocale : ColorFamilyMatcher::LOCALE_DEFAULT;
+        $arFamilyMap = (new ColorFamilyMatcher())->families($sResolvedLocale);
 
-        return static::buildChipList(static::applyThemeMessageNames($arFamilyMap));
+        return static::buildChipList(static::applyThemeMessageNames($arFamilyMap, $sResolvedLocale));
     }
 
     /**
-     * Fill a chip name the color-lab export has no locale name for from the
-     * theme message keyed on the raw family name - the same source the offer
-     * sheet and swatch strip render with ({{ sFamily|_ }}). Without this the
-     * matcher falls back to English, so the Norwegian store drew English chips
-     * beside Norwegian swatch labels. A locale the export does carry keeps the
-     * exported name, so .lv and .ru chips are untouched.
+     * Name each chip from the theme message keyed on the raw family name, the
+     * same source the offer sheet and swatch strip render with ({{ sFamily|_ }}),
+     * so the shop's own (plural) wording wins on every surface and locale. The
+     * color-lab export name stays as the fallback for a family the theme has
+     * no message for, such as a family newly created on nailolab.
      *
-     * @param array $arFamilyMap ['<valueSlug>' => ['name' => string, 'family' => string, 'exact_locale' => bool, ...]]
-     * @return array same shape, name replaced only where the locale had none
+     * @param array  $arFamilyMap ['<valueSlug>' => ['name' => string, 'family' => string, ...]]
+     * @param string $sLocale     locale the chip names are rendered in
+     * @return array same shape, name replaced wherever a theme message exists
      */
-    protected static function applyThemeMessageNames(array $arFamilyMap): array
+    protected static function applyThemeMessageNames(array $arFamilyMap, string $sLocale): array
     {
         if (!class_exists(\RainLab\Translate\Models\Message::class)) {
             return $arFamilyMap;
         }
 
         foreach ($arFamilyMap as $sSlug => $arFamily) {
-            if (!empty($arFamily['exact_locale'])) {
-                continue;
-            }
             $sFamily = (string) ($arFamily['family'] ?? '');
             if ($sFamily === '') {
                 continue;
             }
             // Message::trans echoes the key back when nothing is translated
-            $sMessage = (string) \RainLab\Translate\Models\Message::trans($sFamily);
+            $sMessage = (string) \RainLab\Translate\Models\Message::trans($sFamily, [], $sLocale);
             if ($sMessage === '' || $sMessage === $sFamily) {
                 continue;
             }

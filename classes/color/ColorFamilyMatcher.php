@@ -62,13 +62,11 @@ class ColorFamilyMatcher
      * locale name, else English, else the default locale, else the raw
      * family name. The full term list rides along for the storefront's
      * client-side pill filter (per-keystroke, no round trip). The raw family
-     * name rides along as the theme-message key callers translate with, and
-     * exact_locale says whether name came from the requested locale or from a
-     * fallback, so a caller can only override a fallback.
+     * name rides along as the theme-message key callers translate with.
      *
      * @param array  $arEntryList index entries keyed by value slug
      * @param string $sLocale
-     * @return array ['<valueSlug>' => ['name' => string, 'family' => string, 'exact_locale' => bool, 'hex' => string|null, 'terms' => array]]
+     * @return array ['<valueSlug>' => ['name' => string, 'family' => string, 'hex' => string|null, 'terms' => array]]
      */
     public static function resolveEntries(array $arEntryList, string $sLocale): array
     {
@@ -76,7 +74,6 @@ class ColorFamilyMatcher
         foreach ($arEntryList as $sSlug => $arEntry) {
             $arNames = (array) ($arEntry['names'] ?? []);
             $sName = (string) ($arNames[$sLocale] ?? '');
-            $bExactLocale = $sName !== '';
             if ($sName === '') {
                 $sName = (string) ($arNames[self::LOCALE_NAME_FALLBACK] ?? '');
             }
@@ -88,11 +85,10 @@ class ColorFamilyMatcher
             }
 
             $arResult[$sSlug] = [
-                'name'          => $sName,
-                'family'        => (string) ($arEntry['family'] ?? ''),
-                'exact_locale'  => $bExactLocale,
-                'hex'           => $arEntry['hex'] ?? null,
-                'terms'         => (array) ($arEntry['terms'] ?? []),
+                'name'   => $sName,
+                'family' => (string) ($arEntry['family'] ?? ''),
+                'hex'    => $arEntry['hex'] ?? null,
+                'terms'  => (array) ($arEntry['terms'] ?? []),
             ];
         }
 
