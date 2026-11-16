@@ -9,8 +9,8 @@ use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
  * Pure mapping ONLY: takes an offer list + color map and returns offers
  * grouped by family. An offer sits in every family of its families list (its
  * primary color first, then extra colors and collections). Collection groups
- * come first in family order, then color groups ordered by their minimum hue
- * (family name as tiebreak); offers with no color entry land in a final
+ * come first in family order, then color groups ordered by the minimum hue of
+ * their primary members (family name as tiebreak); offers with no color entry land in a final
  * "Other" group. Inside a color group rows run by hue then lightness, inside
  * a collection group by shade code first. No HTTP, no cache, no DB - fully
  * deterministic for identical input.
@@ -165,7 +165,9 @@ class OfferColorGrouper
 
     /**
      * Sort family buckets: collection groups first by family position, then
-     * color groups by min hue asc (family name tiebreak). Rows inside a color
+     * color groups by the min hue of their primary members asc (family name
+     * tiebreak; a group of clones only uses its own min hue), so a clone never
+     * reorders the distinct list. Rows inside a color
      * group by hue asc, lightness asc, offer id asc; inside a collection by
      * shade code (natural, unnumbered last) before those.
      *
@@ -193,11 +195,11 @@ class OfferColorGrouper
                     <=> [$arB['fHue'], $arB['fLightness'], (int) $arB['obOffer']->id];
             });
 
-            $arPrimaryRowList = array_filter($arRowList, fn (array $arRow) => $arRow['bPrimary']);
+            $arPrimaryRowList = array_values(array_filter($arRowList, fn (array $arRow) => $arRow['bPrimary']));
             $arSortableList[] = [
                 'bCollection' => $bCollection,
                 'iPosition'   => (int) ($arMeta['iPosition'] ?? 0),
-                'fMinHue'     => $arRowList[0]['fHue'],
+                'fMinHue'     => ($arPrimaryRowList[0] ?? $arRowList[0])['fHue'],
                 'sFamily'     => $sFamily,
                 'arGroup'     => $this->makeGroup(
                     $sFamily,

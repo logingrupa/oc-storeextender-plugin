@@ -217,6 +217,41 @@ class OfferColorGrouperTest extends TestCase
         $this->assertSame(['#9E9E9E', '#D32F2F', '#EC407A'], array_column($arGroupList, 'sHex'));
     }
 
+    /** GROUP-3 */
+    public function testCloningIntoAColorLeavesTheColorGroupOrderAsItWas()
+    {
+        $arOfferList = [$this->makeOffer(1, 'uuid-red'), $this->makeOffer(2, 'uuid-yellow'), $this->makeOffer(3, 'uuid-blue')];
+        $arColorMap = [
+            'uuid-red'    => ['family' => 'Red', 'hex' => '#D32F2F', 'hue' => 0.0, 'lightness' => 0.5],
+            'uuid-yellow' => ['family' => 'Yellow', 'hex' => '#FDD835', 'hue' => 60.0, 'lightness' => 0.5],
+            'uuid-blue'   => ['family' => 'Blue', 'hex' => '#1976D2', 'hue' => 210.0, 'lightness' => 0.5],
+        ];
+        $arPlainOrder = array_column($this->obGrouper->group($arOfferList, $arColorMap), 'sFamily');
+        $arColorMap['uuid-red']['families'] = ['Red', 'Blue'];
+
+        $arGroupList = $this->obGrouper->group($arOfferList, $arColorMap);
+
+        $this->assertSame(['Red', 'Yellow', 'Blue'], $arPlainOrder);
+        $this->assertSame($arPlainOrder, array_column($arGroupList, 'sFamily'));
+        $this->assertSame([1, 3], $this->getOfferIdList($arGroupList[2]), 'the clone still shows under Blue');
+        $this->assertSame([3], $arGroupList[2]['arPrimaryOfferIdList']);
+    }
+
+    /** GROUP-4 */
+    public function testAColorHoldingOnlyClonesStillGetsAPlace()
+    {
+        $arOfferList = [$this->makeOffer(1, 'uuid-red'), $this->makeOffer(2, 'uuid-yellow')];
+        $arColorMap = [
+            'uuid-red'    => ['family' => 'Red', 'families' => ['Red', 'Blue'], 'hex' => '#D32F2F', 'hue' => 0.0, 'lightness' => 0.5],
+            'uuid-yellow' => ['family' => 'Yellow', 'hex' => '#FDD835', 'hue' => 60.0, 'lightness' => 0.5],
+        ];
+
+        $arGroupList = $this->obGrouper->group($arOfferList, $arColorMap);
+
+        $this->assertSame(['Blue', 'Red', 'Yellow'], array_column($arGroupList, 'sFamily'));
+        $this->assertSame([], $arGroupList[0]['arPrimaryOfferIdList']);
+    }
+
     public function testMalformedColorEntryLandsInOtherGroup()
     {
         $arOfferList = [
