@@ -670,6 +670,19 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
         $this->assertSame([], \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::filterOfferIds('no-such-family'));
     }
 
+    /** META-2 */
+    public function testAnObjectShapedGradientIsNotAListOfStops()
+    {
+        $arFamilyMap = $this->getFamilyMap();
+        $arFamilyMap['red']['gradient'] = ['first' => '#ff00aa', 'second' => '#00e5ff'];
+        $arFamilyMap['blue']['gradient'] = ['#ff00aa', '#00e5ff'];
+
+        (new FamilyPropertySync())->sync($arFamilyMap, $this->getOfferColorMapFromTable());
+
+        $this->assertNull(ColorFamilyMeta::query()->where('value_slug', 'red')->first()->gradient);
+        $this->assertSame(['#ff00aa', '#00e5ff'], ColorFamilyMeta::query()->where('value_slug', 'blue')->first()->gradient);
+    }
+
     public function testAPayloadWithoutKindStoresColor()
     {
         (new FamilyPropertySync())->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());

@@ -421,11 +421,11 @@ class FamilyPropertySync
 
     /**
      * @param mixed $mGradient
-     * @return array|null 2 or 3 strict #rrggbb stops, null for anything else (the hex still draws)
+     * @return array|null 2 or 3 strict #rrggbb stops in a JSON array, null for anything else (the hex still draws)
      */
     protected function normalizeGradient($mGradient): ?array
     {
-        if (!is_array($mGradient) || count($mGradient) < 2 || count($mGradient) > 3) {
+        if (!is_array($mGradient) || !array_is_list($mGradient) || count($mGradient) < 2 || count($mGradient) > 3) {
             return null;
         }
 
@@ -435,7 +435,7 @@ class FamilyPropertySync
             }
         }
 
-        return array_values($mGradient);
+        return $mGradient;
     }
 
     /**

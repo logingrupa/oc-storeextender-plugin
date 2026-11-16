@@ -130,6 +130,26 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
         $this->assertSame(['Pink', 'Rose', 'DISCO'], (new ColorMapRepository())->getColorMap()['uuid-b']['families']);
     }
 
+    /** SYNC-3: an object-shaped families field is not a list */
+    public function testAnObjectShapedFamiliesFieldFallsBackToThePrimaryAlone()
+    {
+        $arBody = [
+            'version' => 'v43',
+            'count'   => 2,
+            'offers'  => [
+                'uuid-object' => ['family' => 'Red', 'hex' => '#C62828', 'hue' => 2.1, 'lightness' => 0.45, 'families' => ['backup' => 'Pink']],
+                'uuid-list'   => ['family' => 'Red', 'hex' => '#C62828', 'hue' => 2.1, 'lightness' => 0.45, 'families' => ['Red', 'Pink']],
+            ],
+        ];
+        Http::fake(['*' => Http::response(json_encode($arBody), 200)]);
+
+        $this->assertSame(0, Artisan::call('storeextender:sync-offer-colors'));
+
+        $arStored = OfferColor::query()->pluck('families', 'offer_uuid')->all();
+        $this->assertSame(['Red'], json_decode($arStored['uuid-object'], true));
+        $this->assertSame(['Red', 'Pink'], json_decode($arStored['uuid-list'], true));
+    }
+
     /** SYNC-2: the old export shape stores the primary alone */
     public function testTheOldExportShapeStoresThePrimaryFamilyAlone()
     {

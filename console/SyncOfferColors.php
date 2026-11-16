@@ -349,7 +349,8 @@ class SyncOfferColors extends Command
     /**
      * The one place the families list rules live: strings of 1 to 64
      * characters, no duplicates, the primary family first and present. A
-     * missing or unusable list is the primary alone (old export shape).
+     * missing or unusable list (not a JSON array) is the primary alone (old
+     * export shape).
      *
      * @param mixed  $mFamilyList
      * @param string $sPrimary
@@ -358,7 +359,7 @@ class SyncOfferColors extends Command
     protected function normalizeFamilyList($mFamilyList, string $sPrimary): array
     {
         $arFamilyList = [$sPrimary];
-        foreach (is_array($mFamilyList) ? $mFamilyList : [] as $mFamily) {
+        foreach (is_array($mFamilyList) && array_is_list($mFamilyList) ? $mFamilyList : [] as $mFamily) {
             if (is_string($mFamily) && $mFamily !== '' && mb_strlen($mFamily) <= 64 && !in_array($mFamily, $arFamilyList, true)) {
                 $arFamilyList[] = $mFamily;
             }
