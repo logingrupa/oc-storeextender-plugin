@@ -42,6 +42,8 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
             require_once __DIR__.'/../../../updates/update_table_offer_colors_add_confidence.php';
             (new \Logingrupa\StoreExtender\Updates\CreateTableOfferColors())->up();
             (new \Logingrupa\StoreExtender\Updates\UpdateTableOfferColorsAddConfidence())->up();
+            require_once __DIR__.'/../../../updates/update_table_offer_colors_add_families.php';
+            (new \Logingrupa\StoreExtender\Updates\UpdateTableOfferColorsAddFamilies())->up();
         } catch (\Throwable $obException) {
             $this->markTestSkipped('Test bootstrap failed on this environment: '.$obException->getMessage());
         }
@@ -98,6 +100,60 @@ class SyncOfferColorsTest extends \StoreExtenderPluginTestCase
         $arColorMap = $obRepository->getColorMap();
         $this->assertArrayHasKey('uuid-red', $arColorMap);
         $this->assertSame('Red', $arColorMap['uuid-red']['family']);
+    }
+
+    /**
+     * @param string $sFixture file name under tests/fixtures/color
+     * @return array the decoded payload
+     */
+    protected function readFixture(string $sFixture): array
+    {
+        return json_decode(file_get_contents(__DIR__.'/../../fixtures/color/'.$sFixture), true);
+    }
+
+    /** SYNC-1: the new fields are stored per C-3 and never skip a row */
+    public function testTheFamiliesListAndShadeCodeAreNormalizedAndStored()
+    {
+        Http::fake(['*' => Http::response($this->readFixture('offers-new-shape.json'), 200)]);
+
+        $this->assertSame(0, Artisan::call('storeextender:sync-offer-colors'));
+
+        $this->assertSame(5, OfferColor::count(), 'no row is skipped for the new fields');
+        $arStored = OfferColor::query()->pluck('families', 'offer_uuid')->all();
+        $this->assertSame(['Red', 'DISCO'], json_decode($arStored['uuid-a'], true));
+        $this->assertSame(['Grey'], json_decode($arStored['uuid-c'], true), 'a missing list is the primary alone');
+        $this->assertSame(['Blue', 'Red'], json_decode($arStored['uuid-d'], true), 'junk, long and repeated entries drop');
+        $this->assertSame(['Red', 'GLITTER'], json_decode($arStored['uuid-e'], true), 'an unknown name still rides along');
+        $this->assertSame('DISCO 30', OfferColor::where('offer_uuid', 'uuid-a')->value('shade_code'));
+        $this->assertNull(OfferColor::where('offer_uuid', 'uuid-c')->value('shade_code'));
+        $this->assertNull(OfferColor::where('offer_uuid', 'uuid-d')->value('shade_code'));
+        $this->assertSame(['Pink', 'Rose', 'DISCO'], (new ColorMapRepository())->getColorMap()['uuid-b']['families']);
+    }
+
+    /** SYNC-2: the old export shape stores the primary alone */
+    public function testTheOldExportShapeStoresThePrimaryFamilyAlone()
+    {
+        Http::fake(['*' => Http::response($this->readFixture('offers-old-shape.json'), 200)]);
+
+        Artisan::call('storeextender:sync-offer-colors');
+
+        foreach (OfferColor::all() as $obOfferColor) {
+            $this->assertSame([$obOfferColor->family], json_decode($obOfferColor->families, true));
+            $this->assertNull($obOfferColor->shade_code);
+        }
+    }
+
+    /** SYNC-2: a shop whose migration has not run still syncs the rest */
+    public function testASyncWithoutTheNewColumnsStillImportsTheRows()
+    {
+        (new \Logingrupa\StoreExtender\Updates\UpdateTableOfferColorsAddFamilies())->down();
+        Http::fake(['*' => Http::response($this->readFixture('offers-new-shape.json'), 200)]);
+
+        $this->assertSame(0, Artisan::call('storeextender:sync-offer-colors'));
+
+        $this->assertSame(5, OfferColor::count());
+        $this->assertFalse(\Schema::hasColumn('logingrupa_storeextender_offer_colors', 'families'));
+        $this->assertSame(['Red'], (new ColorMapRepository())->getColorMap()['uuid-a']['families']);
     }
 
     public function testSyncRemovesRowsMissingFromPayload()

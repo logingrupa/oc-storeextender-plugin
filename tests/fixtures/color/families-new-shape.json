@@ -1,0 +1,139 @@
+{
+  "version": "kv1-fam",
+  "count": 7,
+  "families": {
+    "disco": {
+      "name": "DISCO",
+      "names": {
+        "en": "DISCO",
+        "lv": "DISCO",
+        "ru": "DISCO"
+      },
+      "synonyms": {
+        "en": [],
+        "lv": [],
+        "ru": []
+      },
+      "hex": "#ff00aa",
+      "sort_order": 0,
+      "active": true,
+      "kind": "collection",
+      "gradient": [
+        "#ff00aa",
+        "#00e5ff",
+        "#ffd400"
+      ]
+    },
+    "red": {
+      "name": "Red",
+      "names": {
+        "en": "Red",
+        "lv": "Sarkans",
+        "ru": "Sarkans"
+      },
+      "synonyms": {
+        "en": [],
+        "lv": [],
+        "ru": []
+      },
+      "hex": "#d32f2f",
+      "sort_order": 1,
+      "active": true,
+      "kind": "color",
+      "gradient": null
+    },
+    "pink": {
+      "name": "Pink",
+      "names": {
+        "en": "Pink",
+        "lv": "Roza",
+        "ru": "Roza"
+      },
+      "synonyms": {
+        "en": [],
+        "lv": [],
+        "ru": []
+      },
+      "hex": "#ec407a",
+      "sort_order": 2,
+      "active": true,
+      "kind": "color",
+      "gradient": null
+    },
+    "rose": {
+      "name": "Rose",
+      "names": {
+        "en": "Rose",
+        "lv": "Roze",
+        "ru": "Roze"
+      },
+      "synonyms": {
+        "en": [],
+        "lv": [],
+        "ru": []
+      },
+      "hex": "#f48fb1",
+      "sort_order": 3,
+      "active": true,
+      "kind": "color",
+      "gradient": null
+    },
+    "neon": {
+      "name": "NEON",
+      "names": {
+        "en": "NEON",
+        "lv": "NEON",
+        "ru": "NEON"
+      },
+      "synonyms": {
+        "en": [],
+        "lv": [],
+        "ru": []
+      },
+      "hex": "#39ff14",
+      "sort_order": 4,
+      "active": true,
+      "kind": "collection",
+      "gradient": [
+        "#fff",
+        "zz"
+      ]
+    },
+    "grey": {
+      "name": "Grey",
+      "names": {
+        "en": "Grey",
+        "lv": "Pelekais",
+        "ru": "Pelekais"
+      },
+      "synonyms": {
+        "en": [],
+        "lv": [],
+        "ru": []
+      },
+      "hex": "#9e9e9e",
+      "sort_order": 5,
+      "active": true,
+      "kind": "color",
+      "gradient": null
+    },
+    "blue": {
+      "name": "Blue",
+      "names": {
+        "en": "Blue",
+        "lv": "Zils",
+        "ru": "Zils"
+      },
+      "synonyms": {
+        "en": [],
+        "lv": [],
+        "ru": []
+      },
+      "hex": "#1976d2",
+      "sort_order": 6,
+      "active": true,
+      "kind": "color",
+      "gradient": null
+    }
+  }
+}

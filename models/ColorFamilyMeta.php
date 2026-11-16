@@ -20,9 +20,14 @@ use Model;
  * @property array  $names  ['lv' => 'Sarkans', 'en' => 'Red', ...]
  * @property array  $synonyms ['lv' => ['sarkana', ...], ...]
  * @property int|null $sort_order position in the families.json export (the pill/chip order contract); null = never synced
+ * @property string $kind 'color' or 'collection'
+ * @property array|null $gradient 2 or 3 strict #rrggbb stops, drawn left to right; null = flat hex
  */
 class ColorFamilyMeta extends Model
 {
+    const KIND_COLOR = 'color';
+    const KIND_COLLECTION = 'collection';
+
     public $table = 'logingrupa_storeextender_color_family_meta';
 
     public $fillable = [
@@ -32,10 +37,13 @@ class ColorFamilyMeta extends Model
         'names',
         'synonyms',
         'sort_order',
+        'kind',
+        'gradient',
     ];
 
     protected $jsonable = [
         'names',
         'synonyms',
+        'gradient',
     ];
 }

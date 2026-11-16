@@ -8,6 +8,7 @@ use Lovata\Shopaholic\Classes\Helper\CurrencyHelper;
 use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
 use Lovata\Shopaholic\Classes\Item\OfferItem;
 use Lovata\Shopaholic\Classes\Item\ProductItem;
+use Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher;
 use Logingrupa\StoreExtender\Classes\Color\ColorMapRepository;
 use Logingrupa\StoreExtender\Classes\Color\OfferColorGrouper;
 use Logingrupa\StoreExtender\Classes\Helper\CartStateReader;
@@ -145,17 +146,19 @@ class OfferSheet extends ComponentBase
         // rendered strip: the sheet lists the shades the strip counts
         $bHideSoldOut = (bool) input('hide_oos');
         $arRowList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
-        $iTotalCount = count($arRowList);
-        $iNextOffset = min($this->getPageSize(), $iTotalCount);
+        $iRowCount = count($arRowList);
+        $iNextOffset = min($this->getPageSize(), $iRowCount);
 
         return [
             '#hr-sheet-title' => e($obProductItem->name),
             '#hr-sheet-content' => $this->controller->renderPartial('home-redesign/shared/offers-sheet', [
                 'obProduct' => $obProductItem,
                 'sRowListHtml' => $this->getRowListHtml($obProductItem, $arRowList, 0, $bHideSoldOut),
-                'iTotalCount' => $iTotalCount,
+                // a shade listed under two groups is two rows but one shade
+                'iTotalCount' => count($this->getDistinctRowList($arRowList)),
+                'iRowCount' => $iRowCount,
                 'iNextOffset' => $iNextOffset,
-                'bHasMore' => $iNextOffset < $iTotalCount,
+                'bHasMore' => $iNextOffset < $iRowCount,
                 'arFamilyChipList' => $this->getFamilyChipList($arRowList),
             ]),
             // trimmed: select mode renders no CTA and only a whitespace-free
@@ -189,21 +192,21 @@ class OfferSheet extends ComponentBase
         // Mirrored like page one's, so every page is cut from the same list
         $bHideSoldOut = (bool) input('hide_oos');
         $arRowList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
-        $iTotalCount = count($arRowList);
-        if ($iOffset >= $iTotalCount) {
+        $iRowCount = count($arRowList);
+        if ($iOffset >= $iRowCount) {
             return [
                 'sRowListHtml' => '',
-                'iNextOffset' => $iTotalCount,
+                'iNextOffset' => $iRowCount,
                 'bHasMore' => false,
                 'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
             ];
         }
-        $iNextOffset = min($iOffset + $iPageSize, $iTotalCount);
+        $iNextOffset = min($iOffset + $iPageSize, $iRowCount);
 
         return [
             'sRowListHtml' => $this->getRowListHtml($obProductItem, $arRowList, $iOffset, $bHideSoldOut),
             'iNextOffset' => $iNextOffset,
-            'bHasMore' => $iNextOffset < $iTotalCount,
+            'bHasMore' => $iNextOffset < $iRowCount,
             'arCartOfferIdList' => $this->getCartOfferIdList(),
             'sHrCacheEpoch' => $this->getClientCacheEpochToken(),
         ];
@@ -297,9 +300,9 @@ class OfferSheet extends ComponentBase
         // hoisted: the product's offer count is the same for all twelve shades,
         // and a value that cannot vary across a loop has no business inside it
         $iOfferTotalCount = $obProductItem->offer->count();
-        // hoisted for the same reason: one ordered row list serves every
-        // shade's global index lookup
-        $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
+        // hoisted for the same reason: one shade list serves every shade's
+        // global index lookup
+        $arVisibleList = $this->getDistinctRowList($this->getVisibleRowList($obProductItem, $bHideSoldOut));
 
         $arOfferList = [];
         foreach ($arOfferItemList as $obOfferItem) {
@@ -690,7 +693,7 @@ class OfferSheet extends ComponentBase
             return null; // fail fast: an id this product does not own
         }
 
-        $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideSoldOut);
+        $arVisibleList = $this->getDistinctRowList($this->getVisibleRowList($obProductItem, $bHideSoldOut));
         $arWindowRowList = $bRest
             ? $this->getRestRowList($arVisibleList, $iAfterOfferId)
             : $this->getWindowAfterRowList($arVisibleList, $iAfterOfferId);
@@ -855,15 +858,16 @@ class OfferSheet extends ComponentBase
      * under the same tag and the same key builder, so one cache:clear or one
      * colour sync drops both together.
      *
-     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'bGroupStart' => bool]]
+     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'sGradient' => string|null, 'bGroupStart' => bool, 'bPrimary' => bool]]
      */
     protected function getOrderedRowList(ProductItem $obProductItem): array
     {
         // The list itself does not vary by locale, currency or price type,
         // but it keys through the same builder as everything else under this
         // tag: one key scheme is worth more than the handful of duplicate
-        // entries it mints.
-        $sCacheKey = $this->buildCacheKey(['hr.rows', $obProductItem->id]);
+        // entries it mints. The grouped row shape has its own key part, so a
+        // list cached in the one-row-per-shade shape is never read as it.
+        $sCacheKey = $this->buildCacheKey(['hr.grouped', $obProductItem->id]);
         if (isset($this->arOrderedRowListMemo[$sCacheKey])) {
             return $this->arOrderedRowListMemo[$sCacheKey];
         }
@@ -879,7 +883,10 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'bGroupStart' => bool]]
+     * One row per (offer, group): a shade in two groups is two rows, and
+     * bPrimary marks the row of the group that is its main color.
+     *
+     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'sGradient' => string|null, 'bGroupStart' => bool, 'bPrimary' => bool]]
      */
     protected function buildOrderedRowList(ProductItem $obProductItem): array
     {
@@ -888,11 +895,15 @@ class OfferSheet extends ComponentBase
         if (empty($arColorMap)) {
             // fail-safe: no color data yet (sync never ran) -> ungrouped order
             return array_map(function ($iOfferId) {
-                return ['iOfferId' => (int) $iOfferId, 'sFamily' => null, 'sHex' => null, 'bGroupStart' => false];
+                return ['iOfferId' => (int) $iOfferId, 'sFamily' => null, 'sHex' => null, 'sGradient' => null, 'bGroupStart' => false, 'bPrimary' => true];
             }, $arIdList);
         }
 
-        $arGroupList = (new OfferColorGrouper())->group(OfferCollection::make($arIdList), $arColorMap);
+        $arGroupList = (new OfferColorGrouper())->group(
+            OfferCollection::make($arIdList),
+            $arColorMap,
+            (new ColorFamilyMatcher())->metaByFamilyName()
+        );
         $arRowList = [];
         foreach ($arGroupList as $arGroup) {
             $bGroupStart = $arGroup['sFamily'] !== null;
@@ -901,7 +912,9 @@ class OfferSheet extends ComponentBase
                     'iOfferId' => (int) $obOffer->id,
                     'sFamily' => $arGroup['sFamily'],
                     'sHex' => $arGroup['sHex'],
+                    'sGradient' => $arGroup['sGradient'],
                     'bGroupStart' => $bGroupStart,
+                    'bPrimary' => in_array((int) $obOffer->id, $arGroup['arPrimaryOfferIdList'], true),
                 ];
                 $bGroupStart = false;
             }
@@ -912,10 +925,11 @@ class OfferSheet extends ComponentBase
 
     /**
      * Chip per family in group order: label + representative swatch + count.
-     * The chips count the rows the caller lists, so 'All (N)' is their sum.
+     * Counts are per group, so a shade listed under two groups counts in
+     * both and 'All (N)' is NOT their sum.
      *
      * @param array $arRowList as getVisibleRowList returns it
-     * @return array [['sFamily' => string, 'sHex' => string|null, 'iCount' => int]]
+     * @return array [['sFamily' => string, 'sHex' => string|null, 'sBackground' => string|null, 'iCount' => int]]
      */
     protected function getFamilyChipList(array $arRowList): array
     {
@@ -925,7 +939,12 @@ class OfferSheet extends ComponentBase
                 continue;
             }
             if (!isset($arChipList[$arRow['sFamily']])) {
-                $arChipList[$arRow['sFamily']] = ['sFamily' => $arRow['sFamily'], 'sHex' => $arRow['sHex'], 'iCount' => 0];
+                $arChipList[$arRow['sFamily']] = [
+                    'sFamily' => $arRow['sFamily'],
+                    'sHex' => $arRow['sHex'],
+                    'sBackground' => $arRow['sGradient'] ?? $arRow['sHex'],
+                    'iCount' => 0,
+                ];
             }
             $arChipList[$arRow['sFamily']]['iCount'] += 1;
         }
@@ -1017,27 +1036,53 @@ class OfferSheet extends ComponentBase
         int $iSelectedOfferId = 0,
         bool $bOfferIsExplicit = false
     ): array {
-        $arVisibleList = $this->getVisibleRowList($obProductItem, $bHideOutOfStock);
+        $arGroupedList = $this->getVisibleRowList($obProductItem, $bHideOutOfStock);
+        $arVisibleList = $this->getDistinctRowList($arGroupedList);
         $iTotalCount = count($arVisibleList);
         $bUseSheet = $iTotalCount > 1;
 
         $sActiveFamily = $bUseSheet
-            ? $this->resolveActiveFamily($arVisibleList, $sFamilyFilter, $bOfferIsExplicit ? $iSelectedOfferId : 0)
+            ? $this->resolveActiveFamily($arGroupedList, $sFamilyFilter, $bOfferIsExplicit ? $iSelectedOfferId : 0)
             : '';
         $arShownRowList = $sActiveFamily !== ''
-            ? $this->getFamilyRowList($arVisibleList, $sActiveFamily)
+            ? $this->getFamilyRowList($arGroupedList, $sActiveFamily)
             : $this->getWindowedRowList($arVisibleList, $iSelectedOfferId);
 
         return [
             'arOfferItemList' => $this->makeOfferItemList($arShownRowList),
             'iTotalCount' => $iTotalCount,
-            'iFirstIndex' => !empty($arShownRowList)
-                ? $this->findVisibleRowIndex($arVisibleList, (int) $arShownRowList[0]['iOfferId'])
-                : 0,
+            'iFirstIndex' => $this->findRunStartIndex($arVisibleList, $arShownRowList),
             'bUseSheet' => $bUseSheet,
-            'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($arVisibleList) : [],
+            'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($arGroupedList) : [],
             'sActiveFamily' => $sActiveFamily,
         ];
+    }
+
+    /**
+     * Where a drawn run of shades starts in the shade list, when the run is
+     * a consecutive slice of it. The strip numbers its circles from that
+     * start, so a run that is not a slice (a group holding another group's
+     * shades) answers null and its circles carry no position, like a shade
+     * the list does not hold.
+     *
+     * @param array $arVisibleList as getDistinctRowList returns it
+     * @param array $arShownRowList the rows the strip draws
+     * @return int|null 0 for an empty run
+     */
+    protected function findRunStartIndex(array $arVisibleList, array $arShownRowList): ?int
+    {
+        if (empty($arShownRowList)) {
+            return 0;
+        }
+
+        $iStartIndex = $this->findVisibleRowIndex($arVisibleList, (int) $arShownRowList[0]['iOfferId']);
+        if ($iStartIndex === null) {
+            return null;
+        }
+
+        $arSliceIdList = array_column(array_slice($arVisibleList, $iStartIndex, count($arShownRowList)), 'iOfferId');
+
+        return $arSliceIdList === array_column($arShownRowList, 'iOfferId') ? $iStartIndex : null;
     }
 
     /**
@@ -1059,7 +1104,7 @@ class OfferSheet extends ComponentBase
      * hideTradeOffers products pay it, and they already pay for this list
      * (T-3-71).
      *
-     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'bGroupStart' => bool]]
+     * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'sGradient' => string|null, 'bGroupStart' => bool, 'bPrimary' => bool]]
      */
     protected function getVisibleRowList(ProductItem $obProductItem, bool $bHideOutOfStock): array
     {
@@ -1077,6 +1122,20 @@ class OfferSheet extends ComponentBase
         }
 
         return $arVisibleList;
+    }
+
+    /**
+     * Each shade once, at the place its main color group gives it: the order
+     * the strip, its windows, the shade counters and 'All (N)' have always
+     * used. The input is the grouped list, where a shade in several groups
+     * has one row per group.
+     *
+     * @param array $arVisibleList as getVisibleRowList returns it
+     * @return array same row shape, bPrimary rows only
+     */
+    protected function getDistinctRowList(array $arVisibleList): array
+    {
+        return array_values(array_filter($arVisibleList, fn (array $arRow) => $arRow['bPrimary']));
     }
 
     /**
@@ -1132,22 +1191,36 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Family filter for the inline strip. Explicit offer id wins over the
-     * requested family; an unknown family falls back to no filter.
+     * Family filter for the inline strip. An explicit offer id wins over the
+     * requested family: the filter keeps the requested family when the offer
+     * is in it and snaps to the offer's main color otherwise. An unknown
+     * family falls back to no filter.
+     *
+     * @param array $arGroupedList as getVisibleRowList returns it
      */
-    protected function resolveActiveFamily(array $arVisibleList, string $sFamilyFilter, int $iExplicitOfferId): string
+    protected function resolveActiveFamily(array $arGroupedList, string $sFamilyFilter, int $iExplicitOfferId): string
     {
         if ($iExplicitOfferId > 0 && $sFamilyFilter !== '') {
-            foreach ($arVisibleList as $arEntry) {
-                if ($arEntry['iOfferId'] === $iExplicitOfferId) {
-                    return (string) $arEntry['sFamily'];
+            $sPrimaryFamily = null;
+            foreach ($arGroupedList as $arEntry) {
+                if ($arEntry['iOfferId'] !== $iExplicitOfferId) {
+                    continue;
                 }
+                if ($arEntry['sFamily'] === $sFamilyFilter) {
+                    return $sFamilyFilter;
+                }
+                if ($arEntry['bPrimary']) {
+                    $sPrimaryFamily = (string) $arEntry['sFamily'];
+                }
+            }
+            if ($sPrimaryFamily !== null) {
+                return $sPrimaryFamily;
             }
         }
         if ($sFamilyFilter === '') {
             return '';
         }
-        foreach ($arVisibleList as $arEntry) {
+        foreach ($arGroupedList as $arEntry) {
             if ($arEntry['sFamily'] === $sFamilyFilter) {
                 return $sFamilyFilter;
             }
@@ -1157,13 +1230,14 @@ class OfferSheet extends ComponentBase
     }
 
     /**
-     * Every visible shade of one family
+     * Every visible shade of one family, in the group's own order
+     * @param array $arGroupedList as getVisibleRowList returns it
      * @return array [['iOfferId' => int, 'sFamily' => string|null]]
      */
-    protected function getFamilyRowList(array $arVisibleList, string $sFamily): array
+    protected function getFamilyRowList(array $arGroupedList, string $sFamily): array
     {
         $arRowList = [];
-        foreach ($arVisibleList as $arEntry) {
+        foreach ($arGroupedList as $arEntry) {
             if ($arEntry['sFamily'] === $sFamily) {
                 $arRowList[] = $arEntry;
             }

@@ -173,7 +173,7 @@ class OfferSheetSoldOutRowsTest extends StoreExtenderPluginTestCase
 
     /**
      * Offer rows for the quantities, and the ordered list in the shape
-     * buildOrderedRowList gives it, held where getOrderedRowList reads first.
+     * buildOrderedRowList gives it, one row per shade here, held where getOrderedRowList reads first.
      */
     protected function seedShadeList(): void
     {
@@ -191,12 +191,14 @@ class OfferSheetSoldOutRowsTest extends StoreExtenderPluginTestCase
                 'iOfferId' => $iOfferId,
                 'sFamily' => $sFamily,
                 'sHex' => $sHex,
+                'sGradient' => null,
                 'bGroupStart' => $sFamily !== $sPreviousFamily,
+                'bPrimary' => true,
             ];
             $sPreviousFamily = $sFamily;
         }
 
-        $sCacheKey = $this->callProtected('buildCacheKey', [['hr.rows', $this->obProductItem->id]]);
+        $sCacheKey = $this->callProtected('buildCacheKey', [['hr.grouped', $this->obProductItem->id]]);
         $obProperty = $this->obReflection->getProperty('arOrderedRowListMemo');
         $obProperty->setAccessible(true);
         $obProperty->setValue($this->obComponent, [$sCacheKey => $arRowList]);
@@ -274,7 +276,10 @@ class OfferSheetSoldOutRowsTest extends StoreExtenderPluginTestCase
         $arChipList = $this->callProtected('getFamilyChipList', [$arVisibleList]);
 
         $this->assertSame(
-            [['sFamily' => 'Red', 'sHex' => '#c00', 'iCount' => 2], ['sFamily' => 'Other', 'sHex' => null, 'iCount' => 1]],
+            [
+                ['sFamily' => 'Red', 'sHex' => '#c00', 'sBackground' => '#c00', 'iCount' => 2],
+                ['sFamily' => 'Other', 'sHex' => null, 'sBackground' => null, 'iCount' => 1],
+            ],
             $arChipList
         );
         $this->assertSame(count($arVisibleList), array_sum(array_column($arChipList, 'iCount')));

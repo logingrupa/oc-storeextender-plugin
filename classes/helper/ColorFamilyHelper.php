@@ -31,24 +31,24 @@ class ColorFamilyHelper
     const CATALOG_ROOT_CATEGORY_ID = 1;
 
     const CACHE_KEY_PROPERTY_ID = 'storeextender.color_family.property_id';
-    const CACHE_KEY_CONFIDENCE_COLUMN = 'storeextender.color_family.confidence_column';
+    const CACHE_KEY_COLUMN_PREFIX = 'storeextender.color_family.';
     const CACHE_TTL_SECONDS = 3600;
 
     /** @var int|null|false request memo of the property id; false = unresolved */
     protected static $mPropertyId = false;
 
-    /** @var bool|null request memo of the confidence column's existence;
-     * null = unresolved (same pattern as $mPropertyId - one
-     * information-schema query per request at most) */
-    protected static $mHasConfidenceColumn = null;
+    /** @var array<string, bool> request memo of each offer color column's
+     * existence (same pattern as $mPropertyId - one information-schema query
+     * per column and request at most) */
+    protected static $arHasColumnMemo = [];
 
     /**
      * Offer ids carrying the family value - the catalog's offer-card grid
-     * for ?color= renders each shade as its own card, ordered by
-     * classification confidence (most certainly-that-color first). null
-     * when the filter cannot apply (the caller then renders unfiltered); an
-     * empty array is a real answer: the slug is filterable but matches
-     * nothing.
+     * for ?color= renders each shade as its own card. A color page orders by
+     * classification confidence (most certainly-that-color first), a
+     * collection page by shade code. null when the filter cannot apply (the
+     * caller then renders unfiltered); an empty array is a real answer: the
+     * slug is filterable but matches nothing.
      *
      * @param mixed $sSlug value slug from ?color=
      * @return array|null
@@ -58,6 +58,10 @@ class ColorFamilyHelper
         $arOfferIdList = static::filterIds($sSlug);
         if (empty($arOfferIdList)) {
             return $arOfferIdList;
+        }
+
+        if ((new ColorFamilyMatcher())->isCollectionSlug(trim($sSlug))) {
+            return static::orderOfferIdsByShadeCode($arOfferIdList);
         }
 
         return static::orderOfferIdsByConfidence($arOfferIdList);
@@ -79,29 +83,8 @@ class ColorFamilyHelper
         if (count($arOfferIdList) < 2) {
             return $arOfferIdList;
         }
-        if (static::$mHasConfidenceColumn === null) {
-            // cached: an information-schema read per request buys nothing,
-            // and a late migration heals within the TTL
-            static::$mHasConfidenceColumn = (bool) Cache::remember(
-                self::CACHE_KEY_CONFIDENCE_COLUMN,
-                self::CACHE_TTL_SECONDS,
-                function () {
-                    return Schema::hasColumn((new OfferColor)->getTable(), 'confidence');
-                }
-            );
-        }
-        if (!static::$mHasConfidenceColumn) {
-            return $arOfferIdList;
-        }
 
-        $sOfferTable = (new Offer)->getTable();
-        $sColorTable = (new OfferColor)->getTable();
-        $arConfidenceByOfferId = Offer::query()
-            ->join($sColorTable, $sColorTable.'.offer_uuid', '=', $sOfferTable.'.external_id')
-            ->whereIn($sOfferTable.'.id', $arOfferIdList)
-            ->whereNotNull($sColorTable.'.confidence')
-            ->pluck($sColorTable.'.confidence', $sOfferTable.'.id')
-            ->all();
+        $arConfidenceByOfferId = static::readOfferColorColumn($arOfferIdList, 'confidence');
         if (empty($arConfidenceByOfferId)) {
             return $arOfferIdList;
         }
@@ -146,6 +129,156 @@ class ColorFamilyHelper
     }
 
     /**
+     * Order a collection's offer ids by shade code (1C shade number), then
+     * confidence, then incoming order. Fail-safe: a missing shade_code
+     * column leaves the confidence order a color page gets.
+     *
+     * @param array $arOfferIdList
+     * @return array
+     */
+    public static function orderOfferIdsByShadeCode(array $arOfferIdList): array
+    {
+        $arShadeCodeByOfferId = static::readOfferColorColumn($arOfferIdList, 'shade_code');
+        if (empty($arShadeCodeByOfferId)) {
+            return static::orderOfferIdsByConfidence($arOfferIdList);
+        }
+
+        return static::sortOfferIdsByShadeCode(
+            $arOfferIdList,
+            $arShadeCodeByOfferId,
+            static::readOfferColorColumn($arOfferIdList, 'confidence')
+        );
+    }
+
+    /**
+     * Pure order rule of a collection page: shade code by natural order with
+     * unnumbered shades after every numbered one, equal codes by confidence
+     * descending (unscored last), then the incoming order.
+     *
+     * @param array $arOfferIdList
+     * @param array $arShadeCodeByOfferId [<offerId> => string]
+     * @param array $arConfidenceByOfferId [<offerId> => float]
+     * @return array
+     */
+    public static function sortOfferIdsByShadeCode(array $arOfferIdList, array $arShadeCodeByOfferId, array $arConfidenceByOfferId): array
+    {
+        $arOfferIdList = array_values($arOfferIdList);
+        $arPositionByOfferId = array_flip($arOfferIdList);
+        usort(
+            $arOfferIdList,
+            function ($iFirstId, $iSecondId) use ($arShadeCodeByOfferId, $arConfidenceByOfferId, $arPositionByOfferId): int {
+                $iShadeOrder = static::compareShadeCodes($arShadeCodeByOfferId[$iFirstId] ?? null, $arShadeCodeByOfferId[$iSecondId] ?? null);
+                if ($iShadeOrder !== 0) {
+                    return $iShadeOrder;
+                }
+
+                $fFirst = static::resolveConfidence($iFirstId, $arConfidenceByOfferId);
+                $fSecond = static::resolveConfidence($iSecondId, $arConfidenceByOfferId);
+                if (($fFirst === null) !== ($fSecond === null)) {
+                    return $fFirst === null ? 1 : -1;
+                }
+                if ($fFirst !== null && $fFirst !== $fSecond) {
+                    return $fSecond <=> $fFirst;
+                }
+
+                return $arPositionByOfferId[$iFirstId] <=> $arPositionByOfferId[$iSecondId];
+            }
+        );
+
+        return $arOfferIdList;
+    }
+
+    /**
+     * Natural, case-insensitive shade code order, null after every code.
+     *
+     * @param string|null $sFirst
+     * @param string|null $sSecond
+     * @return int
+     */
+    public static function compareShadeCodes(?string $sFirst, ?string $sSecond): int
+    {
+        if (($sFirst === null) !== ($sSecond === null)) {
+            return $sFirst === null ? 1 : -1;
+        }
+        if ($sFirst === null) {
+            return 0;
+        }
+
+        return strnatcasecmp($sFirst, $sSecond);
+    }
+
+    /**
+     * One synced offer color column for a set of offer ids, rows without a
+     * value left out. Fail-safe: a column that is not migrated yet answers
+     * an empty array.
+     *
+     * @param array  $arOfferIdList
+     * @param string $sColumn confidence or shade_code
+     * @return array [<offerId> => value]
+     */
+    protected static function readOfferColorColumn(array $arOfferIdList, string $sColumn): array
+    {
+        if (!static::hasOfferColorColumn($sColumn)) {
+            return [];
+        }
+
+        $sOfferTable = (new Offer)->getTable();
+        $sColorTable = (new OfferColor)->getTable();
+
+        return Offer::query()
+            ->join($sColorTable, $sColorTable.'.offer_uuid', '=', $sOfferTable.'.external_id')
+            ->whereIn($sOfferTable.'.id', $arOfferIdList)
+            ->whereNotNull($sColorTable.'.'.$sColumn)
+            ->pluck($sColorTable.'.'.$sColumn, $sOfferTable.'.id')
+            ->all();
+    }
+
+    /**
+     * Whether an offer color column is migrated. Cached: an
+     * information-schema read per request buys nothing, and a late migration
+     * heals within the TTL.
+     *
+     * @param string $sColumn
+     * @return bool
+     */
+    protected static function hasOfferColorColumn(string $sColumn): bool
+    {
+        if (!isset(static::$arHasColumnMemo[$sColumn])) {
+            static::$arHasColumnMemo[$sColumn] = (bool) Cache::remember(
+                self::CACHE_KEY_COLUMN_PREFIX.$sColumn.'_column',
+                self::CACHE_TTL_SECONDS,
+                function () use ($sColumn) {
+                    return Schema::hasColumn((new OfferColor)->getTable(), $sColumn);
+                }
+            );
+        }
+
+        return static::$arHasColumnMemo[$sColumn];
+    }
+
+    /**
+     * The one swatch background builder: a gradient wins over the flat hex,
+     * the hex over nothing. Only strict #rrggbb stops reach the string, so it
+     * is safe inside an inline style.
+     *
+     * @param mixed $mHex      strict #rrggbb or anything else (ignored)
+     * @param mixed $mGradient 2 or 3 strict #rrggbb stops or anything else (ignored)
+     * @return string|null
+     */
+    public static function buildSwatchBackground($mHex, $mGradient): ?string
+    {
+        $bStrictHex = fn ($mValue) => is_string($mValue) && preg_match('/^#[0-9A-Fa-f]{6}$/', $mValue) === 1;
+
+        if (is_array($mGradient) && count($mGradient) >= 2 && count($mGradient) <= 3
+            && count(array_filter($mGradient, $bStrictHex)) === count($mGradient)
+        ) {
+            return 'linear-gradient(90deg, '.implode(', ', array_values($mGradient)).')';
+        }
+
+        return $bStrictHex($mHex) ? $mHex : null;
+    }
+
+    /**
      * Shared store lookup behind the ?color= filter and the chip counts:
      * the offer ids linked to one family value, from FilterShopaholic's
      * property store. Offers are both the filtered model and the result
@@ -177,7 +310,7 @@ class ColorFamilyHelper
      * catalog URL and the match vocabulary for the client-side pill filter.
      *
      * @param mixed $sLocale active locale code
-     * @return array [['slug','name','hex','count','url','terms'], ...]
+     * @return array [['slug','name','hex','background','count','url','terms'], ...]
      */
     public static function familyList($sLocale = ColorFamilyMatcher::LOCALE_DEFAULT): array
     {
@@ -226,7 +359,7 @@ class ColorFamilyHelper
      * catalog URL, assembled by assembleChipList().
      *
      * @param array $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array]]
-     * @return array [['slug','name','hex','count','url','terms'], ...]
+     * @return array [['slug','name','hex','background','count','url','terms'], ...]
      */
     protected static function buildChipList(array $arFamilyMap): array
     {
@@ -265,11 +398,11 @@ class ColorFamilyHelper
      * (all locales, raw + transliterated) the theme's client-side pill
      * filter reads from data-terms.
      *
-     * @param array  $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array]]
+     * @param array  $arFamilyMap ['<valueSlug>' => ['name' => string, 'hex' => string|null, 'terms' => array, 'gradient' => array|null]]
      * @param array  $arOfferIdListBySlug ['<valueSlug>' => [<offerId>, ...]]
      * @param array  $arActiveOfferIdList
      * @param string $sCatalogUrl
-     * @return array [['slug','name','hex','count','url','terms'], ...]
+     * @return array [['slug','name','hex','background','count','url','terms'], ...]
      */
     public static function assembleChipList(array $arFamilyMap, array $arOfferIdListBySlug, array $arActiveOfferIdList, string $sCatalogUrl): array
     {
@@ -284,12 +417,13 @@ class ColorFamilyHelper
             }
 
             $arChipList[] = [
-                'slug'  => $sSlug,
-                'name'  => $arFamily['name'],
-                'hex'   => $arFamily['hex'],
-                'count' => $iActiveCount,
-                'url'   => $sCatalogUrl.'?color='.urlencode($sSlug),
-                'terms' => implode(' ', (array) ($arFamily['terms'] ?? [])),
+                'slug'       => $sSlug,
+                'name'       => $arFamily['name'],
+                'hex'        => $arFamily['hex'],
+                'background' => static::buildSwatchBackground($arFamily['hex'], $arFamily['gradient'] ?? null),
+                'count'      => $iActiveCount,
+                'url'        => $sCatalogUrl.'?color='.urlencode($sSlug),
+                'terms'      => implode(' ', (array) ($arFamily['terms'] ?? [])),
             ];
         }
 

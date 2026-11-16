@@ -60,6 +60,10 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
         (new \Logingrupa\StoreExtender\Updates\CreateTableColorFamilyMeta())->up();
         (new \Logingrupa\StoreExtender\Updates\UpdateTableColorFamilyMetaAddSortOrder())->up();
         (new \Logingrupa\StoreExtender\Updates\UpdateTableOfferColorsAddConfidence())->up();
+        require_once __DIR__.'/../../updates/update_table_offer_colors_add_families.php';
+        require_once __DIR__.'/../../updates/update_table_color_family_meta_add_kind_gradient.php';
+        (new \Logingrupa\StoreExtender\Updates\UpdateTableOfferColorsAddFamilies())->up();
+        (new \Logingrupa\StoreExtender\Updates\UpdateTableColorFamilyMetaAddKindGradient())->up();
 
         $this->createStubTable('lovata_shopaholic_products', function (Blueprint $obTable) {
             $obTable->increments('id');
@@ -180,7 +184,10 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
     {
         $arOfferColorMap = [];
         foreach (OfferColor::query()->get() as $obOfferColor) {
-            $arOfferColorMap[$obOfferColor->offer_uuid] = ['family' => $obOfferColor->family];
+            $arOfferColorMap[$obOfferColor->offer_uuid] = [
+                'family'   => $obOfferColor->family,
+                'families' => $obOfferColor->resolveFamilyList(),
+            ];
         }
 
         return $arOfferColorMap;
@@ -481,6 +488,180 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
         $this->resetMatcherMemo();
         $arSlugList = array_keys((new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher())->families());
         $this->assertSame(['blue', 'red'], $arSlugList, 'a sync must not leave the old index cached');
+    }
+
+    /**
+     * The five fixture offers (uuid-a to uuid-e) of the multi-family shape.
+     *
+     * @return void
+     */
+    protected function seedFixtureOffers(): void
+    {
+        foreach (['uuid-a', 'uuid-b', 'uuid-c', 'uuid-d', 'uuid-e'] as $sUuid) {
+            DB::table('lovata_shopaholic_offers')->insert([
+                'product_id'  => $this->iProductId,
+                'name'        => $sUuid,
+                'external_id' => $sUuid,
+                'active'      => true,
+            ]);
+        }
+    }
+
+    /**
+     * Run the whole command against a fixture export plus the new-shape
+     * taxonomy, so the C-3 normalization feeds the link sync as in production.
+     *
+     * @param string $sOffersFixture
+     * @return string the command output
+     */
+    protected function runFixtureSync(string $sOffersFixture): string
+    {
+        $sDirectory = __DIR__.'/../fixtures/color/';
+        \Illuminate\Support\Facades\Cache::flush();
+        \System\Models\Parameter::clearInternalCache();
+        config(['services.color_lab.host' => 'https://nailolab.test']);
+        // a second fake() would only add a stub behind the first run's
+        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory());
+        \Illuminate\Support\Facades\Http::fake([
+            '*offers.json' => \Illuminate\Support\Facades\Http::response(json_decode(file_get_contents($sDirectory.$sOffersFixture), true), 200),
+            '*families.json' => \Illuminate\Support\Facades\Http::response(json_decode(file_get_contents($sDirectory.'families-new-shape.json'), true), 200),
+        ]);
+
+        \Illuminate\Support\Facades\Artisan::call('storeextender:sync-offer-colors', ['--force' => true]);
+
+        return \Illuminate\Support\Facades\Artisan::output();
+    }
+
+    /**
+     * @return array ['<offer uuid>' => ['<family slug>', ...]] sorted
+     */
+    protected function readLinkedSlugsByOffer(): array
+    {
+        $arSlugByValueId = PropertyValue::query()->pluck('slug', 'id')->all();
+        $arUuidByOfferId = DB::table('lovata_shopaholic_offers')->pluck('external_id', 'id')->all();
+
+        $arLinkedSlugList = [];
+        foreach (PropertyValueLink::query()->where('element_type', Offer::class)->get() as $obLink) {
+            $arLinkedSlugList[$arUuidByOfferId[$obLink->element_id]][] = $arSlugByValueId[$obLink->value_id];
+        }
+        foreach ($arLinkedSlugList as &$arSlugList) {
+            sort($arSlugList);
+        }
+        ksort($arLinkedSlugList);
+
+        return $arLinkedSlugList;
+    }
+
+    /** LINK-1 */
+    public function testAnOfferGetsOneLinkPerFamilyOfItsList()
+    {
+        $this->seedFixtureOffers();
+        $this->runFixtureSync('offers-old-shape.json');
+        $arEBefore = $this->readLinkedSlugsByOffer()['uuid-e'];
+
+        $sOutput = $this->runFixtureSync('offers-new-shape.json');
+
+        $this->assertSame(
+            [
+                'uuid-a' => ['disco', 'red'],
+                'uuid-b' => ['disco', 'pink', 'rose'],
+                'uuid-c' => ['grey'],
+                'uuid-d' => ['blue', 'red'],
+                'uuid-e' => $arEBefore,
+            ],
+            $this->readLinkedSlugsByOffer()
+        );
+        $this->assertSame(['red'], $arEBefore);
+        $this->assertStringContainsString('Family property sync:', $sOutput);
+
+        $sSecondOutput = $this->runFixtureSync('offers-new-shape.json');
+        $this->assertStringContainsString('0 links created, 0 updated, 0 deleted', $sSecondOutput);
+    }
+
+    /** LINK-2 */
+    public function testTheOldShapeCollapsesEveryOfferToItsPrimaryLinkInPlace()
+    {
+        $this->seedFixtureOffers();
+        $this->runFixtureSync('offers-new-shape.json');
+        $iPinkLinkId = PropertyValueLink::query()->where('value_id', PropertyValue::getBySlug('pink')->first()->id)->value('id');
+
+        $sOutput = $this->runFixtureSync('offers-old-shape.json');
+
+        $this->assertSame(
+            ['uuid-a' => ['red'], 'uuid-b' => ['pink'], 'uuid-c' => ['grey'], 'uuid-d' => ['blue'], 'uuid-e' => ['red']],
+            $this->readLinkedSlugsByOffer()
+        );
+        $this->assertSame(
+            $iPinkLinkId,
+            PropertyValueLink::query()->where('value_id', PropertyValue::getBySlug('pink')->first()->id)->value('id'),
+            'the surviving link row is reused'
+        );
+        // E was frozen by its unknown family and now gets its primary; A drops
+        // DISCO, B drops Rose and DISCO, D drops Red
+        $this->assertStringContainsString('1 links created, 0 updated, 4 deleted', $sOutput);
+    }
+
+    /** LINK-3 */
+    public function testAShrinkingListRepointsTheSurplusLinkInPlace()
+    {
+        $this->seedFixtureOffers();
+        $this->runFixtureSync('offers-new-shape.json');
+        $iOfferId = (int) DB::table('lovata_shopaholic_offers')->where('external_id', 'uuid-a')->value('id');
+        $iDiscoLinkId = PropertyValueLink::query()
+            ->where('element_id', $iOfferId)
+            ->where('value_id', PropertyValue::getBySlug('disco')->first()->id)
+            ->value('id');
+
+        $arOfferColorMap = $this->getOfferColorMapFromTable();
+        $arOfferColorMap['uuid-a'] = ['family' => 'Red', 'families' => ['Red', 'Pink']];
+        $arStats = (new FamilyPropertySync())->sync($this->getFamilyMapFromFixture(), $arOfferColorMap);
+
+        $this->assertSame(1, $arStats['links_updated']);
+        $this->assertSame(0, $arStats['links_created']);
+        $this->assertSame(0, $arStats['links_deleted']);
+        $obLink = PropertyValueLink::query()->find($iDiscoLinkId);
+        $this->assertSame(PropertyValue::getBySlug('pink')->first()->id, $obLink->value_id);
+        $this->assertSame($iOfferId, (int) $obLink->element_id, 'element_id is never rewritten');
+    }
+
+    /** META-1 */
+    public function testMetaRowsStoreKindAndGradient()
+    {
+        $this->seedFixtureOffers();
+        $this->runFixtureSync('offers-new-shape.json');
+
+        $obDisco = ColorFamilyMeta::query()->where('value_slug', 'disco')->first();
+        $this->assertSame('collection', $obDisco->kind);
+        $this->assertSame(['#ff00aa', '#00e5ff', '#ffd400'], $obDisco->gradient);
+        $obNeon = ColorFamilyMeta::query()->where('value_slug', 'neon')->first();
+        $this->assertSame('collection', $obNeon->kind);
+        $this->assertNull($obNeon->gradient, 'one invalid stop drops the whole gradient');
+        $this->assertSame('color', ColorFamilyMeta::query()->where('value_slug', 'red')->first()->kind);
+
+        $obMatcher = new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher();
+        $arMetaByName = $obMatcher->metaByFamilyName();
+        $this->assertSame(['kind' => 'collection', 'iPosition' => 0, 'hex' => '#ff00aa', 'gradient' => ['#ff00aa', '#00e5ff', '#ffd400']], $arMetaByName['DISCO']);
+        $this->assertSame('color', $arMetaByName['Red']['kind']);
+        $this->assertTrue($obMatcher->isCollectionSlug('disco'));
+        $this->assertFalse($obMatcher->isCollectionSlug('red'));
+        $this->assertSame(['#ff00aa', '#00e5ff', '#ffd400'], $obMatcher->families()['disco']['gradient']);
+    }
+
+    public function testAPayloadWithoutKindStoresColor()
+    {
+        (new FamilyPropertySync())->sync($this->getFamilyMap(), $this->getOfferColorMapFromTable());
+
+        $obRed = ColorFamilyMeta::query()->where('value_slug', 'red')->first();
+        $this->assertSame('color', $obRed->kind);
+        $this->assertNull($obRed->gradient);
+    }
+
+    /**
+     * @return array the families fixture, shaped like getFamilyMap()
+     */
+    protected function getFamilyMapFromFixture(): array
+    {
+        return json_decode(file_get_contents(__DIR__.'/../fixtures/color/families-new-shape.json'), true)['families'];
     }
 
     public function testSyncDropsTheCachedPropertyId()

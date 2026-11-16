@@ -29,7 +29,7 @@ class ColorFamilyMatcher
 {
     /** Part of the cache key: bump whenever buildIndex()'s output shape
      * changes, or a deploy would serve the old shape for CACHE_TTL_SECONDS */
-    const INDEX_VERSION = 3;
+    const INDEX_VERSION = 4;
 
     const CACHE_TTL_SECONDS = 3600;
     const CACHE_KEY_PREFIX = 'storeextender.color_family_matcher.index.';
@@ -66,7 +66,7 @@ class ColorFamilyMatcher
      *
      * @param array  $arEntryList index entries keyed by value slug
      * @param string $sLocale
-     * @return array ['<valueSlug>' => ['name' => string, 'family' => string, 'hex' => string|null, 'terms' => array]]
+     * @return array ['<valueSlug>' => ['name' => string, 'family' => string, 'hex' => string|null, 'terms' => array, 'kind' => string, 'gradient' => array|null]]
      */
     public static function resolveEntries(array $arEntryList, string $sLocale): array
     {
@@ -85,14 +85,50 @@ class ColorFamilyMatcher
             }
 
             $arResult[$sSlug] = [
-                'name'   => $sName,
-                'family' => (string) ($arEntry['family'] ?? ''),
-                'hex'    => $arEntry['hex'] ?? null,
-                'terms'  => (array) ($arEntry['terms'] ?? []),
+                'name'     => $sName,
+                'family'   => (string) ($arEntry['family'] ?? ''),
+                'hex'      => $arEntry['hex'] ?? null,
+                'terms'    => (array) ($arEntry['terms'] ?? []),
+                'kind'     => (string) ($arEntry['kind'] ?? ColorFamilyMeta::KIND_COLOR),
+                'gradient' => $arEntry['gradient'] ?? null,
             ];
         }
 
         return $arResult;
+    }
+
+    /**
+     * Kind, display position, swatch hex and gradient of every family, keyed
+     * by the family name offers.json reports. Position is the index order,
+     * the families.json export order.
+     *
+     * @return array ['<familyName>' => ['kind' => string, 'iPosition' => int, 'hex' => string|null, 'gradient' => array|null]]
+     */
+    public function metaByFamilyName(): array
+    {
+        $arMetaByName = [];
+        $iPosition = 0;
+        foreach ($this->getIndex() as $arEntry) {
+            $arMetaByName[(string) ($arEntry['family'] ?? '')] = [
+                'kind'      => (string) ($arEntry['kind'] ?? ColorFamilyMeta::KIND_COLOR),
+                'iPosition' => $iPosition++,
+                'hex'       => $arEntry['hex'] ?? null,
+                'gradient'  => $arEntry['gradient'] ?? null,
+            ];
+        }
+
+        return $arMetaByName;
+    }
+
+    /**
+     * @param string $sSlug family value slug (?color=)
+     * @return bool true when the slug is a synced collection
+     */
+    public function isCollectionSlug(string $sSlug): bool
+    {
+        $arIndex = $this->getIndex();
+
+        return isset($arIndex[$sSlug]) && ($arIndex[$sSlug]['kind'] ?? '') === ColorFamilyMeta::KIND_COLLECTION;
     }
 
     /**
@@ -175,7 +211,7 @@ class ColorFamilyMatcher
      * the color-lab decided; NULL positions (pre-migration data) and a
      * missing column fall back to id order, the pre-contract behavior.
      *
-     * @return array ['<valueSlug>' => ['terms' => array, 'names' => array, 'family' => string, 'hex' => string|null]]
+     * @return array ['<valueSlug>' => ['terms' => array, 'names' => array, 'family' => string, 'hex' => string|null, 'kind' => string, 'gradient' => array|null]]
      */
     protected function buildIndex(): array
     {
@@ -228,10 +264,12 @@ class ColorFamilyMatcher
             }
 
             $arIndex[$obMeta->value_slug] = [
-                'terms'  => array_keys($arTermList),
-                'names'  => (array) $obMeta->names,
-                'family' => $obMeta->family,
-                'hex'    => $obMeta->hex,
+                'terms'    => array_keys($arTermList),
+                'names'    => (array) $obMeta->names,
+                'family'   => $obMeta->family,
+                'hex'      => $obMeta->hex,
+                'kind'     =>$obMeta->kind ?: ColorFamilyMeta::KIND_COLOR,
+                'gradient' => is_array($obMeta->gradient) && !empty($obMeta->gradient) ? $obMeta->gradient : null,
             ];
         }
 

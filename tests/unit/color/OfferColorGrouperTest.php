@@ -149,6 +149,74 @@ class OfferColorGrouperTest extends TestCase
         $this->assertSame([1], $this->getOfferIdList($arGroupList[0]));
     }
 
+    /**
+     * @return array [offers, color map, family meta] of the multi-family shape
+     */
+    protected function makeMultiFamilyFixture(): array
+    {
+        $arOfferList = [$this->makeOffer(1, 'uuid-a'), $this->makeOffer(2, 'uuid-b'), $this->makeOffer(3, 'uuid-c')];
+        $arColorMap = [
+            'uuid-a' => ['family' => 'Red', 'families' => ['Red', 'DISCO'], 'shade_code' => 'DISCO 30', 'hex' => '#D32F2F', 'hue' => 2.0, 'lightness' => 0.45],
+            'uuid-b' => ['family' => 'Pink', 'families' => ['Pink', 'Rose', 'DISCO'], 'shade_code' => 'DISCO 02', 'hex' => '#EC407A', 'hue' => 340.0, 'lightness' => 0.6],
+            'uuid-c' => ['family' => 'Grey', 'hex' => '#9E9E9E', 'hue' => 0.0, 'lightness' => 0.6],
+        ];
+        $arFamilyMeta = [
+            'DISCO' => ['kind' => 'collection', 'iPosition' => 0, 'hex' => '#ff00aa', 'gradient' => ['#ff00aa', '#00e5ff', '#ffd400']],
+            'Red'   => ['kind' => 'color', 'iPosition' => 1, 'hex' => '#d32f2f', 'gradient' => null],
+        ];
+
+        return [$arOfferList, $arColorMap, $arFamilyMeta];
+    }
+
+    /** GROUP-1 */
+    public function testAnOfferSitsInEveryFamilyOfItsListAndCollectionsComeFirst()
+    {
+        [$arOfferList, $arColorMap, $arFamilyMeta] = $this->makeMultiFamilyFixture();
+
+        $arGroupList = $this->obGrouper->group($arOfferList, $arColorMap, $arFamilyMeta);
+
+        $this->assertSame(['DISCO', 'Grey', 'Red', 'Pink', 'Rose'], array_column($arGroupList, 'sFamily'));
+        $this->assertSame([2, 1], $this->getOfferIdList($arGroupList[0]), 'DISCO 02 before DISCO 30');
+        $this->assertSame('collection', $arGroupList[0]['sKind']);
+        $this->assertSame('#ff00aa', $arGroupList[0]['sHex'], 'a collection draws the family hex, not a member hex');
+        $this->assertSame('linear-gradient(90deg, #ff00aa, #00e5ff, #ffd400)', $arGroupList[0]['sGradient']);
+        $this->assertSame([1], $this->getOfferIdList($arGroupList[2]));
+        $this->assertNull($arGroupList[2]['sGradient']);
+        $this->assertSame([2], $this->getOfferIdList($arGroupList[4]), 'an extra color holds the clone');
+        $this->assertSame([], $arGroupList[0]['arPrimaryOfferIdList'], 'no offer has a collection as its main color');
+        $this->assertSame([1], $arGroupList[2]['arPrimaryOfferIdList']);
+        $this->assertSame([2], $arGroupList[3]['arPrimaryOfferIdList']);
+        $this->assertSame([], $arGroupList[4]['arPrimaryOfferIdList']);
+    }
+
+    public function testUnnumberedShadesSitAfterNumberedOnesInACollection()
+    {
+        [$arOfferList, $arColorMap, $arFamilyMeta] = $this->makeMultiFamilyFixture();
+        $arOfferList[] = $this->makeOffer(4, 'uuid-d');
+        $arColorMap['uuid-d'] = ['family' => 'Blue', 'families' => ['Blue', 'DISCO'], 'hex' => '#1976D2', 'hue' => 210.0, 'lightness' => 0.5];
+        $arColorMap['uuid-b']['shade_code'] = 'DISCO 13F';
+        $arColorMap['uuid-a']['shade_code'] = 'DISCO 10';
+
+        $arGroupList = $this->obGrouper->group($arOfferList, $arColorMap, $arFamilyMeta);
+
+        $this->assertSame([1, 2, 4], $this->getOfferIdList($arGroupList[0]));
+    }
+
+    public function testWithoutFamiliesTheOutputIsTheSingleFamilyGrouping()
+    {
+        [$arOfferList, $arColorMap, $arFamilyMeta] = $this->makeMultiFamilyFixture();
+        foreach ($arColorMap as $sUuid => $arColor) {
+            unset($arColorMap[$sUuid]['families'], $arColorMap[$sUuid]['shade_code']);
+        }
+
+        $arGroupList = $this->obGrouper->group($arOfferList, $arColorMap, $arFamilyMeta);
+
+        $this->assertSame(['Grey', 'Red', 'Pink'], array_column($arGroupList, 'sFamily'));
+        $this->assertSame([[3], [1], [2]], array_map(fn ($arGroup) => $this->getOfferIdList($arGroup), $arGroupList));
+        $this->assertSame([[3], [1], [2]], array_column($arGroupList, 'arPrimaryOfferIdList'));
+        $this->assertSame(['#9E9E9E', '#D32F2F', '#EC407A'], array_column($arGroupList, 'sHex'));
+    }
+
     public function testMalformedColorEntryLandsInOtherGroup()
     {
         $arOfferList = [

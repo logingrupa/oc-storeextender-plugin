@@ -16,7 +16,8 @@ use System\Models\Parameter;
  */
 class ColorMapRepository
 {
-    const CACHE_KEY_MAP = 'storeextender.offer_colors.map';
+    // v2: rows carry families and shade_code, a pre-upgrade cached map must not be read as this shape
+    const CACHE_KEY_MAP = 'storeextender.offer_colors.map.v2';
     // Legacy key: nothing reads it any more, markSynced() clears it once so a
     // pre-upgrade entry does not sit in the cache forever.
     const CACHE_KEY_LEGACY_VERSION = 'storeextender.offer_colors.version';
@@ -34,7 +35,7 @@ class ColorMapRepository
     /**
      * Get color map keyed by bare offer UUID
      *
-     * @return array ['<offerUuid>' => ['family' => string, 'hex' => string|null, 'hue' => float, 'lightness' => float]]
+     * @return array ['<offerUuid>' => ['family' => string, 'families' => string[], 'shade_code' => string|null, 'hex' => string|null, 'hue' => float, 'lightness' => float]]
      */
     public function getColorMap(): array
     {
@@ -42,10 +43,12 @@ class ColorMapRepository
             $arColorMap = [];
             foreach (OfferColor::query()->get() as $obOfferColor) {
                 $arColorMap[(string) $obOfferColor->offer_uuid] = [
-                    'family'    => (string) $obOfferColor->family,
-                    'hex'       => $obOfferColor->hex !== null ? (string) $obOfferColor->hex : null,
-                    'hue'       => (float) $obOfferColor->hue,
-                    'lightness' => (float) $obOfferColor->lightness,
+                    'family'     => (string) $obOfferColor->family,
+                    'families'   => $obOfferColor->resolveFamilyList(),
+                    'shade_code' => $obOfferColor->getAttribute('shade_code'),
+                    'hex'        => $obOfferColor->hex !== null ? (string) $obOfferColor->hex : null,
+                    'hue'        => (float) $obOfferColor->hue,
+                    'lightness'  => (float) $obOfferColor->lightness,
                 ];
             }
 

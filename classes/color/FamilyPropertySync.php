@@ -26,10 +26,11 @@ use Logingrupa\StoreExtender\Classes\Event\Property\ColorFamilySlugHandler;
  * element_id must NEVER be rewritten in place (its cache key would go
  * stale), links are created/deleted instead.
  *
- * Fail-safe boundary: an empty family map returns zero stats and touches
- * nothing, and an offer whose family is unknown to the taxonomy keeps
- * whatever link it already has - a partial upstream payload must never
- * delete data.
+ * One link per (offer, family): an offer listing several families holds one
+ * link for each. Fail-safe boundary: an empty family map returns zero stats
+ * and touches nothing, and an offer with a family unknown to the taxonomy
+ * keeps whatever links it already has - a partial upstream payload must
+ * never delete data.
  *
  * @package Logingrupa\StoreExtender\Classes\Color
  */
@@ -47,8 +48,8 @@ class FamilyPropertySync
      * Sync meta rows, the property, its values and the offer links from the
      * family taxonomy + the locally synced offer color map.
      *
-     * @param array $arFamilyMap ['<slug>' => ['name' => string, 'names' => array, 'synonyms' => array, 'hex' => string]]
-     * @param array $arOfferColorMap ['<offerUuid>' => ['family' => string, ...]]
+     * @param array $arFamilyMap ['<slug>' => ['name' => string, 'names' => array, 'synonyms' => array, 'hex' => string, 'kind' => string, 'gradient' => array|null]]
+     * @param array $arOfferColorMap ['<offerUuid>' => ['family' => string, 'families' => string[]]] families optional, defaults to [family]
      * @return array ['values' => int, 'links_created' => int, 'links_updated' => int, 'links_deleted' => int, 'meta' => int]
      */
     public function sync(array $arFamilyMap, array $arOfferColorMap): array
@@ -93,7 +94,9 @@ class FamilyPropertySync
      */
     protected function syncMetaList(array $arFamilyMap): int
     {
-        $bHasSortOrder = Schema::hasColumn((new ColorFamilyMeta)->getTable(), 'sort_order');
+        $sMetaTable = (new ColorFamilyMeta)->getTable();
+        $bHasSortOrder = Schema::hasColumn($sMetaTable, 'sort_order');
+        $bHasKindColumns = Schema::hasColumn($sMetaTable, 'kind') && Schema::hasColumn($sMetaTable, 'gradient');
 
         $iMetaCount = 0;
         $arSlugList = [];
@@ -114,6 +117,10 @@ class FamilyPropertySync
             $obMeta->synonyms = (array) ($arFamily['synonyms'] ?? []);
             if ($bHasSortOrder) {
                 $obMeta->sort_order = $iMetaCount;
+            }
+            if ($bHasKindColumns) {
+                $obMeta->kind = $this->normalizeKind($arFamily['kind'] ?? null);
+                $obMeta->gradient = $this->normalizeGradient($arFamily['gradient'] ?? null);
             }
             $obMeta->save();
 
@@ -258,10 +265,11 @@ class FamilyPropertySync
     }
 
     /**
-     * Bring the offer links to the desired state: one link per mapped offer.
-     * Creates missing links, updates value_id/product_id in place, deletes
-     * links whose offer left the map. An offer whose family is unknown to
-     * the taxonomy contributes nothing AND keeps its existing link
+     * Bring the offer links to the desired state: one link per (offer,
+     * family) of the offer's families list. Creates missing links, updates
+     * surplus links in place to a missing family, deletes the rest and the
+     * links of offers that left the map. An offer with any family unknown to
+     * the taxonomy contributes nothing AND keeps every existing link
      * (fail-safe against a partial upstream payload).
      *
      * @param Property $obProperty
@@ -277,61 +285,122 @@ class FamilyPropertySync
         foreach (array_chunk(array_keys($arOfferColorMap), self::OFFER_CHUNK_SIZE) as $arUuidChunk) {
             $obOfferList = Offer::query()->whereIn('external_id', $arUuidChunk)->get(['id', 'product_id', 'external_id']);
             foreach ($obOfferList as $obOffer) {
-                $arColor = $arOfferColorMap[$obOffer->external_id] ?? null;
-                $sFamilyName = is_array($arColor) && isset($arColor['family']) ? (string) $arColor['family'] : '';
-                if (!isset($arValueIdByFamily[$sFamilyName])) {
+                $arValueIdList = $this->resolveValueIdList($arOfferColorMap[$obOffer->external_id] ?? null, $arValueIdByFamily);
+                if ($arValueIdList === null) {
                     // the offer IS mapped, only to a family this payload does
-                    // not know - leave its current link untouched
+                    // not know - leave its current links untouched
                     $arFrozenOfferIdList[(int) $obOffer->id] = true;
                     continue;
                 }
 
                 $arDesiredByOfferId[(int) $obOffer->id] = [
-                    'product_id' => (int) $obOffer->product_id,
-                    'value_id'   => $arValueIdByFamily[$sFamilyName],
+                    'product_id'    => (int) $obOffer->product_id,
+                    'value_id_list' => $arValueIdList,
                 ];
             }
         }
 
+        $arExistingLinkListByOfferId = [];
         $obExistingLinkList = PropertyValueLink::query()
             ->where('property_id', $obProperty->id)
             ->where('element_type', Offer::class)
+            ->orderBy('id')
             ->get();
-
-        $arSatisfiedOfferIdList = [];
         foreach ($obExistingLinkList as $obLink) {
-            $iOfferId = (int) $obLink->element_id;
-            if (isset($arFrozenOfferIdList[$iOfferId])) {
+            $arExistingLinkListByOfferId[(int) $obLink->element_id][] = $obLink;
+        }
+
+        foreach ($arExistingLinkListByOfferId as $iOfferId => $arLinkList) {
+            if (isset($arFrozenOfferIdList[$iOfferId]) || isset($arDesiredByOfferId[$iOfferId])) {
                 continue;
             }
 
-            if (!isset($arDesiredByOfferId[$iOfferId]) || isset($arSatisfiedOfferIdList[$iOfferId])) {
-                // offer left the map, or a duplicate link for one already kept
+            foreach ($arLinkList as $obLink) {
+                $obLink->delete();
+                $arStats['links_deleted']++;
+            }
+        }
+
+        foreach ($arDesiredByOfferId as $iOfferId => $arDesired) {
+            $this->reconcileOfferLinkList($obProperty, $iOfferId, $arDesired, $arExistingLinkListByOfferId[$iOfferId] ?? [], $arStats);
+        }
+    }
+
+    /**
+     * The value ids of one offer's families, primary first.
+     *
+     * @param mixed $mColor ['family' => string, 'families' => array]
+     * @param array $arValueIdByFamily
+     * @return array|null null when any family is unknown to the taxonomy
+     */
+    protected function resolveValueIdList($mColor, array $arValueIdByFamily): ?array
+    {
+        $sPrimary = is_array($mColor) && isset($mColor['family']) ? (string) $mColor['family'] : '';
+        $arFamilyNameList = is_array($mColor) && !empty($mColor['families']) && is_array($mColor['families'])
+            ? $mColor['families']
+            : [$sPrimary];
+
+        $arValueIdList = [];
+        foreach ($arFamilyNameList as $sFamilyName) {
+            if (!isset($arValueIdByFamily[$sFamilyName])) {
+                return null;
+            }
+            $arValueIdList[$arValueIdByFamily[$sFamilyName]] = $arValueIdByFamily[$sFamilyName];
+        }
+
+        return array_values($arValueIdList);
+    }
+
+    /**
+     * Make one offer's links match its desired value ids. A link that already
+     * holds a desired value stays, a surplus link is repointed in place to a
+     * still-missing value, and only what is left over is deleted or created.
+     *
+     * @param Property $obProperty
+     * @param int      $iOfferId
+     * @param array    $arDesired ['product_id' => int, 'value_id_list' => int[]]
+     * @param array    $arLinkList the offer's existing links
+     * @param array    $arStats
+     * @return void
+     */
+    protected function reconcileOfferLinkList(Property $obProperty, int $iOfferId, array $arDesired, array $arLinkList, array &$arStats): void
+    {
+        $arMissingValueIdList = $arDesired['value_id_list'];
+        $arSurplusLinkList = [];
+        foreach ($arLinkList as $obLink) {
+            $iValueId = (int) $obLink->value_id;
+            $iMissingIndex = array_search($iValueId, $arMissingValueIdList, true);
+            if ($iMissingIndex === false) {
+                $arSurplusLinkList[] = $obLink;
+                continue;
+            }
+
+            unset($arMissingValueIdList[$iMissingIndex]);
+            if ((int) $obLink->product_id !== $arDesired['product_id']) {
+                $obLink->product_id = $arDesired['product_id'];
+                $obLink->save();
+                $arStats['links_updated']++;
+            }
+        }
+
+        $arMissingValueIdList = array_values($arMissingValueIdList);
+        foreach ($arSurplusLinkList as $obLink) {
+            if (empty($arMissingValueIdList)) {
                 $obLink->delete();
                 $arStats['links_deleted']++;
                 continue;
             }
 
-            $arSatisfiedOfferIdList[$iOfferId] = true;
-            $arDesired = $arDesiredByOfferId[$iOfferId];
-            if ((int) $obLink->value_id === $arDesired['value_id'] && (int) $obLink->product_id === $arDesired['product_id']) {
-                continue;
-            }
-
             // update in place - element_id is never rewritten (cache contract)
-            $obLink->value_id = $arDesired['value_id'];
+            $obLink->value_id = array_shift($arMissingValueIdList);
             $obLink->product_id = $arDesired['product_id'];
             $obLink->save();
             $arStats['links_updated']++;
         }
 
-        foreach ($arDesiredByOfferId as $iOfferId => $arDesired) {
-            if (isset($arSatisfiedOfferIdList[$iOfferId])) {
-                continue;
-            }
-
+        foreach ($arMissingValueIdList as $iValueId) {
             PropertyValueLink::create([
-                'value_id'     => $arDesired['value_id'],
+                'value_id'     => $iValueId,
                 'property_id'  => $obProperty->id,
                 'product_id'   => $arDesired['product_id'],
                 'element_id'   => $iOfferId,
@@ -339,6 +408,34 @@ class FamilyPropertySync
             ]);
             $arStats['links_created']++;
         }
+    }
+
+    /**
+     * @param mixed $mKind
+     * @return string a ColorFamilyMeta kind, color for anything unknown
+     */
+    protected function normalizeKind($mKind): string
+    {
+        return $mKind === ColorFamilyMeta::KIND_COLLECTION ? ColorFamilyMeta::KIND_COLLECTION : ColorFamilyMeta::KIND_COLOR;
+    }
+
+    /**
+     * @param mixed $mGradient
+     * @return array|null 2 or 3 strict #rrggbb stops, null for anything else (the hex still draws)
+     */
+    protected function normalizeGradient($mGradient): ?array
+    {
+        if (!is_array($mGradient) || count($mGradient) < 2 || count($mGradient) > 3) {
+            return null;
+        }
+
+        foreach ($mGradient as $mStop) {
+            if (!is_string($mStop) || $this->normalizeHex($mStop) === null) {
+                return null;
+            }
+        }
+
+        return array_values($mGradient);
     }
 
     /**

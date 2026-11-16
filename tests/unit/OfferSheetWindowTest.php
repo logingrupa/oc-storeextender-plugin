@@ -147,8 +147,8 @@ class OfferSheetWindowTest extends TestCase
     public function testAnExplicitOfferSnapsTheFilterToItsOwnFamily()
     {
         $arRowList = [
-            ['iOfferId' => 1, 'sFamily' => 'Red'],
-            ['iOfferId' => 2, 'sFamily' => 'Blue'],
+            ['iOfferId' => 1, 'sFamily' => 'Red', 'bPrimary' => true],
+            ['iOfferId' => 2, 'sFamily' => 'Blue', 'bPrimary' => true],
         ];
 
         // a shared URL naming offer 2 AND family Red: the offer wins
@@ -157,9 +157,75 @@ class OfferSheetWindowTest extends TestCase
         $this->assertSame('Blue', $sFamily);
     }
 
+    public function testAnExplicitOfferKeepsTheRequestedFamilyItBelongsTo()
+    {
+        $arRowList = $this->makeGroupedRowList();
+
+        // offer 1 is a Red shade that also sits in DISCO
+        $this->assertSame('DISCO', $this->call('resolveActiveFamily', [$arRowList, 'DISCO', 1]));
+        // offer 3 is not in DISCO, so the filter snaps to its main color
+        $this->assertSame('Grey', $this->call('resolveActiveFamily', [$arRowList, 'DISCO', 3]));
+    }
+
+    /**
+     * Offers 1 and 2 sit in DISCO and in their main color, offer 3 only in Grey:
+     * six rows for the sheet, three shades for everything else.
+     *
+     * @return array
+     */
+    protected function makeGroupedRowList(): array
+    {
+        return [
+            ['iOfferId' => 2, 'sFamily' => 'DISCO', 'sHex' => '#ff00aa', 'sGradient' => 'linear-gradient(90deg, #ff00aa, #00e5ff)', 'bGroupStart' => true, 'bPrimary' => false],
+            ['iOfferId' => 1, 'sFamily' => 'DISCO', 'sHex' => '#ff00aa', 'sGradient' => 'linear-gradient(90deg, #ff00aa, #00e5ff)', 'bGroupStart' => false, 'bPrimary' => false],
+            ['iOfferId' => 3, 'sFamily' => 'Grey', 'sHex' => '#9e9e9e', 'sGradient' => null, 'bGroupStart' => true, 'bPrimary' => true],
+            ['iOfferId' => 1, 'sFamily' => 'Red', 'sHex' => '#d32f2f', 'sGradient' => null, 'bGroupStart' => true, 'bPrimary' => true],
+            ['iOfferId' => 2, 'sFamily' => 'Pink', 'sHex' => '#ec407a', 'sGradient' => null, 'bGroupStart' => true, 'bPrimary' => true],
+            ['iOfferId' => 2, 'sFamily' => 'Rose', 'sHex' => '#f48fb1', 'sGradient' => null, 'bGroupStart' => true, 'bPrimary' => false],
+        ];
+    }
+
+    /** SHEET-1 */
+    public function testTheShadeListCountsEachShadeOnceInTodaysPrimaryOrder()
+    {
+        $arGroupedList = $this->makeGroupedRowList();
+
+        $arShadeList = $this->call('getDistinctRowList', [$arGroupedList]);
+
+        $this->assertCount(6, $arGroupedList);
+        $this->assertSame([3, 1, 2], $this->readOfferIdList($arShadeList));
+        $this->assertSame(0, $this->call('findVisibleRowIndex', [$arShadeList, 3]));
+        $this->assertSame(2, $this->call('findVisibleRowIndex', [$arShadeList, 2]));
+    }
+
+    public function testFamilyChipsCountPerGroupAndCarryTheBackground()
+    {
+        $arChipList = $this->call('getFamilyChipList', [$this->makeGroupedRowList()]);
+
+        $this->assertSame(['DISCO', 'Grey', 'Red', 'Pink', 'Rose'], array_column($arChipList, 'sFamily'));
+        $this->assertSame([2, 1, 1, 1, 1], array_column($arChipList, 'iCount'));
+        $this->assertSame('linear-gradient(90deg, #ff00aa, #00e5ff)', $arChipList[0]['sBackground']);
+        $this->assertSame('#9e9e9e', $arChipList[1]['sBackground']);
+    }
+
+    public function testAFamilyStripKeepsItsGroupOrderAndNumbersOnlyAConsecutiveRun()
+    {
+        $arGroupedList = $this->makeGroupedRowList();
+        $arShadeList = $this->call('getDistinctRowList', [$arGroupedList]);
+
+        $arDiscoRun = $this->call('getFamilyRowList', [$arGroupedList, 'DISCO']);
+        $arGreyRun = $this->call('getFamilyRowList', [$arGroupedList, 'Grey']);
+
+        $this->assertSame([2, 1], $this->readOfferIdList($arDiscoRun), 'collection order, not shade list order');
+        $this->assertNull($this->call('findRunStartIndex', [$arShadeList, $arDiscoRun]), 'shades 2 and 1 are not a slice of 3, 1, 2');
+        $this->assertSame(0, $this->call('findRunStartIndex', [$arShadeList, $arGreyRun]));
+        $this->assertSame(1, $this->call('findRunStartIndex', [$arShadeList, array_slice($arShadeList, 1)]));
+        $this->assertSame(0, $this->call('findRunStartIndex', [$arShadeList, []]));
+    }
+
     public function testAnUnknownFamilyFallsBackToNoFilter()
     {
-        $arRowList = [['iOfferId' => 1, 'sFamily' => 'Red']];
+        $arRowList = [['iOfferId' => 1, 'sFamily' => 'Red', 'bPrimary' => true]];
 
         $this->assertSame('', $this->call('resolveActiveFamily', [$arRowList, 'Chartreuse', 0]));
         $this->assertSame('', $this->call('resolveActiveFamily', [$arRowList, '', 0]));

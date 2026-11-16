@@ -26,6 +26,9 @@ class SyncOfferColors extends Command
 {
     const UPSERT_CHUNK_SIZE = 500;
 
+    /** Export fields stored only while their column is migrated */
+    const OPTIONAL_COLUMN_LIST = ['confidence', 'families', 'shade_code'];
+
     const MISSING_HOST_MESSAGE = 'COLOR_LAB_API_HOST is not set, the offer colour sync has no API to ask.';
 
     /** @var string */
@@ -85,19 +88,16 @@ class SyncOfferColors extends Command
             return self::FAILURE;
         }
 
-        $bHasConfidenceColumn = $this->hasConfidenceColumn();
+        $arOptionalColumnList = $this->resolveOptionalColumnList();
 
-        $arRowList = $this->buildRowList($arColorMap, $bHasConfidenceColumn);
+        $arRowList = $this->buildRowList($arColorMap, $arOptionalColumnList);
         if (empty($arRowList)) {
             $this->warn('Color API payload contained no valid entries - local table left untouched.');
 
             return self::FAILURE;
         }
 
-        $arUpdateColumnList = ['family', 'hex', 'hue', 'lightness', 'updated_at'];
-        if ($bHasConfidenceColumn) {
-            $arUpdateColumnList[] = 'confidence';
-        }
+        $arUpdateColumnList = array_merge(['family', 'hex', 'hue', 'lightness', 'updated_at'], $arOptionalColumnList);
 
         $iDeletedCount = 0;
         DB::transaction(function () use ($arRowList, $arUpdateColumnList, &$iDeletedCount) {
@@ -148,7 +148,10 @@ class SyncOfferColors extends Command
 
         $arOfferColorMap = [];
         foreach (OfferColor::query()->get() as $obOfferColor) {
-            $arOfferColorMap[$obOfferColor->offer_uuid] = ['family' => $obOfferColor->family];
+            $arOfferColorMap[$obOfferColor->offer_uuid] = [
+                'family'   => $obOfferColor->family,
+                'families' => $obOfferColor->resolveFamilyList(),
+            ];
         }
 
         $arStats = (new FamilyPropertySync())->sync($arFamilyMap, $arOfferColorMap);
@@ -247,28 +250,33 @@ class SyncOfferColors extends Command
     }
 
     /**
-     * Whether the confidence column is migrated yet. Fail-safe: an undeployed
-     * migration must not fail the sync, the score simply is not stored.
+     * The optional columns that are migrated yet. Fail-safe: an undeployed
+     * migration must not fail the sync, the field simply is not stored.
      *
-     * @return bool
+     * @return array subset of OPTIONAL_COLUMN_LIST
      */
-    protected function hasConfidenceColumn(): bool
+    protected function resolveOptionalColumnList(): array
     {
-        return Schema::hasColumn((new OfferColor)->getTable(), 'confidence');
+        $sTable = (new OfferColor)->getTable();
+
+        return array_values(array_filter(
+            self::OPTIONAL_COLUMN_LIST,
+            fn (string $sColumn) => Schema::hasColumn($sTable, $sColumn)
+        ));
     }
 
     /**
      * Validate + normalize API entries into upsert rows. Invalid entries are
-     * skipped and counted, never imported half-broken. confidence is an
-     * optional field (null = unscored, in-family order signal absent) and is
-     * only carried while its column exists - handle() resolves the column
-     * once per run and passes the flag in.
+     * skipped and counted, never imported half-broken. The optional fields
+     * (confidence, families, shade_code) never invalidate a row and are only
+     * carried while their column exists - handle() resolves the columns once
+     * per run and passes them in.
      *
-     * @param array $arColorMap ['<offerUuid>' => ['family' => string, 'hex' => string, 'hue' => float, 'lightness' => float, 'confidence' => float|null]]
-     * @param bool  $bHasConfidenceColumn
+     * @param array $arColorMap ['<offerUuid>' => ['family' => string, 'hex' => string, 'hue' => float, 'lightness' => float, 'confidence' => float|null, 'families' => array, 'shade_code' => string|null]]
+     * @param array $arOptionalColumnList columns of OPTIONAL_COLUMN_LIST the table holds
      * @return array
      */
-    protected function buildRowList(array $arColorMap, bool $bHasConfidenceColumn): array
+    protected function buildRowList(array $arColorMap, array $arOptionalColumnList): array
     {
         $arRowList = [];
         $iSkippedCount = 0;
@@ -298,10 +306,8 @@ class SyncOfferColors extends Command
                 'hue'        => round((float) $arColor['hue'], 2),
                 'lightness'  => round((float) $arColor['lightness'], 4),
             ];
-            if ($bHasConfidenceColumn) {
-                $arRow['confidence'] = isset($arColor['confidence']) && is_numeric($arColor['confidence'])
-                    ? round((float) $arColor['confidence'], 2)
-                    : null;
+            foreach ($arOptionalColumnList as $sColumn) {
+                $arRow[$sColumn] = $this->normalizeOptionalField($sColumn, $arColor, $arRow['family']);
             }
             $arRowList[] = $arRow;
         }
@@ -311,5 +317,62 @@ class SyncOfferColors extends Command
         }
 
         return $arRowList;
+    }
+
+    /**
+     * One optional field of an export entry as its column stores it. Never
+     * throws and never rejects the row: whatever the payload holds, the field
+     * degrades to its old-shape value.
+     *
+     * @param string $sColumn  member of OPTIONAL_COLUMN_LIST
+     * @param array  $arColor  the export entry
+     * @param string $sPrimary the entry's primary family, already cut to the column length
+     * @return mixed
+     */
+    protected function normalizeOptionalField(string $sColumn, array $arColor, string $sPrimary)
+    {
+        switch ($sColumn) {
+            case 'confidence':
+                return isset($arColor['confidence']) && is_numeric($arColor['confidence'])
+                    ? round((float) $arColor['confidence'], 2)
+                    : null;
+            case 'families':
+                // upsert bypasses the model, so the list is encoded here
+                return json_encode($this->normalizeFamilyList($arColor['families'] ?? null, $sPrimary), JSON_UNESCAPED_UNICODE);
+            case 'shade_code':
+                return $this->normalizeShadeCode($arColor['shade_code'] ?? null);
+        }
+
+        throw new \LogicException('Unknown optional offer color column '.$sColumn);
+    }
+
+    /**
+     * The one place the families list rules live: strings of 1 to 64
+     * characters, no duplicates, the primary family first and present. A
+     * missing or unusable list is the primary alone (old export shape).
+     *
+     * @param mixed  $mFamilyList
+     * @param string $sPrimary
+     * @return array
+     */
+    protected function normalizeFamilyList($mFamilyList, string $sPrimary): array
+    {
+        $arFamilyList = [$sPrimary];
+        foreach (is_array($mFamilyList) ? $mFamilyList : [] as $mFamily) {
+            if (is_string($mFamily) && $mFamily !== '' && mb_strlen($mFamily) <= 64 && !in_array($mFamily, $arFamilyList, true)) {
+                $arFamilyList[] = $mFamily;
+            }
+        }
+
+        return $arFamilyList;
+    }
+
+    /**
+     * @param mixed $mShadeCode
+     * @return string|null a string of 1 to 64 characters, else null
+     */
+    protected function normalizeShadeCode($mShadeCode): ?string
+    {
+        return is_string($mShadeCode) && $mShadeCode !== '' && mb_strlen($mShadeCode) <= 64 ? $mShadeCode : null;
     }
 }

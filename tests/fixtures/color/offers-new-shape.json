@@ -1,0 +1,12 @@
+{
+  "version": "kv1-new",
+  "last_updated_at": "2026-11-16 10:00:00",
+  "count": 5,
+  "offers": {
+    "uuid-a": {"family": "Red", "hex": "#d32f2f", "hue": 2.0, "lightness": 0.45, "confidence": 0.9, "manual": false, "families": ["Red", "DISCO"], "shade_code": "DISCO 30"},
+    "uuid-b": {"family": "Pink", "hex": "#ec407a", "hue": 340.0, "lightness": 0.6, "confidence": 0.8, "manual": false, "families": ["Pink", "Rose", "DISCO"], "shade_code": "DISCO 02"},
+    "uuid-c": {"family": "Grey", "hex": "#9e9e9e", "hue": 0.0, "lightness": 0.6, "confidence": 0.7, "manual": false},
+    "uuid-d": {"family": "Blue", "hex": "#1976d2", "hue": 210.0, "lightness": 0.5, "confidence": 0.6, "manual": false, "families": ["", 5, "Red", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "Red"], "shade_code": null},
+    "uuid-e": {"family": "Red", "hex": "#c62828", "hue": 1.0, "lightness": 0.4, "confidence": 0.5, "manual": false, "families": ["Red", "GLITTER"]}
+  }
+}
