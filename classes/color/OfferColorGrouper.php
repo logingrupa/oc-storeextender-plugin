@@ -35,9 +35,10 @@ class OfferColorGrouper
      * @param iterable $obOfferList list of offers exposing id + external_id
      * @param array    $arColorMap  ['<offerUuid>' => ['family' => string, 'families' => string[], 'shade_code' => string|null, 'hex' => string, 'hue' => float, 'lightness' => float]]
      * @param array    $arFamilyMeta ColorFamilyMatcher::metaByFamilyName() - kind, position, hex and gradient per family name
+     * @param bool     $bIncludeCollections false leaves every collection out of the groups; an offer's main color is never left out
      * @return array [['sFamily' => string|null, 'sHex' => string|null, 'sGradient' => string|null, 'sKind' => string, 'arOfferList' => array, 'arPrimaryOfferIdList' => int[]]] - sFamily null = ungrouped fallback
      */
-    public function group(iterable $obOfferList, array $arColorMap, array $arFamilyMeta = []): array
+    public function group(iterable $obOfferList, array $arColorMap, array $arFamilyMeta = [], bool $bIncludeCollections = true): array
     {
         $arOfferList = [];
         foreach ($obOfferList as $obOffer) {
@@ -59,6 +60,9 @@ class OfferColorGrouper
 
             $sPrimary = (string) $arColor['family'];
             foreach ($this->resolveFamilyNameList($arColor) as $sFamily) {
+                if (!$bIncludeCollections && $sFamily !== $sPrimary && $this->isCollection($sFamily, $arFamilyMeta)) {
+                    continue;
+                }
                 $arFamilyBucketList[$sFamily][] = [
                     'obOffer'    => $obOffer,
                     'fHue'       => (float) $arColor['hue'],
@@ -116,6 +120,16 @@ class OfferColorGrouper
         }
 
         return $arFamilyNameList;
+    }
+
+    /**
+     * @param string $sFamily
+     * @param array  $arFamilyMeta
+     * @return bool
+     */
+    protected function isCollection(string $sFamily, array $arFamilyMeta): bool
+    {
+        return ($arFamilyMeta[$sFamily]['kind'] ?? '') === ColorFamilyMeta::KIND_COLLECTION;
     }
 
     /**
@@ -181,7 +195,7 @@ class OfferColorGrouper
         foreach ($arFamilyBucketList as $sFamily => $arRowList) {
             $sFamily = (string) $sFamily;
             $arMeta = $arFamilyMeta[$sFamily] ?? [];
-            $bCollection = ($arMeta['kind'] ?? '') === ColorFamilyMeta::KIND_COLLECTION;
+            $bCollection = $this->isCollection($sFamily, $arFamilyMeta);
 
             usort($arRowList, function (array $arA, array $arB) use ($bCollection): int {
                 if ($bCollection) {

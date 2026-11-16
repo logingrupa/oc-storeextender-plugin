@@ -252,6 +252,32 @@ class OfferColorGrouperTest extends TestCase
         $this->assertSame([], $arGroupList[0]['arPrimaryOfferIdList']);
     }
 
+    /** GROUP-5 */
+    public function testWithoutCollectionsEveryShadeKeepsItsColorGroupsOnly()
+    {
+        [$arOfferList, $arColorMap, $arFamilyMeta] = $this->makeMultiFamilyFixture();
+
+        $arSelectList = $this->obGrouper->group($arOfferList, $arColorMap, $arFamilyMeta, true);
+        $arNavigateList = $this->obGrouper->group($arOfferList, $arColorMap, $arFamilyMeta, false);
+
+        $this->assertContains('DISCO', array_column($arSelectList, 'sFamily'));
+        $this->assertSame(['Grey', 'Red', 'Pink', 'Rose'], array_column($arNavigateList, 'sFamily'));
+        $this->assertSame([[3], [1], [2], [2]], array_map(fn ($arGroup) => $this->getOfferIdList($arGroup), $arNavigateList));
+        $this->assertSame([[3], [1], [2], []], array_column($arNavigateList, 'arPrimaryOfferIdList'));
+    }
+
+    /** GROUP-6 */
+    public function testWithoutCollectionsEveryOfferStillHasItsPrimaryRow()
+    {
+        [$arOfferList, $arColorMap, $arFamilyMeta] = $this->makeMultiFamilyFixture();
+
+        $arNavigateList = $this->obGrouper->group($arOfferList, $arColorMap, $arFamilyMeta, false);
+
+        $arPrimaryIdList = array_merge(...array_column($arNavigateList, 'arPrimaryOfferIdList'));
+        sort($arPrimaryIdList);
+        $this->assertSame([1, 2, 3], $arPrimaryIdList);
+    }
+
     public function testMalformedColorEntryLandsInOtherGroup()
     {
         $arOfferList = [

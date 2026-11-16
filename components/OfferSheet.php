@@ -884,7 +884,9 @@ class OfferSheet extends ComponentBase
 
     /**
      * One row per (offer, group): a shade in two groups is two rows, and
-     * bPrimary marks the row of the group that is its main color.
+     * bPrimary marks the row of the group that is its main color. Collection
+     * groups exist only in select mode (the product page); the navigate mode
+     * home pages list the colors alone.
      *
      * @return array [['iOfferId' => int, 'sFamily' => string|null, 'sHex' => string|null, 'sGradient' => string|null, 'bGroupStart' => bool, 'bPrimary' => bool]]
      */
@@ -902,7 +904,8 @@ class OfferSheet extends ComponentBase
         $arGroupList = (new OfferColorGrouper())->group(
             OfferCollection::make($arIdList),
             $arColorMap,
-            (new ColorFamilyMatcher())->metaByFamilyName()
+            (new ColorFamilyMatcher())->metaByFamilyName(),
+            $this->getMode() === self::MODE_SELECT
         );
         $arRowList = [];
         foreach ($arGroupList as $arGroup) {
