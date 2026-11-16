@@ -120,6 +120,7 @@ class LazyPromoBlockLoader extends \Cms\Classes\ComponentBase
             return ProductCollection::make()->filterByDiscount()->take($iLimit);
         }
 
-        return $obPromoBlockItem->product->active()->sort('new')->take($iLimit);
+        // Pivot sort_order defines the order; a sort() here would override it.
+        return $obPromoBlockItem->product->active()->take($iLimit);
     }
 }
