@@ -122,13 +122,13 @@ class ColorFamilyMatcher
 
     /**
      * @param string $sSlug family value slug (?color=)
-     * @return bool true when the slug is a synced collection
+     * @return bool true only when the slug has a synced meta row of kind color
      */
-    public function isCollectionSlug(string $sSlug): bool
+    public function isColorSlug(string $sSlug): bool
     {
         $arIndex = $this->getIndex();
 
-        return isset($arIndex[$sSlug]) && ($arIndex[$sSlug]['kind'] ?? '') === ColorFamilyMeta::KIND_COLLECTION;
+        return isset($arIndex[$sSlug]) && ($arIndex[$sSlug]['kind'] ?? '') === ColorFamilyMeta::KIND_COLOR;
     }
 
     /**
@@ -268,7 +268,7 @@ class ColorFamilyMatcher
                 'names'    => (array) $obMeta->names,
                 'family'   => $obMeta->family,
                 'hex'      => $obMeta->hex,
-                'kind'     =>$obMeta->kind ?: ColorFamilyMeta::KIND_COLOR,
+                'kind'     => $obMeta->kind ?: ColorFamilyMeta::KIND_COLOR,
                 'gradient' => is_array($obMeta->gradient) && !empty($obMeta->gradient) ? $obMeta->gradient : null,
             ];
         }

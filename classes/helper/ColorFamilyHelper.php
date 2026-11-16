@@ -46,10 +46,11 @@ class ColorFamilyHelper
     /**
      * Offer ids carrying the family value - the catalog's offer-card grid
      * for ?color= renders each shade as its own card, ordered by
-     * classification confidence (most certainly-that-color first). A
-     * collection slug answers like an unknown one: collections show on
-     * product pages only. null when the filter cannot apply (the caller then
-     * renders unfiltered); an empty array is a real answer: the slug is
+     * classification confidence (most certainly-that-color first). A slug
+     * that is not a synced color family (a collection, or a family whose
+     * meta row is gone) answers [] before any link is read: collections show
+     * on product pages only. null when the filter cannot apply (the caller
+     * then renders unfiltered); an empty array is a real answer: the slug is
      * filterable but matches nothing.
      *
      * @param mixed $sSlug value slug from ?color=
@@ -57,7 +58,7 @@ class ColorFamilyHelper
      */
     public static function filterOfferIds($sSlug): ?array
     {
-        if (is_string($sSlug) && (new ColorFamilyMatcher())->isCollectionSlug(trim($sSlug))) {
+        if (is_string($sSlug) && trim($sSlug) !== '' && !(new ColorFamilyMatcher())->isColorSlug(trim($sSlug))) {
             return [];
         }
 

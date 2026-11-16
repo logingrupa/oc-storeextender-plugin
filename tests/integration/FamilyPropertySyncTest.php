@@ -642,10 +642,32 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
         $arMetaByName = $obMatcher->metaByFamilyName();
         $this->assertSame(['kind' => 'collection', 'iPosition' => 0, 'hex' => '#ff00aa', 'gradient' => ['#ff00aa', '#00e5ff', '#ffd400']], $arMetaByName['DISCO']);
         $this->assertSame('color', $arMetaByName['Red']['kind']);
-        $this->assertTrue($obMatcher->isCollectionSlug('disco'));
-        $this->assertFalse($obMatcher->isCollectionSlug('red'));
+        $this->assertFalse($obMatcher->isColorSlug('disco'));
+        $this->assertTrue($obMatcher->isColorSlug('red'));
         $this->assertSame([], \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::filterOfferIds('disco'), 'a collection slug lists nothing in the catalog');
         $this->assertSame(['#ff00aa', '#00e5ff', '#ffd400'], $obMatcher->families()['disco']['gradient']);
+    }
+
+    /** CATALOG-1 */
+    public function testASlugWhoseMetaRowIsGoneListsNothingEvenWithItsLinksKept()
+    {
+        $this->seedFixtureOffers();
+        $this->runFixtureSync('offers-new-shape.json');
+        $iDiscoValueId = PropertyValue::getBySlug('disco')->first()->id;
+
+        // a partial taxonomy payload no longer knows DISCO: its meta row goes,
+        // the offers still list it, so the sync freezes their links
+        $arFamilyMap = $this->getFamilyMapFromFixture();
+        unset($arFamilyMap['disco']);
+        (new FamilyPropertySync())->sync($arFamilyMap, $this->getOfferColorMapFromTable());
+
+        $this->assertNull(ColorFamilyMeta::query()->where('value_slug', 'disco')->first());
+        $this->assertGreaterThan(0, PropertyValueLink::query()->where('value_id', $iDiscoValueId)->count(), 'the freeze rule kept the links');
+        $obMatcher = new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher();
+        $this->assertFalse($obMatcher->isColorSlug('disco'));
+        $this->assertTrue($obMatcher->isColorSlug('red'));
+        $this->assertSame([], \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::filterOfferIds('disco'));
+        $this->assertSame([], \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::filterOfferIds('no-such-family'));
     }
 
     public function testAPayloadWithoutKindStoresColor()
