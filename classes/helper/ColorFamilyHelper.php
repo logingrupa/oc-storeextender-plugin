@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Schema;
 use Lovata\Shopaholic\Models\Offer;
 use Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher;
 use Logingrupa\StoreExtender\Classes\Color\FamilyPropertySync;
+use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
 use Logingrupa\StoreExtender\Models\OfferColor;
 
 /**
@@ -44,24 +45,25 @@ class ColorFamilyHelper
 
     /**
      * Offer ids carrying the family value - the catalog's offer-card grid
-     * for ?color= renders each shade as its own card. A color page orders by
-     * classification confidence (most certainly-that-color first), a
-     * collection page by shade code. null when the filter cannot apply (the
-     * caller then renders unfiltered); an empty array is a real answer: the
-     * slug is filterable but matches nothing.
+     * for ?color= renders each shade as its own card, ordered by
+     * classification confidence (most certainly-that-color first). A
+     * collection slug answers like an unknown one: collections show on
+     * product pages only. null when the filter cannot apply (the caller then
+     * renders unfiltered); an empty array is a real answer: the slug is
+     * filterable but matches nothing.
      *
      * @param mixed $sSlug value slug from ?color=
      * @return array|null
      */
     public static function filterOfferIds($sSlug): ?array
     {
+        if (is_string($sSlug) && (new ColorFamilyMatcher())->isCollectionSlug(trim($sSlug))) {
+            return [];
+        }
+
         $arOfferIdList = static::filterIds($sSlug);
         if (empty($arOfferIdList)) {
             return $arOfferIdList;
-        }
-
-        if ((new ColorFamilyMatcher())->isCollectionSlug(trim($sSlug))) {
-            return static::orderOfferIdsByShadeCode($arOfferIdList);
         }
 
         return static::orderOfferIdsByConfidence($arOfferIdList);
@@ -129,66 +131,6 @@ class ColorFamilyHelper
     }
 
     /**
-     * Order a collection's offer ids by shade code (1C shade number), then
-     * confidence, then incoming order. Fail-safe: a missing shade_code
-     * column leaves the confidence order a color page gets.
-     *
-     * @param array $arOfferIdList
-     * @return array
-     */
-    public static function orderOfferIdsByShadeCode(array $arOfferIdList): array
-    {
-        $arShadeCodeByOfferId = static::readOfferColorColumn($arOfferIdList, 'shade_code');
-        if (empty($arShadeCodeByOfferId)) {
-            return static::orderOfferIdsByConfidence($arOfferIdList);
-        }
-
-        return static::sortOfferIdsByShadeCode(
-            $arOfferIdList,
-            $arShadeCodeByOfferId,
-            static::readOfferColorColumn($arOfferIdList, 'confidence')
-        );
-    }
-
-    /**
-     * Pure order rule of a collection page: shade code by natural order with
-     * unnumbered shades after every numbered one, equal codes by confidence
-     * descending (unscored last), then the incoming order.
-     *
-     * @param array $arOfferIdList
-     * @param array $arShadeCodeByOfferId [<offerId> => string]
-     * @param array $arConfidenceByOfferId [<offerId> => float]
-     * @return array
-     */
-    public static function sortOfferIdsByShadeCode(array $arOfferIdList, array $arShadeCodeByOfferId, array $arConfidenceByOfferId): array
-    {
-        $arOfferIdList = array_values($arOfferIdList);
-        $arPositionByOfferId = array_flip($arOfferIdList);
-        usort(
-            $arOfferIdList,
-            function ($iFirstId, $iSecondId) use ($arShadeCodeByOfferId, $arConfidenceByOfferId, $arPositionByOfferId): int {
-                $iShadeOrder = static::compareShadeCodes($arShadeCodeByOfferId[$iFirstId] ?? null, $arShadeCodeByOfferId[$iSecondId] ?? null);
-                if ($iShadeOrder !== 0) {
-                    return $iShadeOrder;
-                }
-
-                $fFirst = static::resolveConfidence($iFirstId, $arConfidenceByOfferId);
-                $fSecond = static::resolveConfidence($iSecondId, $arConfidenceByOfferId);
-                if (($fFirst === null) !== ($fSecond === null)) {
-                    return $fFirst === null ? 1 : -1;
-                }
-                if ($fFirst !== null && $fFirst !== $fSecond) {
-                    return $fSecond <=> $fFirst;
-                }
-
-                return $arPositionByOfferId[$iFirstId] <=> $arPositionByOfferId[$iSecondId];
-            }
-        );
-
-        return $arOfferIdList;
-    }
-
-    /**
      * Natural, case-insensitive shade code order, null after every code.
      *
      * @param string|null $sFirst
@@ -213,7 +155,7 @@ class ColorFamilyHelper
      * an empty array.
      *
      * @param array  $arOfferIdList
-     * @param string $sColumn confidence or shade_code
+     * @param string $sColumn offer color column
      * @return array [<offerId> => value]
      */
     protected static function readOfferColorColumn(array $arOfferIdList, string $sColumn): array
@@ -305,9 +247,10 @@ class ColorFamilyHelper
 
     /**
      * Every synced family as a chip, exposed as the Twig function
-     * color_family_list - the search sheet's all-family pill row: slug,
-     * localized name, swatch hex, active offer (shade) count, the ?color=
-     * catalog URL and the match vocabulary for the client-side pill filter.
+     * color_family_list - the search sheet's and filter sheet's color pill
+     * row: slug, localized name, swatch hex, active offer (shade) count, the
+     * ?color= catalog URL and the match vocabulary for the client-side pill
+     * filter. Color families only, a collection is a product page group.
      *
      * @param mixed $sLocale active locale code
      * @return array [['slug','name','hex','background','count','url','terms'], ...]
@@ -315,9 +258,18 @@ class ColorFamilyHelper
     public static function familyList($sLocale = ColorFamilyMatcher::LOCALE_DEFAULT): array
     {
         $sResolvedLocale = is_string($sLocale) ? $sLocale : ColorFamilyMatcher::LOCALE_DEFAULT;
-        $arFamilyMap = (new ColorFamilyMatcher())->families($sResolvedLocale);
+        $arFamilyMap = static::withoutCollections((new ColorFamilyMatcher())->families($sResolvedLocale));
 
         return static::buildChipList(static::applyThemeMessageNames($arFamilyMap, $sResolvedLocale));
+    }
+
+    /**
+     * @param array $arFamilyMap ['<valueSlug>' => ['kind' => string, ...]]
+     * @return array the color families, order kept
+     */
+    public static function withoutCollections(array $arFamilyMap): array
+    {
+        return array_filter($arFamilyMap, fn (array $arFamily) => ($arFamily['kind'] ?? '') !== ColorFamilyMeta::KIND_COLLECTION);
     }
 
     /**

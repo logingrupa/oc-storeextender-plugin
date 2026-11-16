@@ -644,6 +644,7 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
         $this->assertSame('color', $arMetaByName['Red']['kind']);
         $this->assertTrue($obMatcher->isCollectionSlug('disco'));
         $this->assertFalse($obMatcher->isCollectionSlug('red'));
+        $this->assertSame([], \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::filterOfferIds('disco'), 'a collection slug lists nothing in the catalog');
         $this->assertSame(['#ff00aa', '#00e5ff', '#ffd400'], $obMatcher->families()['disco']['gradient']);
     }
 

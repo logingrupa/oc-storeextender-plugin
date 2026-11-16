@@ -90,24 +90,13 @@ class ColorFamilyChipAssemblyTest extends TestCase
         );
     }
 
-    /** ORDER-1 */
-    public function testACollectionPageOrdersShadesByNaturalShadeCodeNullsLast()
+    public function testCollectionsStayOutOfTheCatalogPillRow()
     {
-        $arShadeCodeByOfferId = [1 => 'DISCO 13H', 3 => 'DISCO 02', 4 => 'DISCO 13F', 5 => 'DISCO 10'];
+        $arFamilyMap = $this->makeFamilyMap();
+        $arFamilyMap['disco'] = ['name' => 'DISCO', 'hex' => '#ff00aa', 'terms' => ['disco'], 'kind' => 'collection'];
+        $arFamilyMap['rose'] = ['name' => 'Roze', 'hex' => '#f48fb1', 'terms' => ['roze'], 'kind' => 'color'];
 
-        $arOrdered = ColorFamilyHelper::sortOfferIdsByShadeCode([1, 2, 3, 4, 5], $arShadeCodeByOfferId, []);
-
-        $this->assertSame([3, 5, 4, 1, 2], $arOrdered, 'DISCO 02, 10, 13F, 13H, then the shade with no code');
-    }
-
-    public function testEqualShadeCodesFallBackToConfidenceThenIncomingOrder()
-    {
-        $arShadeCodeByOfferId = [1 => 'DISCO 05', 2 => 'DISCO 05', 3 => 'DISCO 05', 4 => 'DISCO 05'];
-        $arConfidenceByOfferId = [2 => 0.4, 3 => 0.9];
-
-        $arOrdered = ColorFamilyHelper::sortOfferIdsByShadeCode([1, 2, 3, 4], $arShadeCodeByOfferId, $arConfidenceByOfferId);
-
-        $this->assertSame([3, 2, 1, 4], $arOrdered, 'confidence desc, unscored keep the incoming order');
+        $this->assertSame(['red', 'blue', 'rose'], array_keys(ColorFamilyHelper::withoutCollections($arFamilyMap)));
     }
 
     public function testFamilyWithoutAnyOfferListDrops()
