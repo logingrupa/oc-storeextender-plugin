@@ -337,3 +337,5 @@
 
 2.0.114:
   - 'The promo blocks on the home page list their products in the order an editor sets on the promo block in the backend, instead of newest first. Needs the matching theme release.'
+2.0.115:
+  - 'A color or collection swatch draws the gradient the color export gives it as a type (linear, radial or conic), an angle and 2 to 8 stops, so each collection on the product page can have its own look: a mirror ball, a rainbow, a candy pinwheel. The old two or three stop list from before draws the flat color until the next color sync brings the new shape. Needs Color Classifier 1.9.0 on nailolab.'

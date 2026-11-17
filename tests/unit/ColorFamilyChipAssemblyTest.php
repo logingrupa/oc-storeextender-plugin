@@ -61,7 +61,7 @@ class ColorFamilyChipAssemblyTest extends TestCase
             'name'     => 'DISCO',
             'hex'      => '#ff00aa',
             'terms'    => ['disco'],
-            'gradient' => ['#ff00aa', '#00e5ff', '#ffd400'],
+            'gradient' => ['type' => 'linear', 'angle' => 135, 'stops' => ['#ff00aa', '#00e5ff', '#ffd400']],
         ];
 
         $arChipList = ColorFamilyHelper::assembleChipList(
@@ -73,20 +73,20 @@ class ColorFamilyChipAssemblyTest extends TestCase
 
         $this->assertSame('#d32f2f', $arChipList[0]['background']);
         $this->assertSame('#1976d2', $arChipList[1]['background']);
-        $this->assertSame('linear-gradient(90deg, #ff00aa, #00e5ff, #ffd400)', $arChipList[2]['background']);
+        $this->assertSame('linear-gradient(135deg, #ff00aa, #00e5ff, #ffd400)', $arChipList[2]['background']);
         $this->assertSame('#ff00aa', $arChipList[2]['hex'], 'hex stays beside the gradient');
         $this->assertSame([1, 1, 2], array_column($arChipList, 'count'), 'counts are per pill');
     }
 
-    public function testTheBackgroundBuilderOnlyDrawsStrictHexStops()
+    public function testTheBackgroundBuilderOnlyDrawsAValidGradientOrAStrictHex()
     {
         $this->assertSame('#abc123', ColorFamilyHelper::buildSwatchBackground('#abc123', null));
-        $this->assertSame('#abc123', ColorFamilyHelper::buildSwatchBackground('#abc123', ['#fff', 'zz']));
-        $this->assertSame('#abc123', ColorFamilyHelper::buildSwatchBackground('#abc123', ['#ff00aa']));
+        $this->assertSame('#abc123', ColorFamilyHelper::buildSwatchBackground('#abc123', ['type' => 'linear', 'angle' => 90, 'stops' => ['#fff', 'zz']]));
+        $this->assertSame('#abc123', ColorFamilyHelper::buildSwatchBackground('#abc123', ['#ff00aa', '#00e5ff']), 'the old bare list draws the hex');
         $this->assertNull(ColorFamilyHelper::buildSwatchBackground('url(x)', null));
         $this->assertSame(
-            'linear-gradient(90deg, #ff00aa, #00e5ff)',
-            ColorFamilyHelper::buildSwatchBackground(null, ['#ff00aa', '#00e5ff'])
+            'conic-gradient(from 45deg, #ff00aa, #00e5ff)',
+            ColorFamilyHelper::buildSwatchBackground(null, ['type' => 'conic', 'angle' => 45, 'stops' => ['#ff00aa', '#00e5ff']])
         );
     }
 

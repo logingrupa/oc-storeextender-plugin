@@ -21,7 +21,7 @@ use Model;
  * @property array  $synonyms ['lv' => ['sarkana', ...], ...]
  * @property int|null $sort_order position in the families.json export (the pill/chip order contract); null = never synced
  * @property string $kind 'color' or 'collection'
- * @property array|null $gradient 2 or 3 strict #rrggbb stops, drawn left to right; null = flat hex
+ * @property array|null $gradient ColorGradient shape (type, angle, 2-8 strict #rrggbb stops); null = flat hex
  */
 class ColorFamilyMeta extends Model
 {

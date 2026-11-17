@@ -632,7 +632,7 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
 
         $obDisco = ColorFamilyMeta::query()->where('value_slug', 'disco')->first();
         $this->assertSame('collection', $obDisco->kind);
-        $this->assertSame(['#ff00aa', '#00e5ff', '#ffd400'], $obDisco->gradient);
+        $this->assertSame(['type' => 'conic', 'angle' => 20, 'stops' => ['#ff00aa', '#00e5ff', '#ffd400']], $obDisco->gradient);
         $obNeon = ColorFamilyMeta::query()->where('value_slug', 'neon')->first();
         $this->assertSame('collection', $obNeon->kind);
         $this->assertNull($obNeon->gradient, 'one invalid stop drops the whole gradient');
@@ -640,12 +640,12 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
 
         $obMatcher = new \Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher();
         $arMetaByName = $obMatcher->metaByFamilyName();
-        $this->assertSame(['kind' => 'collection', 'iPosition' => 0, 'hex' => '#ff00aa', 'gradient' => ['#ff00aa', '#00e5ff', '#ffd400']], $arMetaByName['DISCO']);
+        $this->assertSame(['kind' => 'collection', 'iPosition' => 0, 'hex' => '#ff00aa', 'gradient' => ['type' => 'conic', 'angle' => 20, 'stops' => ['#ff00aa', '#00e5ff', '#ffd400']]], $arMetaByName['DISCO']);
         $this->assertSame('color', $arMetaByName['Red']['kind']);
         $this->assertFalse($obMatcher->isColorSlug('disco'));
         $this->assertTrue($obMatcher->isColorSlug('red'));
         $this->assertSame([], \Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper::filterOfferIds('disco'), 'a collection slug lists nothing in the catalog');
-        $this->assertSame(['#ff00aa', '#00e5ff', '#ffd400'], $obMatcher->families()['disco']['gradient']);
+        $this->assertSame(['type' => 'conic', 'angle' => 20, 'stops' => ['#ff00aa', '#00e5ff', '#ffd400']], $obMatcher->families()['disco']['gradient']);
     }
 
     /** CATALOG-1 */
@@ -671,16 +671,16 @@ class FamilyPropertySyncTest extends StoreExtenderPluginTestCase
     }
 
     /** META-2 */
-    public function testAnObjectShapedGradientIsNotAListOfStops()
+    public function testOnlyATypedGradientIsStoredAndTheOldBareListIsNot()
     {
         $arFamilyMap = $this->getFamilyMap();
-        $arFamilyMap['red']['gradient'] = ['first' => '#ff00aa', 'second' => '#00e5ff'];
-        $arFamilyMap['blue']['gradient'] = ['#ff00aa', '#00e5ff'];
+        $arFamilyMap['red']['gradient'] = ['#ff00aa', '#00e5ff'];
+        $arFamilyMap['blue']['gradient'] = ['type' => 'radial', 'angle' => 0, 'stops' => ['#ff00aa', '#00e5ff']];
 
         (new FamilyPropertySync())->sync($arFamilyMap, $this->getOfferColorMapFromTable());
 
         $this->assertNull(ColorFamilyMeta::query()->where('value_slug', 'red')->first()->gradient);
-        $this->assertSame(['#ff00aa', '#00e5ff'], ColorFamilyMeta::query()->where('value_slug', 'blue')->first()->gradient);
+        $this->assertSame(['type' => 'radial', 'angle' => 0, 'stops' => ['#ff00aa', '#00e5ff']], ColorFamilyMeta::query()->where('value_slug', 'blue')->first()->gradient);
     }
 
     public function testAPayloadWithoutKindStoresColor()

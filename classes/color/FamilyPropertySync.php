@@ -120,7 +120,7 @@ class FamilyPropertySync
             }
             if ($bHasKindColumns) {
                 $obMeta->kind = $this->normalizeKind($arFamily['kind'] ?? null);
-                $obMeta->gradient = $this->normalizeGradient($arFamily['gradient'] ?? null);
+                $obMeta->gradient = ColorGradient::normalize($arFamily['gradient'] ?? null);
             }
             $obMeta->save();
 
@@ -417,25 +417,6 @@ class FamilyPropertySync
     protected function normalizeKind($mKind): string
     {
         return $mKind === ColorFamilyMeta::KIND_COLLECTION ? ColorFamilyMeta::KIND_COLLECTION : ColorFamilyMeta::KIND_COLOR;
-    }
-
-    /**
-     * @param mixed $mGradient
-     * @return array|null 2 or 3 strict #rrggbb stops in a JSON array, null for anything else (the hex still draws)
-     */
-    protected function normalizeGradient($mGradient): ?array
-    {
-        if (!is_array($mGradient) || !array_is_list($mGradient) || count($mGradient) < 2 || count($mGradient) > 3) {
-            return null;
-        }
-
-        foreach ($mGradient as $mStop) {
-            if (!is_string($mStop) || $this->normalizeHex($mStop) === null) {
-                return null;
-            }
-        }
-
-        return $mGradient;
     }
 
     /**

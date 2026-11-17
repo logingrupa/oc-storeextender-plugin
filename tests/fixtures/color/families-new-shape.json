@@ -18,11 +18,15 @@
       "sort_order": 0,
       "active": true,
       "kind": "collection",
-      "gradient": [
-        "#ff00aa",
-        "#00e5ff",
-        "#ffd400"
-      ]
+      "gradient": {
+        "type": "conic",
+        "angle": 20,
+        "stops": [
+          "#ff00aa",
+          "#00e5ff",
+          "#ffd400"
+        ]
+      }
     },
     "red": {
       "name": "Red",
@@ -94,10 +98,14 @@
       "sort_order": 4,
       "active": true,
       "kind": "collection",
-      "gradient": [
-        "#fff",
-        "zz"
-      ]
+      "gradient": {
+        "type": "linear",
+        "angle": 90,
+        "stops": [
+          "#fff",
+          "zz"
+        ]
+      }
     },
     "grey": {
       "name": "Grey",

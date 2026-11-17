@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Lovata\Shopaholic\Models\Offer;
 use Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher;
+use Logingrupa\StoreExtender\Classes\Color\ColorGradient;
 use Logingrupa\StoreExtender\Classes\Color\FamilyPropertySync;
 use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
 use Logingrupa\StoreExtender\Models\OfferColor;
@@ -201,24 +202,21 @@ class ColorFamilyHelper
 
     /**
      * The one swatch background builder: a gradient wins over the flat hex,
-     * the hex over nothing. Only strict #rrggbb stops reach the string, so it
-     * is safe inside an inline style.
+     * the hex over nothing. Only strict #rrggbb values, an int angle and
+     * fixed words reach the string, so it is safe inside an inline style.
      *
      * @param mixed $mHex      strict #rrggbb or anything else (ignored)
-     * @param mixed $mGradient 2 or 3 strict #rrggbb stops or anything else (ignored)
+     * @param mixed $mGradient a ColorGradient shape or anything else (ignored)
      * @return string|null
      */
     public static function buildSwatchBackground($mHex, $mGradient): ?string
     {
-        $bStrictHex = fn ($mValue) => is_string($mValue) && preg_match('/^#[0-9A-Fa-f]{6}$/', $mValue) === 1;
-
-        if (is_array($mGradient) && count($mGradient) >= 2 && count($mGradient) <= 3
-            && count(array_filter($mGradient, $bStrictHex)) === count($mGradient)
-        ) {
-            return 'linear-gradient(90deg, '.implode(', ', array_values($mGradient)).')';
+        $sGradientCss = ColorGradient::toCss($mGradient);
+        if ($sGradientCss !== null) {
+            return $sGradientCss;
         }
 
-        return $bStrictHex($mHex) ? $mHex : null;
+        return is_string($mHex) && preg_match('/^#[0-9A-Fa-f]{6}$/', $mHex) === 1 ? $mHex : null;
     }
 
     /**

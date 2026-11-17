@@ -161,7 +161,7 @@ class OfferColorGrouperTest extends TestCase
             'uuid-c' => ['family' => 'Grey', 'hex' => '#9E9E9E', 'hue' => 0.0, 'lightness' => 0.6],
         ];
         $arFamilyMeta = [
-            'DISCO' => ['kind' => 'collection', 'iPosition' => 0, 'hex' => '#ff00aa', 'gradient' => ['#ff00aa', '#00e5ff', '#ffd400']],
+            'DISCO' => ['kind' => 'collection', 'iPosition' => 0, 'hex' => '#ff00aa', 'gradient' => ['type' => 'radial', 'angle' => 0, 'stops' => ['#ff00aa', '#00e5ff', '#ffd400']]],
             'Red'   => ['kind' => 'color', 'iPosition' => 1, 'hex' => '#d32f2f', 'gradient' => null],
         ];
 
@@ -179,7 +179,7 @@ class OfferColorGrouperTest extends TestCase
         $this->assertSame([2, 1], $this->getOfferIdList($arGroupList[0]), 'DISCO 02 before DISCO 30');
         $this->assertSame('collection', $arGroupList[0]['sKind']);
         $this->assertSame('#ff00aa', $arGroupList[0]['sHex'], 'a collection draws the family hex, not a member hex');
-        $this->assertSame('linear-gradient(90deg, #ff00aa, #00e5ff, #ffd400)', $arGroupList[0]['sGradient']);
+        $this->assertSame('radial-gradient(circle, #ff00aa, #00e5ff, #ffd400)', $arGroupList[0]['sGradient']);
         $this->assertSame([1], $this->getOfferIdList($arGroupList[2]));
         $this->assertNull($arGroupList[2]['sGradient']);
         $this->assertSame([2], $this->getOfferIdList($arGroupList[4]), 'an extra color holds the clone');
