@@ -11,6 +11,7 @@ use System\Models\SettingModel;
  *
  * @property string|float|null $nudge_catalog_min_missing
  * @property string|float|null $nudge_catalog_max_missing
+ * @property string|int|null   $collection_shade_threshold
  */
 class Settings extends SettingModel
 {
@@ -21,6 +22,8 @@ class Settings extends SettingModel
 
     const NUDGE_CATALOG_MIN_MISSING_DEFAULT = 1.0;
     const NUDGE_CATALOG_MAX_MISSING_DEFAULT = 13.0;
+
+    const COLLECTION_SHADE_THRESHOLD_DEFAULT = 8;
 
     /** @var string */
     public $settingsCode = self::SETTINGS_CODE;
@@ -35,6 +38,7 @@ class Settings extends SettingModel
     public $rules = [
         'nudge_catalog_min_missing' => 'nullable|numeric|min:0',
         'nudge_catalog_max_missing' => 'nullable|numeric|min:0',
+        'collection_shade_threshold' => 'nullable|integer|min:1',
     ];
 
     /**
@@ -45,5 +49,6 @@ class Settings extends SettingModel
     {
         $this->nudge_catalog_min_missing = self::NUDGE_CATALOG_MIN_MISSING_DEFAULT;
         $this->nudge_catalog_max_missing = self::NUDGE_CATALOG_MAX_MISSING_DEFAULT;
+        $this->collection_shade_threshold = self::COLLECTION_SHADE_THRESHOLD_DEFAULT;
     }
 }

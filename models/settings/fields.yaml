@@ -18,3 +18,16 @@ fields:
         step: 0.01
         min: 0
         span: right
+
+    collection_hub_section:
+        label: 'logingrupa.storeextender::lang.settings.collection_hub_section'
+        comment: 'logingrupa.storeextender::lang.settings.collection_hub_section_comment'
+        type: section
+
+    collection_shade_threshold:
+        label: 'logingrupa.storeextender::lang.settings.collection_shade_threshold'
+        comment: 'logingrupa.storeextender::lang.settings.collection_shade_threshold_comment'
+        type: number
+        step: 1
+        min: 1
+        span: left

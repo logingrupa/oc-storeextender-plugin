@@ -72,6 +72,26 @@ class ColorFamilyHelper
     }
 
     /**
+     * Offer ids of ANY family, collections included, confidence ordered.
+     * The collection gate above belongs to ?color= alone: the catalog filter
+     * answers in colors, while the collections hub is the one surface that
+     * lists a collection's shades. null carries the same meaning as above -
+     * the lookup cannot apply at all.
+     *
+     * @param mixed $sSlug family value slug
+     * @return array|null
+     */
+    public static function offerIdsForFamily($sSlug): ?array
+    {
+        $arOfferIdList = static::filterIds($sSlug);
+        if (empty($arOfferIdList)) {
+            return $arOfferIdList;
+        }
+
+        return static::orderOfferIdsByConfidence($arOfferIdList);
+    }
+
+    /**
      * Order offer ids by their synced color confidence, highest first:
      * inside one family the score says how certainly a shade IS that color,
      * so the reddest reds open the red page. Unscored offers sink to the
@@ -282,7 +302,7 @@ class ColorFamilyHelper
      * @param string $sLocale     locale the chip names are rendered in
      * @return array same shape, name replaced wherever a theme message exists
      */
-    protected static function applyThemeMessageNames(array $arFamilyMap, string $sLocale): array
+    public static function applyThemeMessageNames(array $arFamilyMap, string $sLocale): array
     {
         if (!class_exists(\RainLab\Translate\Models\Message::class)) {
             return $arFamilyMap;

@@ -55,5 +55,9 @@
         'nudge_catalog_min_missing' => 'Show from (missing amount)',
         'nudge_catalog_max_missing' => 'Show up to (missing amount)',
         'nudge_catalog_max_missing_comment' => 'Empty or 0 switches the button off.',
+        'collection_hub_section' => 'Collections hub: thin-page rule',
+        'collection_hub_section_comment' => 'The hub lists every colour family and every collection. A family page with fewer live shades than this is still served, but asks search engines not to index it.',
+        'collection_shade_threshold' => 'Index a family page from (shades)',
+        'collection_shade_threshold_comment' => 'Default 8. A family with no live shade at all gets no page and no chip.',
     ],
 ];

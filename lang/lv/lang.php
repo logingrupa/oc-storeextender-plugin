@@ -55,5 +55,9 @@
         'nudge_catalog_min_missing' => 'Rādīt no (trūkstošā summa)',
         'nudge_catalog_max_missing' => 'Rādīt līdz (trūkstošā summa)',
         'nudge_catalog_max_missing_comment' => 'Tukšs vai 0 izslēdz pogu.',
+        'collection_hub_section' => 'Kolekciju lapa: plāno lapu noteikums',
+        'collection_hub_section_comment' => 'Kolekciju lapā redzamas visas krāsu saimes un kolekcijas. Saimes lapa ar mazāk aktīvajiem toņiem nekā šeit norādīts joprojām atveras, bet lūdz meklētājiem to neindeksēt.',
+        'collection_shade_threshold' => 'Indeksēt saimes lapu no (toņiem)',
+        'collection_shade_threshold_comment' => 'Noklusējums 8. Saime bez neviena aktīva toņa nedabū ne lapu, ne čipu.',
     ],
 ];

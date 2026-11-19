@@ -1,7 +1,11 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Helper;
 
 use Illuminate\Support\Facades\Log;
+use Logingrupa\StoreExtender\Classes\Color\ColorFamilyHubReader;
+use Logingrupa\StoreExtender\Classes\Color\ColorFamilyMatcher;
+use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
 use Lovata\Shopaholic\Models\Category;
+use Lovata\Shopaholic\Models\Offer;
 use Lovata\Shopaholic\Models\Product;
 use System\Models\SiteDefinition;
 
@@ -27,6 +31,8 @@ class ShopIdMap
     /** Row kinds, which the sitemap maps to its priorities */
     const KIND_CATEGORY = 'category';
     const KIND_PRODUCT = 'product';
+    const KIND_COLLECTION_HUB = 'collection_hub';
+    const KIND_COLLECTION = 'collection';
 
     /** First path segment of a product page */
     const PRODUCT_SEGMENT = 'p';
@@ -78,6 +84,132 @@ class ShopIdMap
         }
 
         return $arRowList;
+    }
+
+    /**
+     * The collections hub and every family page worth indexing, hub first.
+     *
+     * Only indexable families are listed: a page carrying fewer shades than
+     * the threshold answers 200 with noindex, and a noindex URL in a sitemap
+     * is a contradiction a crawler reports back. The hub itself is always
+     * listed while it has at least one family to show.
+     *
+     * lastmod is the newest shade in the family, because the shade grid IS
+     * the page: a family whose offers have not moved has not changed, and the
+     * taxonomy row's own timestamp would miss a shade joining the family. It
+     * falls back to the taxonomy row and then to today, because the sitemap
+     * contract is one lastmod per loc and a row without one fails the suite.
+     *
+     * @return array<int,array{kind:string,path:string,lastmod:string}>
+     */
+    public static function collectionRows(): array
+    {
+        $obReader = new ColorFamilyHubReader();
+        $arFamilyList = $obReader->familyList(ColorFamilyMatcher::LOCALE_DEFAULT);
+        if (empty($arFamilyList)) {
+            return [];
+        }
+
+        $arOfferIdListBySlug = [];
+        $arAllOfferIdList = [];
+        foreach ($arFamilyList as $arFamily) {
+            if (!$arFamily['bIsIndexable']) {
+                continue;
+            }
+            $arOfferIdList = $obReader->offerIdList($arFamily['slug']);
+            $arOfferIdListBySlug[$arFamily['slug']] = $arOfferIdList;
+            $arAllOfferIdList = array_merge($arAllOfferIdList, $arOfferIdList);
+        }
+
+        $arUpdatedAtByOfferId = static::offerUpdatedAtMap(array_unique($arAllOfferIdList));
+        $arTaxonomyDateBySlug = static::familyUpdatedAtMap(array_keys($arOfferIdListBySlug));
+        $sToday = now()->toDateString();
+
+        $arRowList = [];
+        $sHubLastmod = null;
+        foreach ($arFamilyList as $arFamily) {
+            $sSlug = (string) $arFamily['slug'];
+            if (!isset($arOfferIdListBySlug[$sSlug])) {
+                continue;
+            }
+
+            $sLastmod = null;
+            foreach ($arOfferIdListBySlug[$sSlug] as $iOfferId) {
+                $sOfferDate = $arUpdatedAtByOfferId[$iOfferId] ?? null;
+                if ($sOfferDate !== null && $sOfferDate > (string) $sLastmod) {
+                    $sLastmod = $sOfferDate;
+                }
+            }
+            if ($sLastmod === null) {
+                $sLastmod = $arTaxonomyDateBySlug[$sSlug] ?? $sToday;
+            }
+            if ($sLastmod > (string) $sHubLastmod) {
+                $sHubLastmod = $sLastmod;
+            }
+
+            $arRowList[] = [
+                'kind' => self::KIND_COLLECTION,
+                'path' => ColorFamilyHubReader::familyPath($sSlug),
+                'lastmod' => $sLastmod,
+            ];
+        }
+
+        array_unshift($arRowList, [
+            'kind' => self::KIND_COLLECTION_HUB,
+            'path' => ColorFamilyHubReader::hubPath(),
+            'lastmod' => $sHubLastmod ?? $sToday,
+        ]);
+
+        return $arRowList;
+    }
+
+    /**
+     * Taxonomy row date per family value slug, the lastmod fallback.
+     *
+     * @param array $arSlugList
+     * @return array [<valueSlug> => 'Y-m-d']
+     */
+    protected static function familyUpdatedAtMap(array $arSlugList): array
+    {
+        if (empty($arSlugList)) {
+            return [];
+        }
+
+        $arDateBySlug = [];
+        $obMetaList = ColorFamilyMeta::query()
+            ->whereIn('value_slug', $arSlugList)
+            ->get(['value_slug', 'updated_at']);
+        foreach ($obMetaList as $obMeta) {
+            $sDate = optional($obMeta->updated_at)->toDateString();
+            if ($sDate !== null) {
+                $arDateBySlug[(string) $obMeta->value_slug] = $sDate;
+            }
+        }
+
+        return $arDateBySlug;
+    }
+
+    /**
+     * Offer id to its updated_at date, rows without a timestamp left out.
+     *
+     * @param array $arOfferIdList
+     * @return array [<offerId> => 'Y-m-d']
+     */
+    protected static function offerUpdatedAtMap(array $arOfferIdList): array
+    {
+        if (empty($arOfferIdList)) {
+            return [];
+        }
+
+        $arUpdatedAtByOfferId = [];
+        foreach (Offer::query()->whereIn('id', $arOfferIdList)->get(['id', 'updated_at']) as $obOffer) {
+            $sDate = optional($obOffer->updated_at)->toDateString();
+            if ($sDate !== null) {
+                $arUpdatedAtByOfferId[(int) $obOffer->id] = $sDate;
+            }
+        }
+
+        return $arUpdatedAtByOfferId;
     }
 
     /**
