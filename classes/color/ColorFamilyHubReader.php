@@ -1,8 +1,10 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Color;
 
 use Logingrupa\StoreExtender\Classes\Helper\ColorFamilyHelper;
+use Logingrupa\StoreExtender\Classes\Helper\OfferImageHelper;
 use Logingrupa\StoreExtender\Models\ColorFamilyMeta;
 use Logingrupa\StoreExtender\Models\Settings;
+use Lovata\Shopaholic\Classes\Item\OfferItem;
 use Lovata\Shopaholic\Classes\Store\OfferListStore;
 
 /**
@@ -44,10 +46,15 @@ class ColorFamilyHubReader
      * taxonomy order, then colors. A family with no live shade is left out
      * entirely - it gets no chip and no page (Gold and Beige carry zero).
      *
-     * @param string $sLocale active locale code
-     * @return array [['slug','name','family','kind','hex','background','count','path','bIsIndexable']]
+     * @param string $sLocale     active locale code
+     * @param int    $iCoverCount how many cover nails to resolve per family;
+     *                            0 resolves none, which is what the sitemap
+     *                            builder wants - it needs paths, not pictures,
+     *                            and a derivative per family on a sitemap
+     *                            render would be work for nobody
+     * @return array [['slug','name','family','kind','hex','background','count','path','bIsIndexable','arNailList']]
      */
-    public function familyList(string $sLocale): array
+    public function familyList(string $sLocale, int $iCoverCount = 0): array
     {
         $arFamilyMap = $this->resolveFamilyMap($sLocale);
         if (empty($arFamilyMap)) {
@@ -59,7 +66,46 @@ class ColorFamilyHubReader
             $arOfferIdListBySlug[(string) $sSlug] = $this->offerIdList((string) $sSlug);
         }
 
-        return static::assembleFamilyList($arFamilyMap, $arOfferIdListBySlug, $this->getShadeThreshold());
+        $arFamilyList = static::assembleFamilyList($arFamilyMap, $arOfferIdListBySlug, $this->getShadeThreshold());
+        if ($iCoverCount < 1) {
+            return $arFamilyList;
+        }
+
+        foreach ($arFamilyList as $iIndex => $arFamily) {
+            $arFamilyList[$iIndex]['arNailList'] = $this->nailList($arOfferIdListBySlug[$arFamily['slug']], $iCoverCount);
+        }
+
+        return $arFamilyList;
+    }
+
+    /**
+     * The cover nails of one family, in the order the family page draws its
+     * grid - classification confidence, so the first nail is the one that
+     * most certainly IS that colour.
+     *
+     * Ordering this by anything else is a trap worth naming: an earlier draft
+     * put the transparent cut-outs first, and the brown family led with a
+     * black nail.
+     *
+     * @param array $arOfferIdList live offer ids, confidence ordered
+     * @param int   $iCount
+     * @return array<string> derivative URLs, offers without a picture skipped
+     */
+    protected function nailList(array $arOfferIdList, int $iCount): array
+    {
+        $arNailList = [];
+        foreach ($arOfferIdList as $iOfferId) {
+            if (count($arNailList) >= $iCount) {
+                break;
+            }
+
+            $sUrl = OfferImageHelper::nail(OfferItem::make($iOfferId)->preview_image);
+            if ($sUrl !== '') {
+                $arNailList[] = $sUrl;
+            }
+        }
+
+        return $arNailList;
     }
 
     /**

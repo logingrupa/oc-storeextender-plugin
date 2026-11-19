@@ -102,6 +102,23 @@ class OfferImageHelper
     const THUMB_EXTENSION = 'webp';
 
     /**
+     * The nail on its own, for the collections hub.
+     *
+     * The shade shots are a 1321x1080 landscape frame with a portrait nail in
+     * the middle and a lot of empty either side, so a square fit draws a nail
+     * a quarter of its box. 385x820 is the nail's own measured ratio across
+     * the range, and a CENTRE CROP at it keeps the full height - the form is
+     * never cut top or bottom - while throwing the empty sides away. Measured
+     * after: the nail fills 94% of the derivative in both directions.
+     *
+     * Crop is safe here for the same reason it is on the bottle badge: the
+     * padding is symmetric because these are studio shots on one template.
+     */
+    const SLOT_NAIL = 'nail';
+    const NAIL_WIDTH = 385;
+    const NAIL_HEIGHT = 820;
+
+    /**
      * Cropped circle for a swatch or a sheet row.
      *
      * Null is a real state - an offer without a picture - and the callers
@@ -196,6 +213,30 @@ class OfferImageHelper
     public static function heroPhone(?File $obImage): string
     {
         return self::renderHeroThumb($obImage, self::HERO_PHONE_WIDTH, self::HERO_PHONE_HEIGHT, self::getHeroPhoneThumbOptions());
+    }
+
+    /**
+     * The nail alone, trimmed of the empty frame around it. Empty string for
+     * an offer with no picture, the same real state swatch() answers for.
+     */
+    public static function nail(?File $obImage): string
+    {
+        return self::renderHeroThumb($obImage, self::NAIL_WIDTH, self::NAIL_HEIGHT, self::getNailThumbOptions());
+    }
+
+    /**
+     * The resizer options of the nail slot. Public so a test can pin the
+     * shape; crop is deliberate and explained on the constants.
+     *
+     * @return array{mode: string, quality: int, extension: string}
+     */
+    public static function getNailThumbOptions(): array
+    {
+        return [
+            'mode'      => 'crop',
+            'quality'   => self::THUMB_QUALITY,
+            'extension' => self::THUMB_EXTENSION,
+        ];
     }
 
     /**
