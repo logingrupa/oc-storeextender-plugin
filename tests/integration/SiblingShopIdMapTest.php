@@ -164,20 +164,24 @@ class SiblingShopIdMapTest extends StoreExtenderPluginTestCase
         $this->assertSame('', $this->suffixFor(''));
     }
 
-    /** A page past the last real one canonicals to the clean URL, not to itself */
-    public function testAnEmptyListingDropsTheSuffix()
+    /**
+     * The product exclusion lives in the helper, not repeated in each template.
+     * 'page' means nothing on /p/slug, so a stray one keeps the clean product URL.
+     */
+    public function testAProductPathNeverTakesAPageSuffix()
     {
-        request()->merge([CanonicalPageSuffix::QUERY_FIELD => '900']);
+        request()->merge([CanonicalPageSuffix::QUERY_FIELD => '2']);
 
-        $this->assertSame('?page=900', CanonicalPageSuffix::get(true));
-        $this->assertSame('', CanonicalPageSuffix::get(false));
+        $this->assertSame('', CanonicalPageSuffix::get('/p/acetona-zimulis'));
+        $this->assertSame('', CanonicalPageSuffix::get('/p/acetona-zimulis/550'));
+        $this->assertSame('?page=2', CanonicalPageSuffix::get('/apmacibas-un-seminari'), 'a list path still pages');
     }
 
     protected function suffixFor(string $sValue): string
     {
         request()->merge([CanonicalPageSuffix::QUERY_FIELD => $sValue]);
 
-        return CanonicalPageSuffix::get();
+        return CanonicalPageSuffix::get('/apmacibas-un-seminari');
     }
 
     protected function seedOwnMap(): void
