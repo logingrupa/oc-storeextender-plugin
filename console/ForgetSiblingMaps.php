@@ -2,6 +2,7 @@
 
 use Illuminate\Console\Command;
 use Logingrupa\StoreExtender\Classes\Helper\ShopIdMap;
+use Logingrupa\StoreExtender\Classes\Helper\SiblingShopIdMap;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 
 /**
@@ -33,9 +34,17 @@ class ForgetSiblingMaps extends Command
 
             SiblingShopSitemap::forget($sDomain);
             SiblingShopSitemap::forgetLease($sDomain);
+            SiblingShopIdMap::forget($sDomain);
+            SiblingShopIdMap::forgetLease($sDomain);
 
-            $this->info($sDomain . ': sitemap url set and lease cleared');
+            $this->info($sDomain . ': sitemap url set, id map and leases cleared');
         }
+
+        // This shop's own path-to-id map too: a slug rename here changes what
+        // the siblings are told, and leaving it would keep answering the old
+        // path until its hour ran out
+        SiblingShopIdMap::forgetOwn();
+        $this->info('own id map cleared');
 
         return self::SUCCESS;
     }

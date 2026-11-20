@@ -3,6 +3,7 @@
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Logingrupa\StoreExtender\Classes\Helper\ShopIdMap;
+use Logingrupa\StoreExtender\Classes\Helper\SiblingShopIdMap;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 
 /**
@@ -62,31 +63,66 @@ class WarmSiblingMaps extends Command
     }
 
     /**
+     * The two things a sibling publishes, label first for the console lines.
+     *
+     * The sitemap answers "does that shop serve this path" and still carries
+     * the static pages. The id map answers "which path does that shop serve
+     * for this 1C row", which is the only question that survives a shop
+     * translating its slugs.
+     */
+    const RESOURCE_LIST = [
+        'sitemap' => SiblingShopSitemap::class,
+        'id map' => SiblingShopIdMap::class,
+    ];
+
+    /**
      * @param string[] $arDomainList
-     * @return int how many siblings failed
+     * @return int how many sibling resources failed
      */
     protected function warmDomainList(array $arDomainList): int
     {
         $bForce = (bool) $this->option('force');
         $iFailureCount = 0;
 
+        // This shop's own path-to-id map, which the hreflang block needs before
+        // it can ask a sibling anything. Local read, no network.
+        $arOwnMap = SiblingShopIdMap::warmOwn();
+        $iOwnCount = 0;
+        foreach ($arOwnMap as $arBucket) {
+            $iOwnCount += count($arBucket);
+        }
+        if ($iOwnCount === 0) {
+            // Loud but not a failure: an empty catalogue is a data condition,
+            // not a fetch that broke, and this command's exit code is about
+            // whether the siblings could be refreshed. A shop that really
+            // publishes nothing is caught at the other end anyway, because
+            // /api/shop-id-map.json answers 503 and the sibling's warm of it
+            // reports FAILED.
+            Log::warning('WarmSiblingMaps: this shop published no id row, nothing can pair');
+            $this->error('own id map: EMPTY, no row carries an external_id');
+        } else {
+            $this->info('own id map: ' . $iOwnCount . ' rows');
+        }
+
         foreach ($arDomainList as $sDomain) {
-            if (!$bForce && SiblingShopSitemap::leaseIsFresh($sDomain)) {
-                $this->line($sDomain . ' sitemap: lease still fresh, skipped');
+            foreach (self::RESOURCE_LIST as $sLabel => $sClass) {
+                if (!$bForce && $sClass::leaseIsFresh($sDomain)) {
+                    $this->line($sDomain . ' ' . $sLabel . ': lease still fresh, skipped');
 
-                continue;
+                    continue;
+                }
+
+                $iCount = $sClass::warm($sDomain);
+                if ($iCount === null) {
+                    $iFailureCount++;
+                    Log::warning('WarmSiblingMaps: the ' . $sLabel . ' of ' . $sDomain . ' could not be warmed');
+                    $this->error($sDomain . ' ' . $sLabel . ': FAILED');
+
+                    continue;
+                }
+
+                $this->info($sDomain . ' ' . $sLabel . ': ' . $iCount . ' entries');
             }
-
-            $iCount = SiblingShopSitemap::warm($sDomain);
-            if ($iCount === null) {
-                $iFailureCount++;
-                Log::warning('WarmSiblingMaps: the sitemap of ' . $sDomain . ' could not be warmed');
-                $this->error($sDomain . ' sitemap: FAILED');
-
-                continue;
-            }
-
-            $this->info($sDomain . ' sitemap: ' . $iCount . ' entries');
         }
 
         return $iFailureCount;
@@ -100,26 +136,29 @@ class WarmSiblingMaps extends Command
         $bStale = false;
 
         foreach ($arDomainList as $sDomain) {
-            $obLastSuccess = SiblingShopSitemap::lastSuccessAt($sDomain);
+            foreach (self::RESOURCE_LIST as $sLabel => $sClass) {
+                $obLastSuccess = $sClass::lastSuccessAt($sDomain);
 
-            if (empty($obLastSuccess)) {
-                $bStale = true;
-                $this->error($sDomain . ' sitemap: never warmed on this box');
+                if (empty($obLastSuccess)) {
+                    $bStale = true;
+                    $this->error($sDomain . ' ' . $sLabel . ': never warmed on this box');
 
-                continue;
+                    continue;
+                }
+
+                $iAgeMinutes = (int) $obLastSuccess->diffInMinutes(now());
+                $sLine = $sDomain . ' ' . $sLabel . ': last success ' . $iAgeMinutes
+                    . ' min ago (' . $obLastSuccess->toIso8601String() . ')';
+
+                if ($iAgeMinutes > self::STATUS_THRESHOLD_MINUTES) {
+                    $bStale = true;
+                    $this->error($sLine . ' - STALE');
+
+                    continue;
+                }
+
+                $this->info($sLine);
             }
-
-            $iAgeMinutes = (int) $obLastSuccess->diffInMinutes(now());
-            $sLine = $sDomain . ' sitemap: last success ' . $iAgeMinutes . ' min ago (' . $obLastSuccess->toIso8601String() . ')';
-
-            if ($iAgeMinutes > self::STATUS_THRESHOLD_MINUTES) {
-                $bStale = true;
-                $this->error($sLine . ' - STALE');
-
-                continue;
-            }
-
-            $this->info($sLine);
         }
 
         if ($bStale) {

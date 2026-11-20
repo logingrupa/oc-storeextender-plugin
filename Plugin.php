@@ -109,6 +109,8 @@ use Logingrupa\StoreExtender\Classes\Helper\ProductOfferPrice;
 use Logingrupa\StoreExtender\Classes\Helper\ProductStructuredData;
 use Logingrupa\StoreExtender\Classes\Helper\SeoMetaText;
 use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
+use Logingrupa\StoreExtender\Classes\Helper\CanonicalPageSuffix;
+use Logingrupa\StoreExtender\Classes\Helper\SiblingShopIdMap;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\TextHighlighter;
@@ -617,8 +619,19 @@ class Plugin extends PluginBase
                 // MightySeo holds for them
                 'seo_toolbox_for_page' => [SeoToolboxPageBinder::class, 'bind'],
                 // Cross-domain hreflang: does the other shop list this URL
-                // in its sitemap; fails closed when the sitemap is unreadable
+                // in its sitemap; fails closed when the sitemap is unreadable.
+                // Still the answer for static pages, which carry no 1C id and
+                // whose path guess is correct
                 'shop_has_url' => [SiblingShopSitemap::class, 'hasUrl'],
+                // Cross-domain hreflang for catalogue rows: the sibling's URL
+                // for the SAME 1C id, so a shop whose slugs are in its own
+                // language still pairs. Null when the row has no external_id
+                // or the sibling does not carry it
+                'shop_sibling_url' => [SiblingShopIdMap::class, 'siblingUrl'],
+                // A paginated list URL names itself, so page 2 stops declaring
+                // itself a duplicate of page 1. Page 1 and an invalid value
+                // give the empty string, which is the clean canonical
+                'canonical_page_suffix' => [CanonicalPageSuffix::class, 'get'],
                 // Color Family storefront queries: the ?color= offer filter
                 // and the search-sheet family pill row
                 'color_family_offer_filter' => [ColorFamilyHelper::class, 'filterOfferIds'],

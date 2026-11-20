@@ -37,6 +37,10 @@ class ShopIdMap
     /** First path segment of a product page */
     const PRODUCT_SEGMENT = 'p';
 
+    /** Bucket names of the published id map, which is also its JSON shape */
+    const BUCKET_PRODUCTS = 'products';
+    const BUCKET_CATEGORIES = 'categories';
+
     /** How deep a category ancestry may go before it is treated as a loop */
     const ANCESTRY_CEILING = 10;
 
@@ -210,6 +214,110 @@ class ShopIdMap
         }
 
         return $arUpdatedAtByOfferId;
+    }
+
+    /**
+     * The 1C id of every row this shop publishes, against its own path.
+     *
+     * This is what the shops pair on. The hreflang block used to guess that a
+     * sibling served the same slug, which stopped being true when the .no
+     * slugs were translated on 2026-11-15 and was never true for .lt. The
+     * external_id is the same GUID on every shop for the same row, so it is
+     * the only cross-shop identity the catalogue has.
+     *
+     * A row without an external_id is left out, not guessed. Roughly 7% of
+     * products carry none and those have no cross-shop identity at all, so
+     * they must stay unpaired.
+     *
+     * @return array{products:array<string,string>,categories:array<string,string>}
+     */
+    public static function publishedIdMap(): array
+    {
+        $obCategoryList = Category::where('active', true)
+            ->select('id', 'slug', 'parent_id', 'external_id')
+            ->get()
+            ->keyBy('id');
+
+        $arCategoryMap = [];
+        foreach ($obCategoryList as $obCategory) {
+            $sExternalID = static::externalId($obCategory->external_id);
+            if ($sExternalID === null) {
+                continue;
+            }
+
+            $sPath = static::categoryPath($obCategory, function ($iParentID) use ($obCategoryList) {
+                return $obCategoryList[$iParentID] ?? null;
+            });
+
+            // A looping parent chain is a data fault; the sitemap drops the row
+            // and so does the pair, rather than publishing a path it invented
+            if ($sPath === null) {
+                continue;
+            }
+
+            $arCategoryMap[$sExternalID] = $sPath;
+        }
+
+        $arProductMap = [];
+        $obProductList = Product::where('active', true)
+            ->whereNull('deleted_at')
+            ->get(['slug', 'external_id']);
+
+        foreach ($obProductList as $obProduct) {
+            $sExternalID = static::externalId($obProduct->external_id);
+            if ($sExternalID === null) {
+                continue;
+            }
+
+            $arProductMap[$sExternalID] = static::productPath($obProduct->slug);
+        }
+
+        return [
+            self::BUCKET_PRODUCTS => $arProductMap,
+            self::BUCKET_CATEGORIES => $arCategoryMap,
+        ];
+    }
+
+    /**
+     * This shop's own path against the 1C id, the inverse of publishedIdMap().
+     *
+     * The hreflang block knows the path it is rendering and nothing else, so
+     * it needs this direction to find the id before it can ask a sibling for
+     * its own path. Keeping both directions here means one definition of which
+     * rows are publishable.
+     *
+     * @return array{products:array<string,string>,categories:array<string,string>}
+     */
+    public static function ownPathIdMap(): array
+    {
+        $arMap = static::publishedIdMap();
+
+        return [
+            self::BUCKET_PRODUCTS => array_flip($arMap[self::BUCKET_PRODUCTS]),
+            self::BUCKET_CATEGORIES => array_flip($arMap[self::BUCKET_CATEGORIES]),
+        ];
+    }
+
+    /**
+     * Which bucket a path of this shop belongs to, read off the path shape so
+     * the caller does not have to carry the row kind through the render.
+     */
+    public static function kindBucketForPath(string $sPath): string
+    {
+        return strpos($sPath, '/' . self::PRODUCT_SEGMENT . '/') === 0
+            ? self::BUCKET_PRODUCTS
+            : self::BUCKET_CATEGORIES;
+    }
+
+    /**
+     * An external_id worth publishing, or null. Empty string and null are the
+     * same thing here: no cross-shop identity.
+     */
+    protected static function externalId($sValue): ?string
+    {
+        $sExternalID = trim((string) $sValue);
+
+        return $sExternalID === '' ? null : $sExternalID;
     }
 
     /**

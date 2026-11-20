@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Logingrupa\StoreExtender\Classes\Helper\ShopIdMap;
+use Logingrupa\StoreExtender\Classes\Helper\SiblingShopIdMap;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Console\ForgetSiblingMaps;
 use Logingrupa\StoreExtender\Console\WarmSiblingMaps;
@@ -80,7 +81,9 @@ class SiblingMapWarmTest extends StoreExtenderPluginTestCase
 
         $this->assertSame(Command::SUCCESS, $iExit, $sOutput);
         $this->assertStringContainsString('sitemap: 2 entries', $sOutput);
+        $this->assertStringContainsString('id map: 1 entries', $sOutput);
         $this->assertTrue(SiblingShopSitemap::hasUrl(self::SIBLING_LV, '/lv/hjelp'));
+        $this->assertNotNull(SiblingShopIdMap::lastSuccessAt(self::SIBLING_LV), 'the id map warms alongside the sitemap');
         $this->assertSame(SiblingShopSitemap::TTL_OK_MINUTES, $this->cacheTtlMinutes(SiblingShopSitemap::cacheKey(self::SIBLING_LV)));
         $this->assertTrue(SiblingShopSitemap::leaseIsFresh(self::SIBLING_LV));
         $this->assertNotNull(SiblingShopSitemap::lastSuccessAt(self::SIBLING_LV));
@@ -103,7 +106,7 @@ class SiblingMapWarmTest extends StoreExtenderPluginTestCase
 
         $this->assertSame(Command::SUCCESS, $iForcedExit);
         $this->assertStringContainsString('sitemap: 2 entries', $sForcedOutput);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2, 'one fetch per published resource, the sitemap and the id map');
     }
 
     public function testAFailedSiblingIsLoudAndKeepsNoLease()
@@ -222,6 +225,12 @@ class SiblingMapWarmTest extends StoreExtenderPluginTestCase
         $arStubList = [];
         foreach ($arDomainList as $sDomain) {
             $arStubList[$sDomain . '/sitemap.xml'] = Http::response($this->sitemapBody($sDomain));
+            // A sibling publishes two things now, and a warm that cannot read
+            // the id map is a failed warm, so a healthy fake serves both
+            $arStubList[$sDomain . SiblingShopIdMap::MAP_PATH] = Http::response([
+                ShopIdMap::BUCKET_PRODUCTS => ['guid-polygel' => '/p/polygel-uvled'],
+                ShopIdMap::BUCKET_CATEGORIES => [],
+            ]);
         }
 
         $this->fakeHttp($arStubList);
