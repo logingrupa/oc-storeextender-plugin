@@ -83,7 +83,9 @@ class SiblingShopPicker
             return $sHome;
         }
 
-        $sPaired = SiblingShopIdMap::siblingUrl($sDomain, $sPath);
+        // Cache only, no rebuild: the picker is on every page and the phone
+        // product page counts the queries of a cold render
+        $sPaired = SiblingShopIdMap::siblingUrlFromCache($sDomain, $sPath);
         if (!empty($sPaired)) {
             return $sPaired;
         }

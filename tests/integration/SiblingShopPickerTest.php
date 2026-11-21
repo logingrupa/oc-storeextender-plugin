@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../StoreExtenderPluginTestCase.php';
 
 use Cache;
+use Db;
 use Request;
 use Illuminate\Http\Request as HttpRequest;
 use Logingrupa\StoreExtender\Classes\Helper\ShopIdMap;
@@ -113,6 +114,23 @@ class SiblingShopPickerTest extends StoreExtenderPluginTestCase
             'https://nailscosmetics.no/hjelp',
             SiblingShopPicker::url('https://nailscosmetics.no', '/hjelp')
         );
+    }
+
+    /**
+     * The picker renders on every page of the shop, so it reads the warmed
+     * maps and never rebuilds one. Rebuilding the own map cost the phone
+     * product page two queries on a cold render, which its pinned cost gate
+     * caught.
+     */
+    public function testTheRowsNeverRebuildTheOwnMapFromTheDatabase()
+    {
+        SiblingShopIdMap::forgetOwn();
+        Db::enableQueryLog();
+        Db::flushQueryLog();
+
+        SiblingShopPicker::url('https://nailscosmetics.no', self::OWN_PATH);
+
+        $this->assertSame([], Db::getQueryLog());
     }
 
     /** A static page carries no 1C id, so the sitemap is the only proof it exists */
