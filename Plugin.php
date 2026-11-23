@@ -86,6 +86,7 @@ use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 //Cart cookie identity
 use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
 use Logingrupa\StoreExtender\Classes\Middleware\DeviceVaryHeader;
+use Logingrupa\StoreExtender\Classes\Middleware\LocaleDetectRedirectHeaders;
 
 //Registration surfaces boot() delegates to, one class per responsibility
 use Logingrupa\StoreExtender\Classes\Registrar\PageLookupRegistrar;
@@ -216,6 +217,7 @@ class Plugin extends PluginBase
         \Cms\Classes\CmsController::extend(function ($obController) {
             $obController->middleware(ClearShadowCartCookie::class);
             $obController->middleware(DeviceVaryHeader::class);
+            $obController->middleware(LocaleDetectRedirectHeaders::class);
         });
 
         $factory = Omnipay::getFactory();

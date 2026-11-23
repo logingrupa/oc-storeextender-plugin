@@ -353,3 +353,5 @@
   - 'The shop and language picker reads the warmed cross-shop maps and never rebuilds one while a visitor waits. It is on every page, so the rebuild it did on an empty cache cost two database queries per cold page render across the whole shop. A row whose map is not warm yet leads to the other shop front page for the minute until the next warm, which is what it already does for a page the other shop does not carry.'
 2.0.123:
   - 'Drops the helper that fed the shop rows to the language picker. Nothing shows those rows since the last theme release, so the code had no caller. The cross-shop links for search engines are untouched and keep their own helper.'
+2.0.124:
+  - 'Bare-URL browser-language redirects on multi-language prefixed shops (.lv, .lt) now return HTTP 302 with Vary: Accept-Language and Cache-Control: private, no-cache instead of a permanent 301 without Vary, so browsers and caches do not pin one language onto unprefixed links while deterministic 301s (retired categories, single-site shops, .no) stay 301.'
