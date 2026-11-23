@@ -75,27 +75,6 @@ class SiblingShopIdMap
      */
     public static function siblingUrl(string $sDomain, string $sOwnPath): ?string
     {
-        return static::resolve($sDomain, $sOwnPath, static::ownMap());
-    }
-
-    /**
-     * The same pair, read from caches alone: an unfilled own map answers null
-     * instead of rebuilding itself from the database.
-     *
-     * The site picker asks this one. It renders on every page of the shop,
-     * including the phone product page, whose cold render has a pinned query
-     * count that the rebuild broke by two. A picker row loses its page
-     * equivalent for the minute until the next warm, and lands on the other
-     * shop's front page meanwhile, which is a cost worth two queries less.
-     */
-    public static function siblingUrlFromCache(string $sDomain, string $sOwnPath): ?string
-    {
-        return static::resolve($sDomain, $sOwnPath, static::cachedOwnMap());
-    }
-
-    /** @param array<string,array<string,string>> $arOwnMap bucket => path => id */
-    protected static function resolve(string $sDomain, string $sOwnPath, array $arOwnMap): ?string
-    {
         $sDomain = rtrim($sDomain, '/');
         $sOwnPath = '/' . trim($sOwnPath, '/');
         if ($sOwnPath === '/') {
@@ -104,7 +83,7 @@ class SiblingShopIdMap
 
         $sBucket = ShopIdMap::kindBucketForPath($sOwnPath);
 
-        $sExternalID = $arOwnMap[$sBucket][$sOwnPath] ?? null;
+        $sExternalID = static::ownMap()[$sBucket][$sOwnPath] ?? null;
         if (empty($sExternalID)) {
             return null;
         }
@@ -154,18 +133,6 @@ class SiblingShopIdMap
         }
 
         return static::warmOwn();
-    }
-
-    /**
-     * The own map as the cache holds it, empty when it holds nothing.
-     *
-     * @return array<string,array<string,string>> bucket => path => id
-     */
-    protected static function cachedOwnMap(): array
-    {
-        $arCached = Cache::get(self::OWN_CACHE_KEY);
-
-        return static::normalise(is_array($arCached) ? $arCached : []);
     }
 
     /**

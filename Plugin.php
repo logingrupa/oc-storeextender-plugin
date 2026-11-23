@@ -111,7 +111,6 @@ use Logingrupa\StoreExtender\Classes\Helper\SeoMetaText;
 use Logingrupa\StoreExtender\Classes\Helper\SeoToolboxPageBinder;
 use Logingrupa\StoreExtender\Classes\Helper\CanonicalPageSuffix;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopIdMap;
-use Logingrupa\StoreExtender\Classes\Helper\SiblingShopPicker;
 use Logingrupa\StoreExtender\Classes\Helper\SiblingShopSitemap;
 use Logingrupa\StoreExtender\Classes\Helper\SearchOfferHelper;
 use Logingrupa\StoreExtender\Classes\Helper\TextHighlighter;
@@ -629,10 +628,6 @@ class Plugin extends PluginBase
                 // language still pairs. Null when the row has no external_id
                 // or the sibling does not carry it
                 'shop_sibling_url' => [SiblingShopIdMap::class, 'siblingUrl'],
-                // The other shops of the family as picker rows, each pointing at
-                // this page's equivalent there and falling back to that shop's
-                // front page. The visible counterpart of the hreflang pair
-                'shop_sibling_links' => [SiblingShopPicker::class, 'links'],
                 // A paginated list URL names itself, so page 2 stops declaring
                 // itself a duplicate of page 1. Page 1 and an invalid value
                 // give the empty string, which is the clean canonical
