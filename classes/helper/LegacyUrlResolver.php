@@ -44,6 +44,9 @@ class LegacyUrlResolver
     /**
      * The live slug for a product slug that did not resolve, or null when the
      * product is gone or was never known.
+     *
+     * CustomProductPage drops the active() scope, so a switched-off product
+     * still answers 200; the target only has to exist.
      */
     public function resolveProductSlug(string $sSlug): ?string
     {
@@ -52,7 +55,7 @@ class LegacyUrlResolver
             return null;
         }
 
-        $bLive = Product::active()->where('slug', $sNewSlug)->exists();
+        $bLive = Product::where('slug', $sNewSlug)->exists();
 
         return $bLive ? $sNewSlug : null;
     }

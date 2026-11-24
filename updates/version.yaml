@@ -355,3 +355,5 @@
   - 'Drops the helper that fed the shop rows to the language picker. Nothing shows those rows since the last theme release, so the code had no caller. The cross-shop links for search engines are untouched and keep their own helper.'
 2.0.124:
   - 'Bare-URL browser-language redirects on multi-language prefixed shops (.lv, .lt) now return HTTP 302 with Vary: Accept-Language and Cache-Control: private, no-cache instead of a permanent 301 without Vary, so browsers and caches do not pin one language onto unprefixed links while deterministic 301s (retired categories, single-site shops, .no) stay 301.'
+2.0.125:
+  - 'An old product address now redirects to the renamed product even when that product is switched off. The product page has always answered 200 for a switched-off product, so the old address answered 404 for no reason. On the Norwegian shop that was 46 addresses that search results still point at.'

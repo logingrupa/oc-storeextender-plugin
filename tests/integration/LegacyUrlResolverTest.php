@@ -100,13 +100,19 @@ class LegacyUrlResolverTest extends StoreExtenderPluginTestCase
         $this->assertNull($this->obResolver->resolveCategoryPath(['retired']));
     }
 
-    public function testRenamedProductGoesToItsLiveSlugOnly()
+    public function testRenamedProductGoesToItsSlugWhetherOrNotItIsActive()
     {
         SlugHistory::record(SlugHistory::TYPE_PRODUCT, 'polygel-uv-led', 'polygel-uvled');
         SlugHistory::record(SlugHistory::TYPE_PRODUCT, 'gel-old', 'old-gel');
+        SlugHistory::record(SlugHistory::TYPE_PRODUCT, 'deleted-old', 'deleted-new');
 
         $this->assertSame('polygel-uvled', $this->obResolver->resolveProductSlug('polygel-uv-led'));
-        $this->assertNull($this->obResolver->resolveProductSlug('gel-old'), 'target is inactive');
+        $this->assertSame(
+            'old-gel',
+            $this->obResolver->resolveProductSlug('gel-old'),
+            'CustomProductPage answers 200 for an inactive product, so its old slug redirects'
+        );
+        $this->assertNull($this->obResolver->resolveProductSlug('deleted-old'), 'target row is gone');
         $this->assertNull($this->obResolver->resolveProductSlug('never-existed'));
     }
 
