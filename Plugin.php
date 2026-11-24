@@ -30,8 +30,10 @@ use Logingrupa\StoreExtender\Classes\Event\UserGroup\ExtendUserGroupController;
 //User events
 use Logingrupa\StoreExtender\Classes\Event\User\UserModelHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserController;
+use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserAddressRelationHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\ExtendUserPropertyFieldHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\RainLabRegistrationHandler;
+use Logingrupa\StoreExtender\Classes\Event\User\UserAddressProfileHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\UserIpAddressHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\AccountCartIdentityHandler;
 use Logingrupa\StoreExtender\Classes\Event\User\PhoneLoginHandler;
@@ -119,6 +121,7 @@ use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
 use Logingrupa\StoreExtender\Classes\Helper\ThemeVariable;
 use Logingrupa\StoreExtender\Classes\Helper\OrderPageData;
+use Logingrupa\StoreExtender\Classes\Helper\UserAddressHelper;
 use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
 
 /**
@@ -177,6 +180,7 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.purgeorderpropertysecrets', 'Logingrupa\StoreExtender\Console\PurgeOrderPropertySecrets');
         $this->registerConsoleCommand('storeextender.refreshpickuppoints', 'Logingrupa\StoreExtender\Console\RefreshPickupPoints');
         $this->registerConsoleCommand('storeextender.sendpaymentreminders', 'Logingrupa\StoreExtender\Console\SendPaymentReminders');
+        $this->registerConsoleCommand('storeextender.parselegacyaddresses', 'Logingrupa\StoreExtender\Console\ParseLegacyAddressesCommand');
 
         // Toolbox RainLabUserHelper::findUserByEmail() calls a method RainLab.User 3.5.3
         // does not define. UserHelper resolves its inner helper through the container, so
@@ -260,8 +264,10 @@ class Plugin extends PluginBase
         Event::subscribe(UserModelHandler::class);
         //User events
         Event::subscribe(ExtendUserController::class);
+        Event::subscribe(ExtendUserAddressRelationHandler::class);
         Event::subscribe(ExtendUserPropertyFieldHandler::class);
         Event::subscribe(RainLabRegistrationHandler::class);
+        Event::subscribe(UserAddressProfileHandler::class);
         Event::subscribe(UserIpAddressHandler::class);
         //Account contact fields onto the cart row at login, registration and logout,
         //so a signed-out visitor keeps the checkout prefill and the Meta identity
@@ -650,6 +656,8 @@ class Plugin extends PluginBase
                 // Order page: where the order stands with its payment, and the bank details
                 'order_payment_state' => [OrderPageData::class, 'paymentState'],
                 'order_bank_details' => [OrderPageData::class, 'bankDetails'],
+                // Saved Shopaholic UserAddress rows (shipping + billing) for My Account and Checkout
+                'user_saved_addresses' => [UserAddressHelper::class, 'getCheckoutAddresses'],
             ]
         ];
     }

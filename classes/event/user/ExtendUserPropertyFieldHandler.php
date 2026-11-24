@@ -1,26 +1,26 @@
-<?php namespace Logingrupa\StoreExtender\Classes\Event\User;
+<?php
 
-use Lovata\Toolbox\Models\CommonProperty;
-use Lovata\Toolbox\Classes\Helper\UserHelper;
-use Lovata\Toolbox\Classes\Event\AbstractBackendFieldHandler;
+namespace Logingrupa\StoreExtender\Classes\Event\User;
 
+use Backend\Widgets\Form;
 use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
+use Lovata\Toolbox\Classes\Event\AbstractBackendFieldHandler;
+use Lovata\Toolbox\Classes\Helper\UserHelper;
+use Lovata\Toolbox\Models\CommonProperty;
 
 /**
  * Class ExtendUserPropertyFieldHandler
- * @package Logingrupa\StoreExtender\Classes\Event\User
- *
- * Renders the dynamic user properties on the backend user form.
  */
 class ExtendUserPropertyFieldHandler extends AbstractBackendFieldHandler
 {
     /**
      * Extend backend fields
-     * @param \Backend\Widgets\Form $obWidget
+     *
+     * @param  Form  $obWidget
      */
     protected function extendFields($obWidget)
     {
-        if ($obWidget->context != 'update') {
+        if (! in_array($obWidget->context, ['update', 'preview'], true)) {
             return;
         }
 
@@ -36,6 +36,11 @@ class ExtendUserPropertyFieldHandler extends AbstractBackendFieldHandler
                 continue;
             }
 
+            // RainLab.User preview.php renders only primary tabs literally named "User" and "Details".
+            if ($obWidget->context === 'preview') {
+                $arPropertyData['tab'] = 'Details';
+            }
+
             $arFieldList[CommonProperty::NAME.'['.$obProperty->code.']'] = $arPropertyData;
         }
 
@@ -48,7 +53,6 @@ class ExtendUserPropertyFieldHandler extends AbstractBackendFieldHandler
 
     /**
      * Get model class name
-     * @return string
      */
     protected function getModelClass(): string
     {
@@ -57,7 +61,6 @@ class ExtendUserPropertyFieldHandler extends AbstractBackendFieldHandler
 
     /**
      * Get controller class name
-     * @return string
      */
     protected function getControllerClass(): string
     {

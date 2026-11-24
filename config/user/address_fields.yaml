@@ -1,0 +1,35 @@
+# ===================================
+#  User Address Form Fields
+# ===================================
+
+fields:
+    type:
+        label: 'logingrupa.storeextender::lang.user_address.type'
+        type: dropdown
+        span: left
+        required: true
+        default: shipping
+    country:
+        label: 'logingrupa.storeextender::lang.user_address.country'
+        type: text
+        span: right
+    address1:
+        label: 'logingrupa.storeextender::lang.user_address.address1'
+        type: text
+        span: full
+    address2:
+        label: 'logingrupa.storeextender::lang.user_address.address2'
+        type: text
+        span: full
+    city:
+        label: 'logingrupa.storeextender::lang.user_address.city'
+        type: text
+        span: left
+    postcode:
+        label: 'logingrupa.storeextender::lang.user_address.postcode'
+        type: text
+        span: right
+    state:
+        label: 'logingrupa.storeextender::lang.user_address.state'
+        type: text
+        span: left

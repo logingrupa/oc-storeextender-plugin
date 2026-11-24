@@ -1,10 +1,17 @@
-<?php namespace logingrupa\Storeextender\Classes\Event\User;
+<?php
 
-use Lang;
+namespace logingrupa\Storeextender\Classes\Event\User;
+
+use Event;
 use Illuminate\Support\Facades\Log;
-
-use Lovata\Toolbox\Classes\Helper\UserHelper;
+use Illuminate\Support\Facades\Schema;
+use Lang;
 use Logingrupa\StoreExtender\Classes\Helper\UserGroupHelper;
+use Lovata\OrdersShopaholic\Classes\Store\UserAddressListStore;
+use Lovata\OrdersShopaholic\Models\Order;
+use Lovata\OrdersShopaholic\Models\UserAddress;
+use Lovata\Toolbox\Classes\Helper\UserHelper;
+use RainLab\User\Models\User;
 
 class UserModelHandler
 {
@@ -16,12 +23,62 @@ class UserModelHandler
             return;
         }
 
-        $obRainLabExtension = new ExtendRainLabUserModel();
+        $obRainLabExtension = new ExtendRainLabUserModel;
 
-        \RainLab\User\Models\User::extend(function ($obElement) use ($obRainLabExtension) {
+        User::extend(function ($obElement) use ($obRainLabExtension) {
             $obRainLabExtension->extend($obElement);
             $this->extendUserModel($obElement);
         });
+
+        Event::listen('rainlab.user.mergeUser', function ($obLeadingUser, $obMergedUser): void {
+            $this->reassignShopaholicRecords($obLeadingUser, $obMergedUser);
+        });
+    }
+
+    /**
+     * Reassign Shopaholic orders and deduplicated UserAddress rows when two
+     * RainLab.User accounts are merged in the backend.
+     *
+     * @param  User  $obLeadingUser
+     * @param  User  $obMergedUser
+     */
+    protected function reassignShopaholicRecords($obLeadingUser, $obMergedUser): void
+    {
+        if (empty($obLeadingUser?->id) || empty($obMergedUser?->id)) {
+            return;
+        }
+
+        $iLeadingId = (int) $obLeadingUser->id;
+        $iMergedId = (int) $obMergedUser->id;
+
+        if (class_exists(Order::class) && Schema::hasTable('lovata_orders_shopaholic_orders')) {
+            Order::where('user_id', $iMergedId)->update(['user_id' => $iLeadingId]);
+        }
+
+        if (! class_exists(UserAddress::class) || ! Schema::hasTable('lovata_orders_shopaholic_user_addresses')) {
+            return;
+        }
+
+        $obAddressList = UserAddress::where('user_id', $iMergedId)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
+        foreach ($obAddressList as $obAddress) {
+            $bLeadingHasType = UserAddress::where('user_id', $iLeadingId)
+                ->where('type', $obAddress->type)
+                ->exists();
+            if ($bLeadingHasType) {
+                $obAddress->delete();
+
+                continue;
+            }
+
+            $obAddress->user_id = $iLeadingId;
+            $obAddress->save();
+        }
+
+        UserAddressListStore::instance()->user->clear($iLeadingId);
+        UserAddressListStore::instance()->user->clear($iMergedId);
     }
 
     protected function extendUserModel($obElement)
@@ -45,7 +102,7 @@ class UserModelHandler
         // with an untranslated message. It is a register-form anti-bot question rather than a
         // user invariant, so under RainLab it is validated in RainLabRegistrationHandler
         // instead, which also keeps it from blocking backend and programmatic user creation.
-        if (!property_exists($obElement, 'customMessages')) {
+        if (! property_exists($obElement, 'customMessages')) {
             return;
         }
 
@@ -62,18 +119,20 @@ class UserModelHandler
      * A school chosen in the forms sets the price tier when its group carries a price type
      * and no manager set the tier. Runs only when the school changed: every other save
      * (login stamp, checkout phone, backend edit) leaves the primary group alone.
-     * @param \RainLab\User\Models\User $obElement
+     *
+     * @param  User  $obElement
      */
     protected function applySchoolPriceGroup($obElement)
     {
         $sSchoolCode = $obElement->property['school-name'] ?? null;
-        if (!$sSchoolCode || $sSchoolCode === $this->getOriginalSchoolCode($obElement)) {
+        if (! $sSchoolCode || $sSchoolCode === $this->getOriginalSchoolCode($obElement)) {
             return;
         }
 
         $obGroup = UserGroupHelper::instance()->findByCode($sSchoolCode);
-        if (!$obGroup) {
+        if (! $obGroup) {
             Log::warning("Group with code '{$sSchoolCode}' not found.");
+
             return;
         }
 
@@ -87,7 +146,8 @@ class UserModelHandler
     /**
      * A priced primary group other than the previously chosen school came from a manager.
      * Queried through the relation so a primary group changed in the same save counts.
-     * @param \RainLab\User\Models\User $obElement
+     *
+     * @param  User  $obElement
      * @return bool
      */
     protected function hasManagerSetTier($obElement)
@@ -103,13 +163,14 @@ class UserModelHandler
     /**
      * The school code as loaded from the database. Read from the raw original because
      * "property" is jsonable.
-     * @param \RainLab\User\Models\User $obElement
+     *
+     * @param  User  $obElement
      * @return string|null
      */
     protected function getOriginalSchoolCode($obElement)
     {
         $arOriginalProperty = json_decode((string) $obElement->getRawOriginal('property'), true);
-        if (!is_array($arOriginalProperty)) {
+        if (! is_array($arOriginalProperty)) {
             return null;
         }
 
@@ -119,11 +180,12 @@ class UserModelHandler
     /**
      * The secondary groups hold the primary group only, so group filters and member
      * counts match the price tier. afterSave runs before Eloquent syncs the originals.
-     * @param \RainLab\User\Models\User $obElement
+     *
+     * @param  User  $obElement
      */
     protected function mirrorPrimaryGroup($obElement)
     {
-        if (!$obElement->isDirty('primary_group_id')) {
+        if (! $obElement->isDirty('primary_group_id')) {
             return;
         }
 

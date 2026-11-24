@@ -1,0 +1,20 @@
+# ===================================
+#  User Address Relation Config
+# ===================================
+
+address:
+    label: 'logingrupa.storeextender::lang.user_address.name'
+    emptyMessage: 'logingrupa.storeextender::lang.user_address.empty_message'
+    view:
+        list: $/logingrupa/storeextender/config/user/address_columns.yaml
+        showSearch: true
+        showSorting: true
+        showCheckboxes: true
+        recordsPerPage: 10
+        toolbarButtons: create|delete
+        defaultSort:
+            column: updated_at
+            direction: desc
+    manage:
+        form: $/logingrupa/storeextender/config/user/address_fields.yaml
+        recordsPerPage: 10

@@ -1,0 +1,44 @@
+# ===================================
+#  User Address List Columns
+# ===================================
+
+columns:
+    type_label:
+        label: 'logingrupa.storeextender::lang.user_address.type'
+        type: text
+        sortable: false
+    address1:
+        label: 'logingrupa.storeextender::lang.user_address.address1'
+        type: text
+        searchable: true
+        sortable: true
+    address2:
+        label: 'logingrupa.storeextender::lang.user_address.address2'
+        type: text
+        searchable: true
+        sortable: true
+    city:
+        label: 'logingrupa.storeextender::lang.user_address.city'
+        type: text
+        searchable: true
+        sortable: true
+    postcode:
+        label: 'logingrupa.storeextender::lang.user_address.postcode'
+        type: text
+        searchable: true
+        sortable: true
+    state:
+        label: 'logingrupa.storeextender::lang.user_address.state'
+        type: text
+        searchable: true
+        sortable: true
+        invisible: true
+    country:
+        label: 'logingrupa.storeextender::lang.user_address.country'
+        type: text
+        searchable: true
+        sortable: true
+    updated_at:
+        label: 'logingrupa.storeextender::lang.user_address.updated_at'
+        type: timetense
+        sortable: true
