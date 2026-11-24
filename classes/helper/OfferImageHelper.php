@@ -119,6 +119,22 @@ class OfferImageHelper
     const NAIL_HEIGHT = 820;
 
     /**
+     * The editorial picture of a hub tile, fitted and never cropped.
+     *
+     * nail() may crop because a shade shot is a studio frame with symmetric
+     * padding around one portrait nail. An editorial cover is the opposite: a
+     * designed poster whose title and margins are the point, and the nail
+     * ratio keeps a 38% vertical strip of a landscape one. mode auto bounds
+     * the longest side instead, so the whole frame survives at any ratio.
+     *
+     * 420x320 covers the widest fan track at DPR 2: the grid is
+     * minmax(190px, 1fr) over a 150px stage.
+     */
+    const SLOT_COVER = 'cover';
+    const COVER_WIDTH = 420;
+    const COVER_HEIGHT = 320;
+
+    /**
      * Cropped circle for a swatch or a sheet row.
      *
      * Null is a real state - an offer without a picture - and the callers
@@ -234,6 +250,31 @@ class OfferImageHelper
     {
         return [
             'mode'      => 'crop',
+            'quality'   => self::THUMB_QUALITY,
+            'extension' => self::THUMB_EXTENSION,
+        ];
+    }
+
+    /**
+     * The editorial cover, fitted whole into the tile. Empty string for a
+     * family with no picture, the same real state nail() answers for, so a
+     * caller can treat "no cover" as "draw the shades instead".
+     */
+    public static function cover(?File $obImage): string
+    {
+        return self::renderHeroThumb($obImage, self::COVER_WIDTH, self::COVER_HEIGHT, self::getCoverThumbOptions());
+    }
+
+    /**
+     * The resizer options of the cover slot. Public so a test can pin the
+     * shape; auto is deliberate and explained on the constants.
+     *
+     * @return array{mode: string, quality: int, extension: string}
+     */
+    public static function getCoverThumbOptions(): array
+    {
+        return [
+            'mode'      => 'auto',
             'quality'   => self::THUMB_QUALITY,
             'extension' => self::THUMB_EXTENSION,
         ];

@@ -360,3 +360,5 @@
 2.0.126:
   - 'Shopaholic UserAddress becomes the single source of truth for shipping and billing addresses across Backend Users (Preview and Edit), My Account, and Checkout. Automatically cleans legacy undefined/NaN strings, removes empty rows, and keeps one latest shipping address and one latest billing address per user.'
   - update_table_user_addresses_clean_and_dedupe.php
+2.0.127:
+  - 'OfferImageHelper gains a cover slot for the collections hub: 420x320, mode auto, so an editorial picture is fitted whole instead of cropped. nail() still crops, which is right for a studio shade shot with symmetric padding and wrong for a designed poster - the nail ratio kept a 38 percent vertical strip of a landscape frame and threw the title away.'
