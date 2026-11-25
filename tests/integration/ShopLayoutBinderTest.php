@@ -45,7 +45,7 @@ class ShopLayoutBinderTest extends StoreExtenderPluginTestCase
 
     protected $autoMigrate = false;
 
-    /** @var array<string> the ten variables every product fragment reads (D-03) */
+    /** @var array<string> the eleven variables every shop/checkout fragment reads (D-03) */
     const PINNED_KEY_LIST = [
         'cart_is_available',
         'showEditButton',
@@ -56,6 +56,7 @@ class ShopLayoutBinderTest extends StoreExtenderPluginTestCase
         'obUser',
         'activeCurrencyCode',
         'sPriceType',
+        'iPriceTypeID',
         'bPriceIncludesVAT',
     ];
 
@@ -188,6 +189,7 @@ class ShopLayoutBinderTest extends StoreExtenderPluginTestCase
         ShopLayoutBinder::bind($obLayout);
 
         $this->assertNull($obLayout['sPriceType']);
+        $this->assertNull($obLayout['iPriceTypeID']);
         $this->assertTrue($obLayout['bPriceIncludesVAT']);
     }
 
@@ -199,7 +201,7 @@ class ShopLayoutBinderTest extends StoreExtenderPluginTestCase
     #[DataProvider('vatByPriceTypeProvider')]
     public function testPriceIncludesVatFollowsThePriceTypeCode($sPriceTypeCode, $bExpectedVat)
     {
-        $this->insertPriceType($sPriceTypeCode);
+        $iPriceTypeID = $this->insertPriceType($sPriceTypeCode);
         PriceTypeHelper::forgetInstance();
         PriceTypeHelper::instance()->switchActive($sPriceTypeCode);
 
@@ -208,6 +210,7 @@ class ShopLayoutBinderTest extends StoreExtenderPluginTestCase
         ShopLayoutBinder::bind($obLayout);
 
         $this->assertSame($sPriceTypeCode, $obLayout['sPriceType']);
+        $this->assertSame($iPriceTypeID, $obLayout['iPriceTypeID']);
         $this->assertSame($bExpectedVat, $obLayout['bPriceIncludesVAT']);
     }
 
@@ -261,11 +264,11 @@ class ShopLayoutBinderTest extends StoreExtenderPluginTestCase
 
     /**
      * @param string $sCode
-     * @return void
+     * @return int
      */
     protected function insertPriceType($sCode)
     {
-        DB::table('lovata_shopaholic_price_types')->insert([
+        return (int) DB::table('lovata_shopaholic_price_types')->insertGetId([
             'active' => 1,
             'name' => $sCode,
             'code' => $sCode,

@@ -116,8 +116,10 @@ class ShopLayoutBinder
     {
         ActivePriceHelper::instance()->setActivePriceType();
 
-        $sPriceType = PriceTypeHelper::instance()->getActivePriceTypeCode();
+        $obPriceTypeHelper = PriceTypeHelper::instance();
+        $sPriceType = $obPriceTypeHelper->getActivePriceTypeCode();
         $obLayout['sPriceType'] = $sPriceType;
+        $obLayout['iPriceTypeID'] = $obPriceTypeHelper->getActivePriceTypeID();
         $obLayout['bPriceIncludesVAT'] = $sPriceType === null
             || in_array($sPriceType, self::VAT_INCLUSIVE_PRICE_TYPE_LIST, true);
     }
