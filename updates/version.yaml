@@ -362,3 +362,5 @@
   - update_table_user_addresses_clean_and_dedupe.php
 2.0.127:
   - 'OfferImageHelper gains a cover slot for the collections hub: 420x320, mode auto, so an editorial picture is fitted whole instead of cropped. nail() still crops, which is right for a studio shade shot with symmetric padding and wrong for a designed poster - the nail ratio kept a 38 percent vertical strip of a landscape frame and threw the title away.'
+2.0.128:
+  - 'ShopLayoutBinder binds the logged-in user group price type (iPriceTypeID) on migrated shop-layout pages so group-tier discounts apply consistently on checkout and every Vite shop page, backed by 24 group-tier pricing tests.'
