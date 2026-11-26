@@ -366,3 +366,5 @@
   - 'ShopLayoutBinder binds the logged-in user group price type (iPriceTypeID) on migrated shop-layout pages so group-tier discounts apply consistently on checkout and every Vite shop page, backed by 24 group-tier pricing tests.'
 2.0.129:
   - 'Add OptionalTwigFunctionFallback on cms.extendTwig so missing or disabled Logingrupa.GoogleAnalytics functions (gaEvent and gaListBlock) degrade to empty output with rate-limited error logging instead of crashing checkout, product, or catalog pages, with STOREEXTENDER_STRICT_TWIG_FUNCTIONS opt-out for deploy gates.'
+2.0.130:
+  - 'Add ReleaseIntegrityVerifier and storeextender:verify-release command to enforce pre-activation Composer plugin parity, required plugin/component/markup registration, strict CMS Twig template compilation, and mirrored public Vite assets.'

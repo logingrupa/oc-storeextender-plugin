@@ -182,6 +182,7 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.refreshpickuppoints', 'Logingrupa\StoreExtender\Console\RefreshPickupPoints');
         $this->registerConsoleCommand('storeextender.sendpaymentreminders', 'Logingrupa\StoreExtender\Console\SendPaymentReminders');
         $this->registerConsoleCommand('storeextender.parselegacyaddresses', 'Logingrupa\StoreExtender\Console\ParseLegacyAddressesCommand');
+        $this->registerConsoleCommand('storeextender.verifyrelease', 'Logingrupa\StoreExtender\Console\VerifyRelease');
 
         // Toolbox RainLabUserHelper::findUserByEmail() calls a method RainLab.User 3.5.3
         // does not define. UserHelper resolves its inner helper through the container, so

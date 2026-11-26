@@ -44,6 +44,8 @@ class OptionalTwigFunctionFallback
     /** @var array<string, true> */
     private static array $arLoggedInRequest = [];
 
+    private static bool $bForceStrict = false;
+
     /**
      * @param  mixed  $obEvent
      */
@@ -79,9 +81,27 @@ class OptionalTwigFunctionFallback
         self::$arLoggedInRequest = [];
     }
 
+    /**
+     * @template T
+     *
+     * @param  callable(): T  $fnCallback
+     * @return T
+     */
+    public static function withStrictMode(callable $fnCallback): mixed
+    {
+        $bPrevious = self::$bForceStrict;
+        self::$bForceStrict = true;
+
+        try {
+            return $fnCallback();
+        } finally {
+            self::$bForceStrict = $bPrevious;
+        }
+    }
+
     protected function isStrictMode(): bool
     {
-        return filter_var(Env::get(self::ENV_STRICT_FLAG, false), FILTER_VALIDATE_BOOLEAN);
+        return self::$bForceStrict || filter_var(Env::get(self::ENV_STRICT_FLAG, false), FILTER_VALIDATE_BOOLEAN);
     }
 
     protected function invokeFallback(string $sFunction, string $sPlugin): string
