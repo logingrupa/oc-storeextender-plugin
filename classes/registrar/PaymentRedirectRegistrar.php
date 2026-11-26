@@ -1,6 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Registrar;
 
 use Event;
+use System\Classes\PluginManager;
 
 /**
  * PaymentRedirectRegistrar sends a shopper coming back from a payment gateway
@@ -18,6 +19,10 @@ class PaymentRedirectRegistrar
      */
     public static function addPaymentGatewayRedirectListeners(): void
     {
+        if (!PluginManager::instance()->exists('Lovata.OmnipayShopaholic') || !class_exists(\Lovata\OmnipayShopaholic\Classes\Helper\PaymentGateway::class)) {
+            return;
+        }
+
         $fnGetCheckoutURL = function ($obOrder) {
             if (empty($obOrder) || empty($obOrder->secret_key)) {
                 return null;

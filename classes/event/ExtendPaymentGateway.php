@@ -2,6 +2,7 @@
 
 use Lovata\PayPalShopaholic\Classes\Helper\PayPalExpressPaymentGateway;
 use Logingrupa\StoreExtender\Classes\Helper\OrderPageUrl;
+use System\Classes\PluginManager;
 
 /**
  * Class ExtendPaymentGateway
@@ -16,6 +17,10 @@ class ExtendPaymentGateway
      */
     public function subscribe($obEvent)
     {
+        if (!PluginManager::instance()->exists('Lovata.PayPalShopaholic') || !class_exists(PayPalExpressPaymentGateway::class)) {
+            return;
+        }
+
         $obEvent->listen(PayPalExpressPaymentGateway::EVENT_GET_PAYMENT_GATEWAY_RETURN_URL, function ($obOrder, $obPaymentMethod) {
             /** @var \Lovata\OrdersShopaholic\Models\Order $obOrder */
             return OrderPageUrl::make($obOrder);

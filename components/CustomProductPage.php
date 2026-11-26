@@ -116,7 +116,7 @@ class CustomProductPage extends ElementPage
      */
     protected function incrementPopularity(Product $obElement): void
     {
-        if (!PluginManager::instance()->hasPlugin('Lovata.PopularityShopaholic')) {
+        if (!PluginManager::instance()->exists('Lovata.PopularityShopaholic')) {
             return;
         }
 

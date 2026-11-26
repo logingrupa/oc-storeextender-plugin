@@ -1,5 +1,6 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event\Cache;
 
+use System\Classes\PluginManager;
 use System\Models\File;
 use Lovata\Shopaholic\Models\Offer;
 use Lovata\Shopaholic\Models\Price;
@@ -47,17 +48,21 @@ class SatelliteCacheInvalidationHandler
             });
         });
 
-        PropertyValueLink::extend(function ($obValueLink) {
-            $obValueLink->bindEvent('model.afterSave', function () use ($obValueLink) {
-                if (!$obValueLink->wasChanged() && !$obValueLink->wasRecentlyCreated) {
-                    return;
-                }
-                $this->clearOwnerItemCache($obValueLink->element_type, (int) $obValueLink->element_id);
+        $obPluginManager = PluginManager::instance();
+
+        if ($obPluginManager->exists('Lovata.PropertiesShopaholic') && class_exists(PropertyValueLink::class)) {
+            PropertyValueLink::extend(function ($obValueLink) {
+                $obValueLink->bindEvent('model.afterSave', function () use ($obValueLink) {
+                    if (!$obValueLink->wasChanged() && !$obValueLink->wasRecentlyCreated) {
+                        return;
+                    }
+                    $this->clearOwnerItemCache($obValueLink->element_type, (int) $obValueLink->element_id);
+                });
+                $obValueLink->bindEvent('model.afterDelete', function () use ($obValueLink) {
+                    $this->clearOwnerItemCache($obValueLink->element_type, (int) $obValueLink->element_id);
+                });
             });
-            $obValueLink->bindEvent('model.afterDelete', function () use ($obValueLink) {
-                $this->clearOwnerItemCache($obValueLink->element_type, (int) $obValueLink->element_id);
-            });
-        });
+        }
 
         File::extend(function ($obFile) {
             $obFile->bindEvent('model.afterSave', function () use ($obFile) {
@@ -71,14 +76,16 @@ class SatelliteCacheInvalidationHandler
             });
         });
 
-        SeoParam::extend(function ($obSeoParam) {
-            $obSeoParam->bindEvent('model.afterSave', function () use ($obSeoParam) {
-                if (!$obSeoParam->wasChanged() && !$obSeoParam->wasRecentlyCreated) {
-                    return;
-                }
-                $this->clearOwnerItemCache((string) $obSeoParam->external_type, (int) $obSeoParam->external_id);
+        if ($obPluginManager->exists('Lovata.MightySeo') && class_exists(SeoParam::class)) {
+            SeoParam::extend(function ($obSeoParam) {
+                $obSeoParam->bindEvent('model.afterSave', function () use ($obSeoParam) {
+                    if (!$obSeoParam->wasChanged() && !$obSeoParam->wasRecentlyCreated) {
+                        return;
+                    }
+                    $this->clearOwnerItemCache((string) $obSeoParam->external_type, (int) $obSeoParam->external_id);
+                });
             });
-        });
+        }
     }
 
     /**

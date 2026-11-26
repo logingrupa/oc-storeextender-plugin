@@ -7,9 +7,11 @@ Main store customization plugin (`Logingrupa\StoreExtender`, package `logingrupa
 - `classes/color/` - `ColorApiClient`, `ColorMapRepository`, `OfferColorGrouper`, `ColorFamilyHubReader` (live `/collections` hub & family pages).
 - `classes/helper/` - `ShopLayoutBinder` (shared `shop`/`shop-lean` variable bag: user, `iPriceTypeID`, cart, currency, SEO), `UserAddressHelper` (shipping/billing single source of truth), `OfferRenderContext` (Twig `offer_render_context`), `OfferImageHelper` (`nail()` crop + `cover()` uncropped 420x320 hub slot), `SiblingShopIdMap` / `SiblingShopSitemap` / `ShopIdMap` (1C-ID cross-shop hreflang), `CanonicalPageSuffix`, `DeviceHint`, `ViteAssetHelper`, `RoundedCurrencyHelper`, `WholeNumberCurrencyConfig`, `ActivePriceHelper`, `OrderStatusCode` / `OrderPaymentState` / `OrderPageData` / `BankTransferDetails`.
 - `classes/mail/` - `SafeMailManager`, `SafeMailer`, `OrderMailState`, `OrderMailData`, `OrderMailSender`, `PaymentReminderSender`.
+- `classes/deploy/` - `ReleaseIntegrityVerifier` (pre-activation release checks: active plugins, Twig template compile under strict functions, mirrored Vite assets, `composer.lock` vs `installed.json` parity).
+- `classes/twig/` - `OptionalTwigFunctionFallback` (`cms.extendTwig` fail-open no-op fallback + rate-limited error logging for allowlisted `gaEvent` / `gaListBlock`; disabled when `STOREEXTENDER_STRICT_TWIG_FUNCTIONS=1`).
 - `classes/middleware/`, `classes/pickup/`, `classes/shipping/`, `classes/ajax/`, `classes/queue/`, `classes/registrar/`.
 - `components/` - `CustomProductPage`, `OfferSheet`, `LazyPromoBlockLoader`, `UserPhoneCheck`.
-- `console/` - `storeextender:sync-offer-colors`, `import-theme-messages`, `verify-xml-import-settings`, `warm-offer-thumbs`, `warm-sibling-maps`, `forget-sibling-maps`, `refresh-pickup-points`, `parse-legacy-addresses`, `regenerate-slugs`, `send-payment-reminders`, `purge-order-property-secrets`, `sql-import`.
+- `console/` - `storeextender:verify-release`, `storeextender:sync-offer-colors`, `import-theme-messages`, `verify-xml-import-settings`, `warm-offer-thumbs`, `warm-sibling-maps`, `forget-sibling-maps`, `refresh-pickup-points`, `parse-legacy-addresses`, `regenerate-slugs`, `send-payment-reminders`, `purge-order-property-secrets`, `sql-import`.
 - `controllers/` (`ColorSync`, `UserProperties`), `formwidgets/VideoFormWidget`, `models/OfferColor`, `routes.php` (`/api/shop-id-map.json`, pickup endpoints).
 
 ## Quality Gates

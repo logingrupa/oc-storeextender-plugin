@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\DB;
 use Kharanenka\Helper\CCache;
 use Lovata\LabelsShopaholic\Classes\Store\Label\ListByProductStore;
 use Lovata\Shopaholic\Classes\Item\ProductItem;
+use System\Classes\PluginManager;
 
 /**
  * Fills the label id lists of a product card list in one statement.
@@ -22,6 +23,10 @@ class ProductCardLabelPrimer
     public static function prime($obProductList)
     {
         if (!is_iterable($obProductList)) {
+            return $obProductList;
+        }
+
+        if (!PluginManager::instance()->exists('Lovata.LabelsShopaholic') || !class_exists(ListByProductStore::class)) {
             return $obProductList;
         }
 

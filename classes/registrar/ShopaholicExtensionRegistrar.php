@@ -103,17 +103,23 @@ class ShopaholicExtensionRegistrar
      */
     public static function extendItemEagerLoading()
     {
+        $obPluginManager = PluginManager::instance();
+        $bHasMightySeo = $obPluginManager->exists('Lovata.MightySeo');
+
         // seo_container: MightySeo caches seo_param_id on every item and reads
         // it via the morphOne relation - without eager loading that is one
         // lovata_mighty_seo_params query per model during cold item builds
         // (58 on one promo page). Eager loaded, collection builds batch it.
         // No offer-nested path belongs here: any one loads every offer of the product back in.
-        ProductItem::$arQueryWith = array_merge(ProductItem::$arQueryWith, [
+        $arProductWith = [
             'translations',
             'preview_image.translations',
             'images.translations',
-            'seo_container',
-        ]);
+        ];
+        if ($bHasMightySeo) {
+            $arProductWith[] = 'seo_container';
+        }
+        ProductItem::$arQueryWith = array_merge(ProductItem::$arQueryWith, $arProductWith);
 
         OfferItem::$arQueryWith = array_merge(OfferItem::$arQueryWith, [
             'translations',
@@ -126,12 +132,14 @@ class ShopaholicExtensionRegistrar
             'preview_image.translations',
             'icon.translations',
             'images.translations',
-            'seo_container',
         ];
+        if ($bHasMightySeo) {
+            $arCategoryWith[] = 'seo_container';
+        }
 
         // property_set is a PropertiesShopaholic relation, absent when that
         // plugin is off - an unknown path here throws RelationNotFoundException
-        if (PluginManager::instance()->hasPlugin('Lovata.PropertiesShopaholic')) {
+        if ($obPluginManager->exists('Lovata.PropertiesShopaholic')) {
             $arCategoryWith[] = 'property_set';
         }
 

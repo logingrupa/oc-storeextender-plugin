@@ -208,7 +208,7 @@ class OrderStockHolds
                 OfferItem::clearCache($iOfferID);
             }
 
-            if (PluginManager::instance()->hasPlugin('Lovata.FilterShopaholic')) {
+            if (PluginManager::instance()->exists('Lovata.FilterShopaholic') && class_exists(FilterValueStore::class)) {
                 FilterValueStore::instance()->quantity->clear();
                 FilterValueStore::instance()->offer_quantity->clear();
             }
