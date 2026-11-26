@@ -1,6 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Registrar;
 
 use Logingrupa\StoreExtender\Classes\Helper\UserPropertyHelper;
+use Logingrupa\StoreExtender\Classes\StudentOffers\StudentOfferOptionsProvider;
 
 /**
  * ThemeDataRegistrar supplies the theme customization form with the dropdown
@@ -32,7 +33,10 @@ class ThemeDataRegistrar
                 return \Lovata\Shopaholic\Models\PromoBlock::lists('name', 'id');
             });
             $obModel->addDynamicMethod('getProductIdOptions', function () {
-                return \Lovata\Shopaholic\Models\Product::lists('name', 'id');
+                return StudentOfferOptionsProvider::getProductOptions();
+            });
+            $obModel->addDynamicMethod('getCouponGroupIdsOptions', function () {
+                return StudentOfferOptionsProvider::getCouponGroupOptions();
             });
             $obModel->addDynamicMethod('getCategoryIdOptions', function () {
                 return \Lovata\Shopaholic\Models\Category::lists('name', 'id');

@@ -96,6 +96,7 @@ use Logingrupa\StoreExtender\Classes\Registrar\PageLookupRegistrar;
 use Logingrupa\StoreExtender\Classes\Registrar\PaymentRedirectRegistrar;
 use Logingrupa\StoreExtender\Classes\Registrar\ShopaholicExtensionRegistrar;
 use Logingrupa\StoreExtender\Classes\Registrar\ThemeDataRegistrar;
+use Logingrupa\StoreExtender\Classes\StudentOffers\StudentOfferSectionResolver;
 
 use Logingrupa\StoreExtender\Classes\Color\ColorSyncSchedule;
 
@@ -183,6 +184,7 @@ class Plugin extends PluginBase
         $this->registerConsoleCommand('storeextender.sendpaymentreminders', 'Logingrupa\StoreExtender\Console\SendPaymentReminders');
         $this->registerConsoleCommand('storeextender.parselegacyaddresses', 'Logingrupa\StoreExtender\Console\ParseLegacyAddressesCommand');
         $this->registerConsoleCommand('storeextender.verifyrelease', 'Logingrupa\StoreExtender\Console\VerifyRelease');
+        $this->registerConsoleCommand('storeextender.seedstudentoffers', 'Logingrupa\StoreExtender\Console\SeedStudentOffers');
 
         // Toolbox RainLabUserHelper::findUserByEmail() calls a method RainLab.User 3.5.3
         // does not define. UserHelper resolves its inner helper through the container, so
@@ -657,6 +659,8 @@ class Plugin extends PluginBase
                 'theme_var' => [ThemeVariable::class, 'get'],
                 // Picks the phone header on every layout; never selects data
                 'is_phone' => [DeviceHint::class, 'isMobile'],
+                // DB-driven /online-student-offers sections from ThemeData + CouponGroups
+                'student_offer_sections' => [StudentOfferSectionResolver::class, 'resolveForActiveTheme'],
                 // Order page: where the order stands with its payment, and the bank details
                 'order_payment_state' => [OrderPageData::class, 'paymentState'],
                 'order_bank_details' => [OrderPageData::class, 'bankDetails'],

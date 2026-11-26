@@ -1,6 +1,7 @@
 <?php namespace Logingrupa\StoreExtender\Classes\Event\Queue;
 
 use Illuminate\Queue\Events\JobProcessing;
+use Logingrupa\StoreExtender\Classes\StudentOffers\StudentOfferOptionsProvider;
 use Lovata\Shopaholic\Classes\Item\CategoryItem;
 use Lovata\Shopaholic\Classes\Item\ProductItem;
 
@@ -23,6 +24,7 @@ class RequestMapResetHandler
         $obEvent->listen(JobProcessing::class, function () {
             ProductItem::clearActiveOfferMap();
             CategoryItem::clearActiveChildrenMap();
+            StudentOfferOptionsProvider::resetCache();
         });
     }
 }
