@@ -1,76 +1,29 @@
 # Logingrupa.StoreExtender
 
-The main store customization plugin for nailscosmetics: offer colour grouping + shade UI,
-SafeMailManager wrapper over Laravel mail, currency rounding/whole-number formatting,
-user/usergroup approval extensions, cart/order position handlers, offer render context for
-larajax fragments, Vite asset helper for migrated theme pages. Namespace
-Logingrupa\StoreExtender, composer package logingrupa/oc-storeextender-plugin. Requires
-Lovata.DiscountsShopaholic, Lovata.Toolbox, Lovata.Shopaholic, Lovata.OrdersShopaholic,
-Logingrupa.CustomXMLImportPricing. See README.MD, SQL_IMPORT_README.md, USAGE_EXAMPLES.md.
+Main store customization plugin (`Logingrupa\StoreExtender`, package `logingrupa/oc-storeextender-plugin`). Extends root `CLAUDE.md`; full `$require` list (`Lovata.*`, `Logingrupa.CustomXMLImportPricing`, `Logingrupa.RetrypaymentShopaholic`, `RainLab.User`, `RainLab.Pages`) is authoritative in `Plugin.php`.
 
-## Environment
+## Architecture Map
+- `classes/event/` - per-domain subscribers: `cache/`, `cart/`, `cartposition/`, `category/`, `currency/`, `device/` (`DeviceLayoutHandler`), `googleanalytics/` (margin hooks, idle when GA inactive), `image/`, `import/`, `metapixel/`, `offer/` (`ExtendOfferImportMetadata`, `OfferDiscountImportSubscriber`), `order/`, `orderposition/`, `price/`, `product/`, `property/`, `queue/`, `review/`, `seo/` (legacy slug redirects, 302 locale redirect), `settings/` (`SettingsSiteFallbackHandler`), `user/` (`UserAddress` sync), `usergroup/`.
+- `classes/color/` - `ColorApiClient`, `ColorMapRepository`, `OfferColorGrouper`, `ColorFamilyHubReader` (live `/collections` hub & family pages).
+- `classes/helper/` - `ShopLayoutBinder` (shared `shop`/`shop-lean` variable bag: user, `iPriceTypeID`, cart, currency, SEO), `UserAddressHelper` (shipping/billing single source of truth), `OfferRenderContext` (Twig `offer_render_context`), `OfferImageHelper` (`nail()` crop + `cover()` uncropped 420x320 hub slot), `SiblingShopIdMap` / `SiblingShopSitemap` / `ShopIdMap` (1C-ID cross-shop hreflang), `CanonicalPageSuffix`, `DeviceHint`, `ViteAssetHelper`, `RoundedCurrencyHelper`, `WholeNumberCurrencyConfig`, `ActivePriceHelper`, `OrderStatusCode` / `OrderPaymentState` / `OrderPageData` / `BankTransferDetails`.
+- `classes/mail/` - `SafeMailManager`, `SafeMailer`, `OrderMailState`, `OrderMailData`, `OrderMailSender`, `PaymentReminderSender`.
+- `classes/middleware/`, `classes/pickup/`, `classes/shipping/`, `classes/ajax/`, `classes/queue/`, `classes/registrar/`.
+- `components/` - `CustomProductPage`, `OfferSheet`, `LazyPromoBlockLoader`, `UserPhoneCheck`.
+- `console/` - `storeextender:sync-offer-colors`, `import-theme-messages`, `verify-xml-import-settings`, `warm-offer-thumbs`, `warm-sibling-maps`, `forget-sibling-maps`, `refresh-pickup-points`, `parse-legacy-addresses`, `regenerate-slugs`, `send-payment-reminders`, `purge-order-property-secrets`, `sql-import`.
+- `controllers/` (`ColorSync`, `UserProperties`), `formwidgets/VideoFormWidget`, `models/OfferColor`, `routes.php` (`/api/shop-id-map.json`, pickup endpoints).
 
-- Parent app: C:\laragon\www\nc.
-- This plugin dir is its OWN git repo - commit here, not in the root repo.
-
-## Architecture map
-
-- classes/event/     per-domain handler dirs: cart/, cartposition/, currency/ (conversion
-                     rounding + WholeNumberPriceFormatter), offer/ (ExtendOfferImportMetadata,
-                     OfferDiscountImportSubscriber - subscribed to CustomXMLImportPricing
-                     after_vat/after_factor hooks), orderposition/, product/, settings/
-                     (SettingsSiteFallbackHandler multisite fallback), user/, usergroup/,
-                     plus ExtendPaymentGateway, ExtendMenuHandler, ExtendOfferHandler
-- classes/color/     ColorApiClient, ColorMapRepository, OfferColorGrouper (shade families)
-- classes/helper/    OfferRenderContext (Twig fn offer_render_context - THE single place a
-                     fragment resolves which offer to render), ViteAssetHelper,
-                     RoundedCurrencyHelper, CurrencyHelperSwapper, ActivePriceHelper,
-                     OfferImageHelper, WholeNumberCurrencyConfig
-- classes/mail/      SafeMailManager, SafeMailer (mail.manager wrapper); order mails: OrderMailState
-                     (mail kinds + VIEW_MAP), OrderMailData, OrderMailSender (locale switch for
-                     webhook/scheduler sends), PaymentReminderSender (1 h / 24 h, claim table)
-- classes/helper/    OrderStatusCode + OrderPaymentState (order state by method + status CODE,
-                     shared by mails and the order page), BankTransferDetails, OrderPageData
-                     (Twig order_payment_state / order_bank_details)
-- components/        CustomProductPage, OfferSheet (shade sheet + swatch strip AJAX),
-                     LazyPromoBlockLoader
-- console/           storeextender:sql-import, storeextender:sync-offer-colors,
-                     storeextender:import-theme-messages, storeextender:verify-xml-import-settings,
-                     storeextender:warm-offer-thumbs
-- formwidgets/       VideoFormWidget; models/OfferColor; controllers/Groups;
-                     config/shopaholic; views/mail; routes.php (legacy /api/offers experiment)
-
-## Quality gates
-
-Own phpunit.xml, unit + integration suites (root CLAUDE.md names it). From plugin dir:
-
+## Quality Gates
 ```bash
-php ../../../vendor/bin/phpunit
+php artisan plugin:test Logingrupa.StoreExtender   # from root
 ```
-
-composer lint does NOT cover this plugin (phpcs.xml scope excludes plugins/logingrupa) - fix
-phpcs.xml scope or lint manually; `vendor/bin/phpcs --standard=phpcs.xml <plugin path>` won't
-work either since the ruleset pins files; note as known gap.
-
-## Ship
-
-Ship via /nc-ship (root CLAUDE.md release flow); package logingrupa/oc-storeextender-plugin.
-
-## Conventions
-
-Root CLAUDE.md governs: Hungarian notation, Store -> Collection -> Item read path, Tiger-Style.
+**Do not run default root Laravel Pint on this plugin**: Pint's `php_unit_set_up_tear_down_visibility` converts `public function setUp()` to `protected`, breaking October `PluginTestCase`.
 
 ## Gotchas
-
-- mail.manager MUST be wrapped with `$this->app->extend()`, never singleton(): Laravel's
-  MailServiceProvider is deferred and would clobber a singleton rebind (comment in
-  Plugin::register() explains it).
-- Offer-price import pipeline moved to Logingrupa.CustomXMLImportPricing (2.0.28, removed
-  here 2.0.30). Same XmlImportSettings keys, no data migration - price logic lives THERE.
-- OfferRenderContext: a pinned offer that is empty or not an OfferItem THROWS by design -
-  the silent fallback to the page's own shade was the original bug (2.0.27).
-- onGetOfferBatch output is deliberately NOT cached: gallery/cart fragments carry
-  per-visitor wishlist and approval-gate state. Strip HTML (onGetSwatchStrip) IS cached,
-  keyed per colour family without offer id (2.0.29).
-- version.yaml entries are long prose post-mortems and a unit test checks the file parses
-  (UpdatesVersionYamlTest) - keep the format valid YAML.
+- **ShopLayoutBinder (`2.0.128`)**: binds `iPriceTypeID` on migrated `shop`/`shop-lean` pages so logged-in group price tiers apply on checkout and every Vite page. Add shared layout vars here, never in one layout template.
+- **UserAddress single source of truth (`2.0.126`)**: `UserAddressHelper` owns shipping/billing addresses across Backend Users, My Account, and Checkout (one latest row per address type; cleans legacy `undefined`/`NaN`).
+- **Cross-shop hreflang (`2.0.119`+)**: pairs `.lv`/`.lt`/`.no` by 1C ID via `/api/shop-id-map.json` + `shop_sibling_url` reading warmed caches (`storeextender:warm-sibling-maps`) and fails closed when cold. Bare-URL browser-language redirects on prefixed shops return `302` with `Vary: Accept-Language` (`2.0.124`); old product slugs redirect even when switched off (`2.0.125`).
+- **`mail.manager`**: MUST be wrapped via `$this->app->extend()`, never `singleton()` (deferred `MailServiceProvider` would clobber it).
+- **Offer-price import pipeline**: moved to `Logingrupa.CustomXMLImportPricing` (2.0.28/2.0.30).
+- **`OfferRenderContext`**: empty/invalid pinned offer throws by design (2.0.27).
+- **`onGetOfferBatch` vs `onGetSwatchStrip`**: batch output is uncached (per-visitor wishlist/approval state); swatch strip HTML is cached per colour family without offer ID.
+- **`updates/version.yaml`**: validated by `UpdatesVersionYamlTest` - quote strings containing `: ` so YAML always parses cleanly.
