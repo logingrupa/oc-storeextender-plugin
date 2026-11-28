@@ -126,6 +126,47 @@ class UserAddressHelper
     }
 
     /**
+     * Resolve the authenticated customer's most recent non-canceled order
+     * shipping_type_id when it is still present in the active shipping list.
+     * Returns null for guests (zero queries) or when no active match exists.
+     *
+     * @param  iterable<object>  $obActiveShippingList
+     */
+    public static function getLastShippingTypeId(?object $obUser, iterable $obActiveShippingList): ?int
+    {
+        if (! is_object($obUser) || empty($obUser->id)) {
+            return null;
+        }
+
+        $arActiveIds = [];
+        foreach ($obActiveShippingList as $obShippingType) {
+            if (is_object($obShippingType) && ! empty($obShippingType->id)) {
+                $arActiveIds[(int) $obShippingType->id] = true;
+            }
+        }
+
+        if (empty($arActiveIds)) {
+            return null;
+        }
+
+        $iShippingTypeId = DB::table('lovata_orders_shopaholic_orders as orders')
+            ->leftJoin('lovata_orders_shopaholic_statuses as statuses', 'statuses.id', '=', 'orders.status_id')
+            ->where('orders.user_id', (int) $obUser->id)
+            ->whereNotNull('orders.shipping_type_id')
+            ->where('orders.shipping_type_id', '>', 0)
+            ->where(function ($obQuery): void {
+                $obQuery->whereNull('statuses.code')
+                    ->orWhere('statuses.code', '!=', OrderStatusCode::CANCELED);
+            })
+            ->orderByDesc('orders.id')
+            ->value('orders.shipping_type_id');
+
+        $iResolved = is_numeric($iShippingTypeId) ? (int) $iShippingTypeId : 0;
+
+        return isset($arActiveIds[$iResolved]) ? $iResolved : null;
+    }
+
+    /**
      * Normalize a UserAddress model into form-ready strings with legacy junk stripped.
      *
      * @return array{id: int|null, address1: string, address2: string, city: string, state: string, postcode: string, country: string, has_value: bool}
