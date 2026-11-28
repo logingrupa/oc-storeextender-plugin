@@ -377,3 +377,5 @@
 2.0.134:
   - 'Add AI-agent discovery (/llms.txt Laravel route, OfferSheet sSelectedOfferFamily, pure ProductStructuredData color, OfferImageHelper::swatchIfWarm), explicit ActivePriceHelper guest retail reset with ItemCacheResetter, authoritative server-side order attribution (OrderAttributionContext, AiReferrerCaptureMiddleware, OrderAttributionHandler, indexed order attributions table, Orders backend Channel column/filter), InnoDB row-locking OrderStockLockHandler with aggregate duplicate-line overstock enforcement, and AgentCommerce string-event bridges (PricingContextBridge, ColorLookupBridge, ShippingBridge, CheckoutUrlBridge).'
   - create_table_order_attributions.php
+2.0.135:
+  - 'Fix Orders backend list Channel column rendering by exposing Order::getOrderChannelDisplayAttribute() instead of raw property array valueFrom.'

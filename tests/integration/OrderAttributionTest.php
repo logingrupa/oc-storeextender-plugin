@@ -210,5 +210,7 @@ class OrderAttributionTest extends StoreExtenderPluginTestCase
         $this->assertNotContains($obWebOrder->id, $arFilteredIds);
         $this->assertSame('Unknown', ExtendOrderControllerAttribution::formatChannelColumn(null));
         $this->assertSame('AI Agent (B2B) (nc_lt_restock)', ExtendOrderControllerAttribution::formatChannelColumn($obB2bOrder->property));
+        $this->assertSame('AI Agent (B2B) (nc_lt_restock)', $obB2bOrder->order_channel_display);
+        $this->assertSame('Web', $obWebOrder->order_channel_display);
     }
 }

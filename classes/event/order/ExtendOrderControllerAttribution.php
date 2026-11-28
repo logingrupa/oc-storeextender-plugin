@@ -38,6 +38,9 @@ class ExtendOrderControllerAttribution
             $obOrder->addDynamicMethod('scopeFilterOrderChannel', function ($obQuery, $mChannels) {
                 return self::applyChannelFilter($obQuery, $mChannels);
             });
+            $obOrder->addDynamicMethod('getOrderChannelDisplayAttribute', function () use ($obOrder): string {
+                return self::formatChannelColumn($obOrder->property);
+            });
         });
 
         $obEvent->listen('backend.list.extendColumns', function ($obWidget): void {
@@ -52,8 +55,6 @@ class ExtendOrderControllerAttribution
                     'searchable' => false,
                     'sortable' => false,
                     'select' => false,
-                    'valueFrom' => 'property',
-                    'formatter' => [self::class, 'formatChannelColumn'],
                 ],
             ]);
         });
