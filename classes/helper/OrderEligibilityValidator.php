@@ -8,6 +8,7 @@ use Lovata\OrdersShopaholic\Classes\Collection\PaymentMethodCollection;
 use Lovata\OrdersShopaholic\Classes\Item\PaymentMethodItem;
 use Lovata\OrdersShopaholic\Classes\Item\ShippingTypeItem;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
+use Lovata\OrdersShopaholic\Models\ShippingType;
 use Lovata\Shopaholic\Models\Settings;
 
 /**
@@ -71,7 +72,7 @@ class OrderEligibilityValidator
     }
 
     /**
-     * Identifies dynamic PostNord shipping methods (.no) by processor class rather than mutable code.
+     * Identifies dynamic-pricing PostNord shipping methods (.no) while allowing flat-rate PostNord methods.
      */
     public static function isDynamicPostNordShipping(int $iShippingTypeId): bool
     {
@@ -84,6 +85,21 @@ class OrderEligibilityValidator
             return false;
         }
 
-        return trim((string) $obShippingType->api_class) === self::POSTNORD_API_CLASS;
+        if (trim((string) $obShippingType->api_class) !== self::POSTNORD_API_CLASS) {
+            return false;
+        }
+
+        $arProperty = is_array($obShippingType->property) ? $obShippingType->property : [];
+        if ($arProperty === []) {
+            $obModel = ShippingType::query()->find($iShippingTypeId);
+            $arProperty = ($obModel instanceof ShippingType && is_array($obModel->property)) ? $obModel->property : [];
+        }
+
+        $sCalculatorClass = 'Logingrupa\\PostNordShippingShopaholic\\Classes\\Api\\PostNordPriceCalculator';
+        if (class_exists($sCalculatorClass) && method_exists($sCalculatorClass, 'isDynamicPricingEnabled')) {
+            return (bool) $sCalculatorClass::isDynamicPricingEnabled($arProperty);
+        }
+
+        return !empty($arProperty['postnord_dynamic_pricing']);
     }
 }

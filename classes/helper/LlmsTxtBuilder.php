@@ -33,7 +33,8 @@ final class LlmsTxtBuilder
             '- Primary URL: ' . $sBaseUrl,
             '- Currency: ' . $sCurrency,
             '- Sitemap: ' . $sRootOrigin . '/sitemap.xml',
-            '- Catalog Search: ' . $sBaseUrl . '/c/all?q={query}',
+            '- Color Collections: ' . $sBaseUrl . '/collections',
+            '- Promotions: ' . $sBaseUrl . '/promo',
         ];
 
         if (!empty($arEnabledSites)) {
@@ -75,14 +76,19 @@ final class LlmsTxtBuilder
     private static function enabledSites(): array
     {
         $obSiteList = Site::listEnabled();
-        $arResult = [];
+        $arPrimary = [];
+        $arSecondary = [];
         foreach ($obSiteList as $obSite) {
             if ($obSite instanceof SiteDefinition) {
-                $arResult[] = $obSite;
+                if (!empty($obSite->is_primary)) {
+                    $arPrimary[] = $obSite;
+                } else {
+                    $arSecondary[] = $obSite;
+                }
             }
         }
 
-        return $arResult;
+        return array_merge($arPrimary, $arSecondary);
     }
 
     private static function extractOrigin(string $sUrl): string

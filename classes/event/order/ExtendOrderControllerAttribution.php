@@ -103,6 +103,7 @@ class ExtendOrderControllerAttribution
      */
     public static function applyChannelFilter($obQuery, $mChannels)
     {
+        $bExclude = is_object($mChannels) && isset($mChannels->mode) && $mChannels->mode === 'exclude';
         $arSelected = self::normalizeChannels($mChannels);
         if (empty($arSelected) || !Schema::hasTable(OrderAttributionContext::PROJECTION_TABLE)) {
             return $obQuery;
@@ -110,8 +111,9 @@ class ExtendOrderControllerAttribution
 
         $sOrderTable = $obQuery->getModel()->getTable();
         $sProjectionTable = OrderAttributionContext::PROJECTION_TABLE;
+        $sMethod = $bExclude ? 'whereNotExists' : 'whereExists';
 
-        return $obQuery->whereExists(static function ($obSubQuery) use ($sOrderTable, $sProjectionTable, $arSelected): void {
+        return $obQuery->{$sMethod}(static function ($obSubQuery) use ($sOrderTable, $sProjectionTable, $arSelected): void {
             $obSubQuery->select(DB::raw(1))
                 ->from($sProjectionTable)
                 ->whereColumn($sProjectionTable . '.order_id', $sOrderTable . '.id')
@@ -124,12 +126,17 @@ class ExtendOrderControllerAttribution
      */
     private static function normalizeChannels(mixed $mChannels): array
     {
+        if (is_object($mChannels) && (property_exists($mChannels, 'value') || isset($mChannels->value))) {
+            $mChannels = $mChannels->value;
+        }
+
         $arRaw = is_array($mChannels) ? $mChannels : (is_string($mChannels) ? [$mChannels] : []);
         $arValid = [];
         foreach ($arRaw as $mKey => $mValue) {
-            $sCandidate = is_string($mValue) ? $mValue : (is_string($mKey) ? $mKey : '');
-            if (in_array($sCandidate, OrderAttributionContext::ALLOWED_CHANNEL_LIST, true)) {
-                $arValid[] = $sCandidate;
+            if (is_string($mValue) && in_array($mValue, OrderAttributionContext::ALLOWED_CHANNEL_LIST, true)) {
+                $arValid[] = $mValue;
+            } elseif (is_string($mKey) && !empty($mValue) && in_array($mKey, OrderAttributionContext::ALLOWED_CHANNEL_LIST, true)) {
+                $arValid[] = $mKey;
             }
         }
 

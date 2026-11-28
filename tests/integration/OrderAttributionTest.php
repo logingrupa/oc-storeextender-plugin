@@ -206,7 +206,30 @@ class OrderAttributionTest extends StoreExtenderPluginTestCase
             [OrderAttributionContext::CHANNEL_AGENT_B2B]
         )->pluck('id')->all();
 
+        $obFilterScope = new \Backend\Classes\FilterScope(['scopeName' => 'order_channel', 'label' => 'Channel']);
+        $obFilterScope->setScopeValue([
+            'value' => [OrderAttributionContext::CHANNEL_AGENT_B2B => OrderAttributionContext::CHANNEL_AGENT_B2B],
+            'mode' => 'include',
+        ]);
+        $arScopeFilteredIds = ExtendOrderControllerAttribution::applyChannelFilter(
+            Order::query(),
+            $obFilterScope
+        )->pluck('id')->all();
+
+        $obExcludeScope = new \Backend\Classes\FilterScope(['scopeName' => 'order_channel', 'label' => 'Channel']);
+        $obExcludeScope->setScopeValue([
+            'value' => [OrderAttributionContext::CHANNEL_AGENT_B2B => OrderAttributionContext::CHANNEL_AGENT_B2B],
+            'mode' => 'exclude',
+        ]);
+        $arExcludedIds = ExtendOrderControllerAttribution::applyChannelFilter(
+            Order::query(),
+            $obExcludeScope
+        )->pluck('id')->all();
+
         $this->assertSame([$obB2bOrder->id], $arFilteredIds);
+        $this->assertSame([$obB2bOrder->id], $arScopeFilteredIds);
+        $this->assertContains($obWebOrder->id, $arExcludedIds);
+        $this->assertNotContains($obB2bOrder->id, $arExcludedIds);
         $this->assertNotContains($obWebOrder->id, $arFilteredIds);
         $this->assertSame('Unknown', ExtendOrderControllerAttribution::formatChannelColumn(null));
         $this->assertSame('AI Agent (B2B) (nc_lt_restock)', ExtendOrderControllerAttribution::formatChannelColumn($obB2bOrder->property));

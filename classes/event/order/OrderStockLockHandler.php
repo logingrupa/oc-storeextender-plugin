@@ -12,6 +12,8 @@ use Lovata\OrdersShopaholic\Classes\Item\CartPositionItem;
 use Lovata\OrdersShopaholic\Classes\Item\PaymentMethodItem;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 use Lovata\OrdersShopaholic\Classes\Processor\OrderProcessor;
+use Lovata\OrdersShopaholic\Models\Cart;
+use Lovata\OrdersShopaholic\Models\CartPosition;
 use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\Shopaholic\Classes\Item\OfferItem;
 use Lovata\Shopaholic\Models\Offer;
@@ -77,20 +79,21 @@ class OrderStockLockHandler
             return;
         }
 
-        $obCartPositionList = CartProcessor::instance()->get();
-        if ($obCartPositionList->isEmpty()) {
-            return;
-        }
+        $obCartProcessor = CartProcessor::instance();
+        $obCartPositionList = $obCartProcessor->get();
 
         /** @var array<int, int> $arRequestedByOffer */
         $arRequestedByOffer = [];
         /** @var list<int> $arCartPositionIds */
         $arCartPositionIds = [];
+        /** @var array<int, bool> $arVisiblePositionIds */
+        $arVisiblePositionIds = [];
 
         foreach ($obCartPositionList as $obCartPositionItem) {
             $iCartPosId = (int) $obCartPositionItem->id;
             if ($iCartPosId > 0) {
                 $arCartPositionIds[] = $iCartPosId;
+                $arVisiblePositionIds[$iCartPosId] = true;
             }
 
             if ((string) $obCartPositionItem->item_type !== Offer::class) {
@@ -101,6 +104,27 @@ class OrderStockLockHandler
             $iQty = (int) $obCartPositionItem->quantity;
             if ($iOfferId > 0 && $iQty > 0) {
                 $arRequestedByOffer[$iOfferId] = ($arRequestedByOffer[$iOfferId] ?? 0) + $iQty;
+            }
+        }
+
+        // Shopaholic's OrderProcessor::initCartPositionList() silently excludes positions whose
+        // offer/product became inactive before the transaction started. Inspect persisted cart rows
+        // so a withdrawn line rejects the order instead of committing a partial browser checkout.
+        $obCart = $obCartProcessor->getCartObject();
+        if ($obCart instanceof Cart && (int) $obCart->id > 0) {
+            $obPersistedRows = CartPosition::getByCart((int) $obCart->id)
+                ->where('item_type', Offer::class)
+                ->get(['id', 'item_id', 'quantity']);
+            foreach ($obPersistedRows as $obPersistedRow) {
+                $iRowId = (int) $obPersistedRow->id;
+                if ($iRowId > 0 && isset($arVisiblePositionIds[$iRowId])) {
+                    continue;
+                }
+                if ((int) $obPersistedRow->quantity > 0) {
+                    $this->rejectOrder((string) __('One or more items in your cart are no longer available.'));
+
+                    return;
+                }
             }
         }
 

@@ -183,6 +183,49 @@ class OrderStockLockHandlerTest extends StoreExtenderPluginTestCase
         $this->assertSame('0', Order::findOrFail($obReplenished->id)->property['out_of_stock'] ?? null);
     }
 
+    public function testBrowserCheckoutRejectsWhenOneCartLineIsWithdrawnBeforeTransaction(): void
+    {
+        $iOfferA = CheckoutStubTables::OFFER_ID;
+        $iOfferB = (int) DB::table('lovata_shopaholic_offers')->insertGetId([
+            'active' => 1,
+            'product_id' => CheckoutStubTables::PRODUCT_ID,
+            'name' => 'Second Shade',
+            'quantity' => 10,
+        ]);
+        DB::table('lovata_shopaholic_prices')->insert([
+            'item_id' => $iOfferB,
+            'item_type' => Offer::class,
+            'price_type_id' => null,
+            'price' => 5.00,
+            'old_price' => 0,
+        ]);
+
+        $iCartId = (int) DB::table('lovata_orders_shopaholic_carts')->insertGetId(['user_id' => null]);
+        CartProcessor::$iTestCartID = $iCartId;
+        CartProcessor::forgetInstance();
+        CartProcessor::instance()->add([
+            ['offer_id' => $iOfferA, 'quantity' => 1],
+            ['offer_id' => $iOfferB, 'quantity' => 1],
+        ], OfferCartPositionProcessor::class);
+
+        // Withdraw offer B BEFORE OrderProcessor::create() so Shopaholic's initCartPositionList()
+        // excludes it from the in-memory collection while offer A remains valid.
+        DB::table('lovata_shopaholic_offers')->where('id', $iOfferB)->update(['active' => 0]);
+        OfferItem::clearCache($iOfferB);
+        ItemStorage::clear(OfferItem::class, $iOfferB);
+        CartProcessor::forgetInstance();
+
+        Result::setTrue();
+        $obResult = OrderProcessor::instance()->create([
+            'shipping_type_id' => CheckoutStubTables::SHIPPING_TYPE_ID,
+            'payment_method_id' => CheckoutStubTables::PAYMENT_METHOD_ID,
+        ]);
+
+        $this->assertNull($obResult);
+        $this->assertFalse(Result::status());
+        $this->assertSame(0, Order::count());
+    }
+
     /**
      * @param  array<int, int>  $arOfferQuantities
      */

@@ -7,14 +7,11 @@ namespace Logingrupa\StoreExtender\Classes\Event\AgentCommerce;
 use Illuminate\Support\Facades\App;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderAttributionHandler;
 use Logingrupa\StoreExtender\Classes\Helper\ActivePriceHelper;
-use Logingrupa\StoreExtender\Classes\Helper\ItemCacheResetter;
 use Logingrupa\StoreExtender\Classes\Helper\OrderAttributionContext;
 use Logingrupa\StoreExtender\Classes\Helper\OrderEligibilityValidator;
 use Logingrupa\StoreExtender\Classes\Helper\ShopLayoutBinder;
 use Lovata\OrdersShopaholic\Models\Order;
 use Lovata\Shopaholic\Classes\Helper\CurrencyHelper;
-use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
-use Lovata\Shopaholic\Classes\Item\OfferItem;
 use Lovata\Toolbox\Classes\Helper\UserHelper;
 
 /**
@@ -37,8 +34,6 @@ class PricingContextBridge
 
         $obEvent->listen('agentcommerce.pricing.releaseContext', function (): void {
             ActivePriceHelper::forgetInstance();
-            PriceTypeHelper::instance()->switchActive(null);
-            ItemCacheResetter::clearAllOfClass(OfferItem::class);
         });
 
         $obEvent->listen('agentcommerce.order.enterB2bContext', function ($obPrincipal): void {
@@ -77,6 +72,25 @@ class PricingContextBridge
 
             return null;
         });
+
+        $obEvent->listen('agentcommerce.order.validateEligibility', function ($obPrincipal, $arNormalized): ?array {
+            $iShippingTypeId = is_array($arNormalized) && is_numeric($arNormalized['shipping_type_id'] ?? null)
+                ? (int) $arNormalized['shipping_type_id']
+                : 0;
+            $iPaymentMethodId = is_array($arNormalized) && is_numeric($arNormalized['payment_method_id'] ?? null)
+                ? (int) $arNormalized['payment_method_id']
+                : 0;
+            $sError = OrderEligibilityValidator::validateSelection($iShippingTypeId, $iPaymentMethodId, false, true);
+            if ($sError !== null) {
+                return [
+                    'reject' => true,
+                    'code' => 'checkout_method_ineligible',
+                    'message' => $sError,
+                ];
+            }
+
+            return null;
+        });
     }
 
     /**
@@ -92,9 +106,6 @@ class PricingContextBridge
             && $obPrincipal->canUseB2bPricing();
 
         if (!$bCanUseB2b || !isset($obPrincipal->iUserId) || !is_int($obPrincipal->iUserId)) {
-            PriceTypeHelper::instance()->switchActive(null);
-            ItemCacheResetter::clearAllOfClass(OfferItem::class);
-
             return [
                 'price_type_code' => null,
                 'price_includes_vat' => true,
@@ -103,9 +114,6 @@ class PricingContextBridge
         }
 
         $sPriceTypeCode = $this->resolveUserPrimaryPriceTypeCode($obPrincipal->iUserId);
-        PriceTypeHelper::instance()->switchActive($sPriceTypeCode);
-        ItemCacheResetter::clearAllOfClass(OfferItem::class);
-
         $bIncludesVat = $sPriceTypeCode === null
             || in_array($sPriceTypeCode, ShopLayoutBinder::VAT_INCLUSIVE_PRICE_TYPE_LIST, true);
 

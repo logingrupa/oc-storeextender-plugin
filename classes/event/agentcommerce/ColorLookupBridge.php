@@ -22,6 +22,11 @@ class ColorLookupBridge
     public const CACHE_TTL_SECONDS = 600;
     public const DEFAULT_MAX_DELTA_E = 35.0;
 
+    private ?string $sMemoizedCacheKey = null;
+
+    /** @var array{by_offer_id: array<int, array{family: string, families: list<string>, shade_code: ?string, hex: ?string, lab: ?array{0: float, 1: float, 2: float}}>}|null */
+    private ?array $arMemoizedColorIndex = null;
+
     /**
      * @param  mixed  $obEvent  untyped: October passes PriorityDispatcher
      */
@@ -124,9 +129,11 @@ class ColorLookupBridge
     private function enrichVariantPayload(Offer $obOffer): array
     {
         $arExtra = [];
-        $sSwatch = OfferImageHelper::swatchIfWarm($obOffer->preview_image);
-        if ($sSwatch !== '') {
-            $arExtra['swatch_image'] = $sSwatch;
+        if ($obOffer->relationLoaded('preview_image')) {
+            $sSwatch = OfferImageHelper::swatchIfWarm($obOffer->getRelation('preview_image'));
+            if ($sSwatch !== '') {
+                $arExtra['swatch_image'] = $sSwatch;
+            }
         }
 
         $arIndex = $this->getOfferColorIndex();
@@ -151,7 +158,11 @@ class ColorLookupBridge
         $sVersion = $obRepo->getVersion() ?: 'v0';
         $sCacheKey = 'storeextender.agentcommerce.color_index.' . md5($sVersion);
 
-        return (array) Cache::remember($sCacheKey, self::CACHE_TTL_SECONDS, static function () use ($obRepo): array {
+        if ($this->sMemoizedCacheKey === $sCacheKey && $this->arMemoizedColorIndex !== null) {
+            return $this->arMemoizedColorIndex;
+        }
+
+        $arIndex = (array) Cache::remember($sCacheKey, self::CACHE_TTL_SECONDS, static function () use ($obRepo): array {
             $arColorMap = $obRepo->getColorMap();
             if ($arColorMap === []) {
                 return ['by_offer_id' => []];
@@ -188,6 +199,11 @@ class ColorLookupBridge
 
             return ['by_offer_id' => $arByOfferId];
         });
+
+        $this->sMemoizedCacheKey = $sCacheKey;
+        $this->arMemoizedColorIndex = $arIndex;
+
+        return $arIndex;
     }
 
     /**

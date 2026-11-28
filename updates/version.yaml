@@ -379,3 +379,5 @@
   - create_table_order_attributions.php
 2.0.135:
   - 'Fix Orders backend list Channel column rendering by exposing Order::getOrderChannelDisplayAttribute() instead of raw property array valueFrom.'
+2.0.136:
+  - 'Harden council-audited AgentCommerce & checkout paths: unwrap October FilterScope objects in Orders Channel filter, reject withdrawn cart lines dropped before OrderStockLockHandler, distinguish flat-rate vs dynamic PostNord pricing for B2B orders, enforce checkout payment eligibility on B2B orders via agentcommerce.order.validateEligibility, memoize ColorLookupBridge color index and OrderAttributionHandler table check, and replace dead /c/all link in /llms.txt with /collections and /promo.'

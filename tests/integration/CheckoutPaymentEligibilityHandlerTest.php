@@ -222,9 +222,10 @@ class CheckoutPaymentEligibilityHandlerTest extends StoreExtenderUserPluginTestC
             [
                 'id'        => 31,
                 'active'    => 1,
-                'name'      => 'Renamed Nordic Carrier',
+                'name'      => 'Renamed Nordic Carrier Dynamic',
                 'code'      => 'nordic-parcel',
                 'api_class' => OrderEligibilityValidator::POSTNORD_API_CLASS,
+                'property'  => json_encode(['postnord_dynamic_pricing' => true, 'postnord_api_mode' => 'norway']),
                 'price'     => 0,
             ],
             [
@@ -233,17 +234,30 @@ class CheckoutPaymentEligibilityHandlerTest extends StoreExtenderUserPluginTestC
                 'name'      => 'PostNord Flat Legacy',
                 'code'      => 'postnord-flat',
                 'api_class' => null,
+                'property'  => null,
+                'price'     => 10,
+            ],
+            [
+                'id'        => 33,
+                'active'    => 1,
+                'name'      => 'PostNord Flat Rate NO',
+                'code'      => 'postnord-no-flat',
+                'api_class' => OrderEligibilityValidator::POSTNORD_API_CLASS,
+                'property'  => json_encode(['postnord_dynamic_pricing' => false]),
                 'price'     => 10,
             ],
         ]);
         ShippingTypeItem::clearCache(31);
         ShippingTypeItem::clearCache(32);
+        ShippingTypeItem::clearCache(33);
 
         $this->assertTrue(OrderEligibilityValidator::isDynamicPostNordShipping(31));
         $this->assertFalse(OrderEligibilityValidator::isDynamicPostNordShipping(32));
+        $this->assertFalse(OrderEligibilityValidator::isDynamicPostNordShipping(33));
 
         ShippingTypeItem::clearCache(31);
         ShippingTypeItem::clearCache(32);
+        ShippingTypeItem::clearCache(33);
     }
 
     public function testMethodAllowedForCartCarrierButRestrictedForSubmittedCarrierIsRejected(): void

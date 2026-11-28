@@ -28,6 +28,8 @@ class OrderAttributionHandler
     /** @var array<int, array{order_channel: string, agent_client: ?string, verified: bool}> */
     private array $arPendingProjectionMap = [];
 
+    private static bool $bProjectionTableVerified = false;
+
     /**
      * @param  mixed  $obEvent  untyped: October passes PriorityDispatcher
      */
@@ -83,7 +85,7 @@ class OrderAttributionHandler
             $obOrder->save();
             $obOrder->syncOriginal();
 
-            if (Schema::hasTable(OrderAttributionContext::PROJECTION_TABLE)) {
+            if (self::hasProjectionTable()) {
                 DB::table(OrderAttributionContext::PROJECTION_TABLE)->updateOrInsert(
                     ['order_id' => $iOrderId],
                     [
@@ -145,7 +147,7 @@ class OrderAttributionHandler
         }
 
         try {
-            if (!Schema::hasTable(OrderAttributionContext::PROJECTION_TABLE)) {
+            if (!self::hasProjectionTable()) {
                 return;
             }
 
@@ -244,6 +246,20 @@ class OrderAttributionHandler
         $arAttributeList = $obOrder->getAttributes();
         $arAttributeList['property'] = json_encode($arProperty, JSON_UNESCAPED_UNICODE);
         $obOrder->setRawAttributes($arAttributeList);
+    }
+
+    private static function hasProjectionTable(): bool
+    {
+        if (self::$bProjectionTableVerified && !App::runningUnitTests()) {
+            return true;
+        }
+
+        $bExists = Schema::hasTable(OrderAttributionContext::PROJECTION_TABLE);
+        if ($bExists) {
+            self::$bProjectionTableVerified = true;
+        }
+
+        return $bExists;
     }
 
     /**
