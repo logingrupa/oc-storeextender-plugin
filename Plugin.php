@@ -67,6 +67,7 @@ use Logingrupa\StoreExtender\Classes\Event\CartPosition\CartPositionItemHandler;
 //Order position
 use Logingrupa\StoreExtender\Classes\Event\OrderPosition\OrderPositionItemHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPropertySecretHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\CheckoutPaymentEligibilityHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\CheckoutPasswordHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderUserPhoneHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderMailDataHandler;
@@ -124,6 +125,7 @@ use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
 use Logingrupa\StoreExtender\Classes\Helper\ThemeVariable;
 use Logingrupa\StoreExtender\Classes\Helper\OrderPageData;
 use Logingrupa\StoreExtender\Classes\Helper\UserAddressHelper;
+use Logingrupa\StoreExtender\Classes\Helper\CheckoutStockHelper;
 use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
 
 /**
@@ -255,6 +257,7 @@ class Plugin extends PluginBase
         Event::subscribe(RequestMapResetHandler::class);
         ShopaholicExtensionRegistrar::extendXMLImporter();
         ShopaholicExtensionRegistrar::extendShopaholicOrderModel();
+        ShopaholicExtensionRegistrar::extendShopaholicPaymentMethodModel();
         Event::subscribe(ExtendPaymentGateway::class);
         Event::subscribe(ExtendMenuHandler::class);
         //Offer events: PASS 1 metadata + discount steps. The PASS 2 price
@@ -314,6 +317,8 @@ class Plugin extends PluginBase
 
         // Keeps raw checkout credentials out of the order property snapshot.
         Event::subscribe(OrderPropertySecretHandler::class);
+        // Server-side payment eligibility and authoritative out_of_stock flag before user/order creation.
+        Event::subscribe(CheckoutPaymentEligibilityHandler::class);
         // Its generated password reaches order.property; OrderPropertySecretHandler strips it.
         Event::subscribe(CheckoutPasswordHandler::class);
         Event::subscribe(OrderUserPhoneHandler::class);
@@ -666,6 +671,8 @@ class Plugin extends PluginBase
                 'order_bank_details' => [OrderPageData::class, 'bankDetails'],
                 // Saved Shopaholic UserAddress rows (shipping + billing) for My Account and Checkout
                 'user_saved_addresses' => [UserAddressHelper::class, 'getCheckoutAddresses'],
+                // Authoritative cart overstock check shared by checkout UI and order validation
+                'cart_is_overstock' => [CheckoutStockHelper::class, 'isCartOverstock'],
             ]
         ];
     }

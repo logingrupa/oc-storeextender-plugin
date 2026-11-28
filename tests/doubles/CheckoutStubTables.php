@@ -180,6 +180,40 @@ final class CheckoutStubTables
             $obTable->integer('offer_id');
             $obTable->integer('site_id');
         });
+
+        self::createIfMissing('lovata_ordersshopaholic_payment_restrictions', function (Blueprint $obTable) {
+            $obTable->increments('id');
+            $obTable->boolean('active')->default(true);
+            $obTable->string('name')->nullable();
+            $obTable->string('code')->nullable();
+            $obTable->string('restriction')->nullable();
+            $obTable->text('description')->nullable();
+            $obTable->text('property')->nullable();
+            $obTable->integer('sort_order')->nullable();
+            $obTable->timestamps();
+        });
+
+        self::createIfMissing('lovata_ordersshopaholic_payment_restrictions_link', function (Blueprint $obTable) {
+            $obTable->integer('payment_method_id');
+            $obTable->integer('payment_restriction_id');
+        });
+
+        self::createIfMissing('lovata_ordersshopaholic_shipping_restrictions', function (Blueprint $obTable) {
+            $obTable->increments('id');
+            $obTable->boolean('active')->default(true);
+            $obTable->string('name')->nullable();
+            $obTable->string('code')->nullable();
+            $obTable->string('restriction')->nullable();
+            $obTable->text('description')->nullable();
+            $obTable->text('property')->nullable();
+            $obTable->integer('sort_order')->nullable();
+            $obTable->timestamps();
+        });
+
+        self::createIfMissing('lovata_ordersshopaholic_shipping_restrictions_link', function (Blueprint $obTable) {
+            $obTable->integer('shipping_type_id');
+            $obTable->integer('shipping_restriction_id');
+        });
     }
 
     /**
@@ -196,6 +230,14 @@ final class CheckoutStubTables
         DB::table('lovata_shopaholic_products')->insert(['id' => self::PRODUCT_ID, 'active' => 1, 'name' => 'Gel', 'slug' => 'gel']);
         DB::table('lovata_shopaholic_offers')->insert(['id' => self::OFFER_ID, 'active' => 1, 'product_id' => self::PRODUCT_ID, 'name' => 'Gel 5 ml', 'quantity' => 1000]);
         DB::table('lovata_shopaholic_prices')->insert(['item_id' => self::OFFER_ID, 'item_type' => 'Lovata\Shopaholic\Models\Offer', 'price' => 10, 'price_type_id' => null]);
+
+        \Lovata\OrdersShopaholic\Classes\Item\PaymentMethodItem::clearCache(self::PAYMENT_METHOD_ID);
+        \Lovata\OrdersShopaholic\Classes\Item\ShippingTypeItem::clearCache(self::SHIPPING_TYPE_ID);
+        \Lovata\OrdersShopaholic\Classes\Store\PaymentMethodListStore::instance()->active->clear();
+        \Lovata\OrdersShopaholic\Classes\Store\ShippingTypeListStore::instance()->active->clear();
+        if (class_exists(\Logingrupa\PayseraShopaholic\Classes\Helper\TestModeVisibility::class)) {
+            \Logingrupa\PayseraShopaholic\Classes\Helper\TestModeVisibility::reset();
+        }
     }
 
     /**

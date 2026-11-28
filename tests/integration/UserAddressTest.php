@@ -588,6 +588,7 @@ class UserAddressTest extends StoreExtenderUserPluginTestCase
         request()->replace([
             'order' => [
                 'payment_method_id' => CheckoutStubTables::PAYMENT_METHOD_ID,
+                'shipping_type_id' => CheckoutStubTables::SHIPPING_TYPE_ID,
                 'property' => $arOrderProperty,
             ],
             'user' => [

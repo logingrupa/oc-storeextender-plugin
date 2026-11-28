@@ -509,7 +509,10 @@ class OrderStockHoldTest extends StoreExtenderUserPluginTestCase
 
         $this->iSubmitCount++;
         request()->replace([
-            'order' => ['payment_method_id' => CheckoutStubTables::PAYMENT_METHOD_ID],
+            'order' => [
+                'payment_method_id' => CheckoutStubTables::PAYMENT_METHOD_ID,
+                'shipping_type_id'  => CheckoutStubTables::SHIPPING_TYPE_ID,
+            ],
             'user'  => ['email' => 'stock-'.$this->iSubmitCount.'@example.com', 'name' => 'Anna', 'password' => ''],
         ]);
 

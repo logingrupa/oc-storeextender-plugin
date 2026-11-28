@@ -8,6 +8,8 @@ use Lovata\Shopaholic\Models\Offer as ShopaholicOfferModel;
 use Lovata\Shopaholic\Models\Product as ShopaholicProductModel;
 use Lovata\Shopaholic\Models\Category as ShopaholicCategoryModel;
 use Lovata\OrdersShopaholic\Models\Order as ShopaholicOrderModel;
+use Lovata\OrdersShopaholic\Models\PaymentMethod as ShopaholicPaymentMethodModel;
+use Lovata\OrdersShopaholic\Models\ShippingType as ShopaholicShippingTypeModel;
 use Lovata\Shopaholic\Models\Currency as ShopaholicCurrencyModel;
 use Lovata\Shopaholic\Controllers\Currencies as ShopaholicCurrenciesController;
 use Lovata\Shopaholic\Controllers\Products as ShopaholicProductsController;
@@ -211,6 +213,17 @@ class ShopaholicExtensionRegistrar
     {
         ShopaholicOrderModel::extend(function ($obModel) {
             $obModel->addCachedField(['manager_id', 'transaction_id']);
+        });
+    }
+
+    public static function extendShopaholicPaymentMethodModel()
+    {
+        ShopaholicPaymentMethodModel::extend(function ($obModel) {
+            $obModel->addCachedField(['gateway_id', 'active']);
+        });
+
+        ShopaholicShippingTypeModel::extend(function ($obModel) {
+            $obModel->addCachedField(['active']);
         });
     }
 
