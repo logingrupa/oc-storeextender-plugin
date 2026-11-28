@@ -329,6 +329,25 @@ class OfferImageHelper
     }
 
     /**
+     * The swatch URL when the derivative is already on disk, and an empty string when cold.
+     * Never resizes on disk so API and catalog feed paths stay non-blocking.
+     */
+    public static function swatchIfWarm(?File $obImage): string
+    {
+        if ($obImage === null || !$obImage->isImage() || !self::hasSourceFile($obImage)) {
+            return '';
+        }
+
+        $arOptions = self::getThumbOptions(self::SLOT_SWATCH);
+        $sThumbFileName = $obImage->getThumbFilename(self::SIZE_SWATCH, self::SIZE_SWATCH, $arOptions);
+        if (!$obImage->getDisk()->exists($obImage->getDiskPath($sThumbFileName))) {
+            return '';
+        }
+
+        return (string) $obImage->getPath($sThumbFileName);
+    }
+
+    /**
      * Pixel size of one slot.
      */
     public static function getSlotSize(string $sSlot): int

@@ -62,10 +62,11 @@ class ProductStructuredData
         bool $bOfferSelected,
         iterable $obReviewList,
         string $sPageUrl,
-        ?string $sSellerName
+        ?string $sSellerName,
+        ?string $sColor = null
     ): string {
         return JsonLdScript::encode(
-            fn () => self::itemOrNull(self::build($obProduct, $obOffer, $bOfferSelected, $obReviewList, $sPageUrl, (string) $sSellerName)),
+            fn () => self::itemOrNull(self::build($obProduct, $obOffer, $bOfferSelected, $obReviewList, $sPageUrl, (string) $sSellerName, $sColor)),
             'Product',
             ['product_id' => $obProduct->id, 'page_url' => $sPageUrl]
         );
@@ -89,11 +90,12 @@ class ProductStructuredData
         bool $bOfferSelected,
         iterable $obReviewList,
         string $sPageUrl,
-        string $sSellerName
+        string $sSellerName,
+        ?string $sColor = null
     ): array {
         self::assertInput($obProduct, $obOffer, $sPageUrl, $sSellerName);
 
-        $arData = self::productData($obProduct, $obOffer, $bOfferSelected, $sSellerName);
+        $arData = self::productData($obProduct, $obOffer, $bOfferSelected, $sSellerName, $sColor);
 
         $arRatedReviewList = self::ratedReviewList($obReviewList);
         if (!empty($arRatedReviewList)) {
@@ -115,9 +117,10 @@ class ProductStructuredData
      * @param OfferItem|null $obOffer
      * @param bool           $bOfferSelected
      * @param string         $sSellerName
+     * @param string|null    $sColor
      * @return array
      */
-    protected static function productData(ElementItem $obProduct, $obOffer, bool $bOfferSelected, string $sSellerName): array
+    protected static function productData(ElementItem $obProduct, $obOffer, bool $bOfferSelected, string $sSellerName, ?string $sColor = null): array
     {
         $arData = [
             '@context' => 'https://schema.org',
@@ -133,6 +136,11 @@ class ProductStructuredData
         $sDescription = self::description($obProduct);
         if ($sDescription !== '') {
             $arData['description'] = $sDescription;
+        }
+
+        $sNormalizedColor = $bOfferSelected && $sColor !== null ? trim($sColor) : '';
+        if ($sNormalizedColor !== '') {
+            $arData['color'] = $sNormalizedColor;
         }
 
         $arData['sku'] = self::sku($obProduct, $obOffer);

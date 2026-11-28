@@ -1,10 +1,18 @@
 <?php
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Route;
+use Logingrupa\StoreExtender\Classes\Helper\LlmsTxtBuilder;
 use Logingrupa\StoreExtender\Classes\Helper\ShopIdMap;
 use Logingrupa\StoreExtender\Classes\Pickup\PickupPointFeed;
 use Logingrupa\StoreExtender\Classes\Pickup\PickupPointRepository;
+
+Route::get('/llms.txt', function () {
+    return (new Response(LlmsTxtBuilder::build(), 200))
+        ->header('Content-Type', 'text/plain; charset=utf-8')
+        ->header('Cache-Control', 'public, max-age=900');
+});
 
 /**
  * The 1C id of every row this shop publishes, against this shop's own path.

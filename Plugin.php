@@ -75,7 +75,14 @@ use Logingrupa\StoreExtender\Classes\Event\Order\OrderPaidMailHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderPaymentChoiceMailHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderSubmitReplayHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\OrderStockHoldHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderStockLockHandler;
 use Logingrupa\StoreExtender\Classes\Event\Order\CanceledOrderStatusGuard;
+use Logingrupa\StoreExtender\Classes\Event\Order\OrderAttributionHandler;
+use Logingrupa\StoreExtender\Classes\Event\Order\ExtendOrderControllerAttribution;
+use Logingrupa\StoreExtender\Classes\Event\AgentCommerce\PricingContextBridge;
+use Logingrupa\StoreExtender\Classes\Event\AgentCommerce\ColorLookupBridge;
+use Logingrupa\StoreExtender\Classes\Event\AgentCommerce\ShippingBridge;
+use Logingrupa\StoreExtender\Classes\Event\AgentCommerce\CheckoutUrlBridge;
 //Product events
 use Logingrupa\StoreExtender\Classes\Event\Product\ExtendProductFieldsHandler as StoreExtenderExtendProductFieldsHandler;
 use Logingrupa\StoreExtender\Classes\Event\Product\ProductModelHandler as StoreExtenderProductModelHandler;
@@ -91,6 +98,7 @@ use Logingrupa\StoreExtender\Classes\Event\Settings\SettingsSiteFallbackHandler;
 use Logingrupa\StoreExtender\Classes\Middleware\ClearShadowCartCookie;
 use Logingrupa\StoreExtender\Classes\Middleware\DeviceVaryHeader;
 use Logingrupa\StoreExtender\Classes\Middleware\LocaleDetectRedirectHeaders;
+use Logingrupa\StoreExtender\Classes\Middleware\AiReferrerCaptureMiddleware;
 
 //Registration surfaces boot() delegates to, one class per responsibility
 use Logingrupa\StoreExtender\Classes\Registrar\PageLookupRegistrar;
@@ -124,6 +132,7 @@ use Logingrupa\StoreExtender\Classes\Helper\ViteAssetHelper;
 use Logingrupa\StoreExtender\Classes\Helper\RainLabUserHelperFix;
 use Logingrupa\StoreExtender\Classes\Helper\ThemeVariable;
 use Logingrupa\StoreExtender\Classes\Helper\OrderPageData;
+use Logingrupa\StoreExtender\Classes\Helper\OrderAttributionContext;
 use Logingrupa\StoreExtender\Classes\Helper\UserAddressHelper;
 use Logingrupa\StoreExtender\Classes\Helper\CheckoutStockHelper;
 use Logingrupa\StoreExtender\Classes\Ajax\SafeAjaxResponse;
@@ -192,6 +201,7 @@ class Plugin extends PluginBase
         // does not define. UserHelper resolves its inner helper through the container, so
         // binding the fixed subclass here reaches every caller, checkout included.
         $this->app->bind(\Lovata\Toolbox\Classes\Helper\Users\RainLabUserHelper::class, RainLabUserHelperFix::class);
+        $this->app->scoped(OrderAttributionContext::class);
 
         // ajax() resolves the response class from the container on every call.
         \Larajax\Classes\AjaxResponse::registerCustomResponse(SafeAjaxResponse::class);
@@ -228,6 +238,7 @@ class Plugin extends PluginBase
             $obController->middleware(ClearShadowCartCookie::class);
             $obController->middleware(DeviceVaryHeader::class);
             $obController->middleware(LocaleDetectRedirectHeaders::class);
+            $obController->middleware(AiReferrerCaptureMiddleware::class);
         });
 
         $factory = Omnipay::getFactory();
@@ -327,7 +338,14 @@ class Plugin extends PluginBase
         Event::subscribe(OrderPaymentChoiceMailHandler::class);
         Event::subscribe(OrderSubmitReplayHandler::class);
         Event::subscribe(CanceledOrderStatusGuard::class);
+        Event::subscribe(OrderStockLockHandler::class);
         Event::subscribe(OrderStockHoldHandler::class);
+        Event::subscribe(OrderAttributionHandler::class);
+        Event::subscribe(ExtendOrderControllerAttribution::class);
+        Event::subscribe(PricingContextBridge::class);
+        Event::subscribe(ColorLookupBridge::class);
+        Event::subscribe(ShippingBridge::class);
+        Event::subscribe(CheckoutUrlBridge::class);
         //Offer sort by Name ASC
         Event::subscribe(ExtendOfferHandler::class);
 

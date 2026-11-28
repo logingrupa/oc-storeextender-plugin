@@ -118,6 +118,20 @@ class ProductStructuredDataTest extends StoreExtenderPluginTestCase
         $this->assertSame('Gellaka 014', ProductStructuredData::build($obProduct, $obOffer, true, [], self::PAGE_URL, self::SELLER)['name']);
     }
 
+    public function testColorIsEmittedOnlyWhenTheShadeIsExplicitlySelected()
+    {
+        $obProduct = $this->makeProduct(['id' => 1, 'name' => 'Gellaka']);
+        $obOffer = $this->makeOffer(['id' => 2, 'product_id' => 1, 'name' => 'Gellaka 014', 'quantity' => 1], 7.9, 'EUR');
+
+        $arSelected = ProductStructuredData::build($obProduct, $obOffer, true, [], self::PAGE_URL, self::SELLER, ' red ');
+        $arUnselected = ProductStructuredData::build($obProduct, $obOffer, false, [], self::PAGE_URL, self::SELLER, 'red');
+        $arBlank = ProductStructuredData::build($obProduct, $obOffer, true, [], self::PAGE_URL, self::SELLER, '   ');
+
+        $this->assertSame('red', $arSelected['color']);
+        $this->assertArrayNotHasKey('color', $arUnselected);
+        $this->assertArrayNotHasKey('color', $arBlank);
+    }
+
     public function testRatedReviewsFeedBothTheAggregateAndTheReviewList()
     {
         $obProduct = $this->makeProduct(['id' => 1, 'name' => 'P']);

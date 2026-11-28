@@ -13,6 +13,7 @@ use Lovata\OrdersShopaholic\Models\CartPosition;
 use Lovata\OrdersShopaholic\Classes\Processor\CartProcessor;
 use Lovata\OrdersShopaholic\Classes\Processor\OrderProcessor;
 use Lovata\CouponsShopaholic\Classes\Helper\CouponHelper;
+use Logingrupa\StoreExtender\Classes\Helper\OrderAttributionContext;
 use Logingrupa\StoreExtender\Classes\Helper\OrderPageUrl;
 use Logingrupa\StoreExtender\Classes\Helper\PlacedOrderMemory;
 
@@ -48,6 +49,12 @@ class OrderSubmitReplayHandler
     {
         // Fired inside the checkout transaction, only by OrderProcessor::create
         $obEvent->listen(OrderProcessor::EVENT_UPDATE_ORDER_AFTER_CREATE, function ($obOrder): void {
+            if (app()->bound(OrderAttributionContext::class) && app(OrderAttributionContext::class)->bSkipReplayMemory) {
+                $this->obPendingOrder = null;
+
+                return;
+            }
+
             $this->obPendingOrder = $obOrder instanceof Order ? $obOrder : null;
         });
 

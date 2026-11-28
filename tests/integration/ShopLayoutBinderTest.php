@@ -204,6 +204,8 @@ class ShopLayoutBinderTest extends StoreExtenderPluginTestCase
         $iPriceTypeID = $this->insertPriceType($sPriceTypeCode);
         PriceTypeHelper::forgetInstance();
         PriceTypeHelper::instance()->switchActive($sPriceTypeCode);
+        // Spy bypasses the guest->retail reset so this test exercises ShopLayoutBinder's VAT mapping for each tier.
+        $this->installActivePriceHelperSpy();
 
         $obLayout = new FakeShopLayout();
 

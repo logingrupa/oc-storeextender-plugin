@@ -5,6 +5,7 @@ use October\Rain\Support\Traits\Singleton;
 use Lovata\Toolbox\Classes\Helper\UserHelper;
 use Lovata\Shopaholic\Classes\Helper\PriceTypeHelper;
 use Lovata\Shopaholic\Classes\Collection\ProductCollection;
+use Lovata\Shopaholic\Classes\Item\OfferItem;
 use Lovata\DiscountsShopaholic\Classes\Item\DiscountItem;
 use Lovata\DiscountsShopaholic\Models\Discount;
 
@@ -37,12 +38,19 @@ class ActivePriceHelper
     protected $obActivePriceType;
 
     /**
-     * Set active price type
+     * Set active price type for the current shopper, resetting explicitly to retail (null) for guests.
      */
     public function setActivePriceType()
     {
-        if (!empty($this->obActivePriceType)) {
-            PriceTypeHelper::instance()->switchActive($this->obActivePriceType->code);
+        $this->obActivePriceType = $this->resolveCurrentUserPriceType();
+        $obPriceTypeHelper = PriceTypeHelper::instance();
+        $iPreviousPriceTypeId = $obPriceTypeHelper->getActivePriceTypeID();
+        $sTargetCode = !empty($this->obActivePriceType) ? (string) $this->obActivePriceType->code : null;
+
+        $obPriceTypeHelper->switchActive($sTargetCode);
+
+        if ($obPriceTypeHelper->getActivePriceTypeID() !== $iPreviousPriceTypeId) {
+            ItemCacheResetter::clearAllOfClass(OfferItem::class);
         }
     }
 
@@ -131,16 +139,24 @@ class ActivePriceHelper
      */
     protected function init()
     {
+        $this->obActivePriceType = $this->resolveCurrentUserPriceType();
+    }
+
+    /**
+     * @return \Lovata\Shopaholic\Models\PriceType|null
+     */
+    protected function resolveCurrentUserPriceType()
+    {
         $obUser = UserHelper::instance()->getUser();
         if (empty($obUser)) {
-            return;
+            return null;
         }
 
         $obPrimaryGroup = $obUser->primary_group;
         if (empty($obPrimaryGroup) || empty($obPrimaryGroup->price_type_id)) {
-            return;
+            return null;
         }
 
-        $this->obActivePriceType = $obPrimaryGroup->price_type;
+        return $obPrimaryGroup->price_type;
     }
 }

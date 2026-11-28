@@ -1058,7 +1058,33 @@ class OfferSheet extends ComponentBase
             'bUseSheet' => $bUseSheet,
             'arFamilyChipList' => $bUseSheet ? $this->getFamilyChipList($arGroupedList) : [],
             'sActiveFamily' => $sActiveFamily,
+            'sSelectedOfferFamily' => $this->resolveSelectedOfferFamily($arGroupedList, $iSelectedOfferId, $bOfferIsExplicit),
         ];
+    }
+
+    /**
+     * Primary color family of an explicitly selected offer, read from the already-loaded
+     * grouped row list with zero extra DB or cache reads.
+     *
+     * @param  array<int, array<string, mixed>>  $arGroupedList
+     */
+    protected function resolveSelectedOfferFamily(array $arGroupedList, int $iSelectedOfferId, bool $bOfferIsExplicit): ?string
+    {
+        if (!$bOfferIsExplicit || $iSelectedOfferId <= 0) {
+            return null;
+        }
+
+        foreach ($arGroupedList as $arRow) {
+            if ((int) ($arRow['iOfferId'] ?? 0) !== $iSelectedOfferId || empty($arRow['bPrimary'])) {
+                continue;
+            }
+
+            $sFamily = is_string($arRow['sFamily'] ?? null) ? trim($arRow['sFamily']) : '';
+
+            return $sFamily !== '' ? $sFamily : null;
+        }
+
+        return null;
     }
 
     /**
